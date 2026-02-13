@@ -128,6 +128,7 @@ describe('Groups', () => {
     expect(await screen.findByText('AAPL')).toBeTruthy();
     expect(await screen.findByText('Qty: 10')).toBeTruthy();
     expect(await screen.findByText('P&L: N/D')).toBeTruthy();
+    expect(await screen.findByText('Miembros: 1')).toBeTruthy();
     expect(screen.queryByText(/buyPrice/i)).toBeNull();
   });
 
