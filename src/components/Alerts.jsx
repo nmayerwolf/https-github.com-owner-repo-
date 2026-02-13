@@ -55,6 +55,12 @@ const Alerts = () => {
 
   const [outcomeFilter, setOutcomeFilter] = useState('all');
 
+  const [groups, setGroups] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [shareGroupByAlert, setShareGroupByAlert] = useState({});
+  const [shareLoadingId, setShareLoadingId] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
 
   const historyList = historyData.alerts || [];
@@ -92,6 +98,33 @@ const Alerts = () => {
     };
   }, [mainTab, historyType, historyPage, historyLimit]);
 
+  useEffect(() => {
+    if (mainTab === 'live') return;
+
+    let active = true;
+
+    const fetchGroups = async () => {
+      if (typeof api.getGroups !== 'function') return;
+      setGroupsLoading(true);
+      try {
+        const out = await api.getGroups();
+        if (!active) return;
+        setGroups(out.groups || []);
+      } catch {
+        if (!active) return;
+        setGroups([]);
+      } finally {
+        if (active) setGroupsLoading(false);
+      }
+    };
+
+    fetchGroups();
+
+    return () => {
+      active = false;
+    };
+  }, [mainTab]);
+
   const openThesis = async (alert) => {
     const asset = actions.getAssetBySymbol(alert.symbol);
     if (!asset) return;
@@ -105,6 +138,55 @@ const Alerts = () => {
     } finally {
       setLoadingId('');
     }
+  };
+
+  const shareAlertToGroup = async (alertId) => {
+    if (typeof api.shareAlert !== 'function') return;
+    const groupId = shareGroupByAlert[alertId];
+    if (!groupId) {
+      setShareMessage('Seleccioná un grupo para compartir la señal.');
+      return;
+    }
+
+    setShareLoadingId(alertId);
+    setShareMessage('');
+
+    try {
+      await api.shareAlert(alertId, groupId);
+      setShareMessage('Señal compartida en el grupo.');
+    } catch (err) {
+      setShareMessage(err?.message || 'No se pudo compartir la señal.');
+    } finally {
+      setShareLoadingId('');
+    }
+  };
+
+  const renderShareControls = (alertId) => {
+    if (!groups.length) {
+      if (groupsLoading) return <div className="muted">Cargando grupos...</div>;
+      return <div className="muted">No tenés grupos para compartir.</div>;
+    }
+
+    return (
+      <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8 }}>
+        <select
+          aria-label={`Grupo para compartir ${alertId}`}
+          value={shareGroupByAlert[alertId] || ''}
+          onChange={(e) => setShareGroupByAlert((prev) => ({ ...prev, [alertId]: e.target.value }))}
+          style={{ width: 220 }}
+        >
+          <option value="">Seleccionar grupo</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={() => shareAlertToGroup(alertId)} disabled={shareLoadingId === alertId}>
+          {shareLoadingId === alertId ? 'Compartiendo...' : 'Compartir señal'}
+        </button>
+      </div>
+    );
   };
 
   const renderLive = () => (
@@ -161,6 +243,7 @@ const Alerts = () => {
 
       {historyLoading && <div className="card muted">Cargando historial...</div>}
       {!!historyError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{historyError}</div>}
+      {!!shareMessage && <div className="card" style={{ borderColor: '#60A5FA88' }}>{shareMessage}</div>}
 
       {!historyLoading && !historyError && (
         <>
@@ -178,6 +261,7 @@ const Alerts = () => {
                 <span className="muted">Precio alerta: {formatUSD(a.priceAtAlert)}</span>
                 <span className="muted">Confianza: {a.confidence}</span>
               </div>
+              {renderShareControls(a.id)}
             </article>
           ))}
 

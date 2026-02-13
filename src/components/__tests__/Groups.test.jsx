@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiMock } = vi.hoisted(() => ({
@@ -10,6 +10,8 @@ const { apiMock } = vi.hoisted(() => ({
     renameGroup: vi.fn(),
     joinGroup: vi.fn(),
     getGroup: vi.fn(),
+    getGroupFeed: vi.fn(),
+    reactToGroupEvent: vi.fn(),
     deleteGroup: vi.fn(),
     removeMember: vi.fn(),
     leaveGroup: vi.fn()
@@ -33,11 +35,14 @@ describe('Groups', () => {
     apiMock.renameGroup.mockReset();
     apiMock.joinGroup.mockReset();
     apiMock.getGroup.mockReset();
+    apiMock.getGroupFeed.mockReset();
+    apiMock.reactToGroupEvent.mockReset();
     apiMock.deleteGroup.mockReset();
     apiMock.removeMember.mockReset();
     apiMock.leaveGroup.mockReset();
 
     apiMock.getGroups.mockResolvedValue({ groups: [] });
+    apiMock.getGroupFeed.mockResolvedValue({ events: [], pagination: { page: 1, limit: 20, total: 0 } });
   });
 
   it('maps GROUP_LIMIT_REACHED on create group', async () => {
@@ -235,5 +240,43 @@ describe('Groups', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expulsar' }));
 
     expect(await screen.findByText('No podés expulsar a otro admin.')).toBeTruthy();
+  });
+
+  it('loads feed and sends reactions', async () => {
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo Feed', code: 'NXF-A7K2M', role: 'member', members: 2 }]
+    });
+    apiMock.getGroup.mockResolvedValue({
+      id: 'g1',
+      name: 'Grupo Feed',
+      code: 'NXF-A7K2M',
+      role: 'member',
+      members: []
+    });
+    apiMock.getGroupFeed.mockResolvedValue({
+      events: [
+        {
+          id: 'e1',
+          type: 'signal_shared',
+          displayName: 'nicolas',
+          data: { symbol: 'NVDA', recommendation: 'STRONG BUY' },
+          reactions: { agree: 2, disagree: 0, userReaction: null },
+          createdAt: '2026-02-13T12:00:00.000Z'
+        }
+      ],
+      pagination: { page: 1, limit: 20, total: 1 }
+    });
+
+    render(<Groups />);
+
+    await screen.findByText('Grupo Feed');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Feed' }));
+
+    expect(await screen.findByText(/compartió señal NVDA/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '👍 2' }));
+
+    await waitFor(() => expect(apiMock.reactToGroupEvent).toHaveBeenCalledWith('g1', 'e1', 'agree'));
   });
 });

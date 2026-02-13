@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiMock, appCtxMock } = vi.hoisted(() => ({
   apiMock: {
-    getAlerts: vi.fn()
+    getAlerts: vi.fn(),
+    getGroups: vi.fn(),
+    shareAlert: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -34,6 +36,9 @@ afterEach(() => {
 describe('Alerts', () => {
   beforeEach(() => {
     apiMock.getAlerts.mockReset();
+    apiMock.getGroups.mockReset();
+    apiMock.shareAlert.mockReset();
+
     apiMock.getAlerts.mockResolvedValue({
       alerts: [
         {
@@ -50,6 +55,11 @@ describe('Alerts', () => {
       pagination: { page: 1, limit: 20, total: 1, pages: 1 },
       stats: { total: 1, opportunities: 1, bearish: 0, stopLoss: 0, hitRate: 0.63, avgReturn: 8.2 }
     });
+
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo Principal', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
+    });
+    apiMock.shareAlert.mockResolvedValue({ shared: true });
   });
 
   it('shows live alerts by default and filters by type', async () => {
@@ -81,5 +91,20 @@ describe('Alerts', () => {
     expect(screen.getByText('Hit Rate')).toBeTruthy();
     expect(screen.getByText('+63.00%')).toBeTruthy();
     expect(screen.getByText('+8.20%')).toBeTruthy();
+  });
+
+  it('shares an alert into selected group from history', async () => {
+    render(<Alerts />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+
+    await waitFor(() => expect(apiMock.getAlerts).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiMock.getGroups).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText('Grupo para compartir h1'), { target: { value: 'g1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Compartir señal' }));
+
+    await waitFor(() => expect(apiMock.shareAlert).toHaveBeenCalledWith('h1', 'g1'));
+    expect(await screen.findByText('Señal compartida en el grupo.')).toBeTruthy();
   });
 });

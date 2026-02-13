@@ -82,6 +82,7 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
   getCsrf: () => request('/auth/csrf'),
+  getOAuthProviders: () => request('/auth/oauth/providers'),
   resetPassword: (currentPassword, newPassword) =>
     request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   health: () => request('/health'),
@@ -113,6 +114,9 @@ export const api = {
   renameGroup: (id, name) => request('/groups/' + id, { method: 'PATCH', body: JSON.stringify({ name }) }),
   joinGroup: (code) => request('/groups/join', { method: 'POST', body: JSON.stringify({ code }) }),
   getGroup: (id) => request(`/groups/${id}`),
+  getGroupFeed: (groupId, page = 1, limit = 30) => request(`/groups/${groupId}/feed?page=${page}&limit=${limit}`),
+  reactToGroupEvent: (groupId, eventId, reaction) =>
+    request(`/groups/${groupId}/feed/${eventId}/react`, { method: 'POST', body: JSON.stringify({ reaction }) }),
   leaveGroup: (id) => request(`/groups/${id}/leave`, { method: 'DELETE' }),
   deleteGroup: (id) => request(`/groups/${id}`, { method: 'DELETE' }),
   removeMember: (groupId, userId) => request(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
@@ -123,6 +127,7 @@ export const api = {
     return request(`/alerts?${params.toString()}`);
   },
   getAlertDetail: (id) => request(`/alerts/${id}`),
+  shareAlert: (alertId, groupId) => request(`/alerts/${alertId}/share`, { method: 'POST', body: JSON.stringify({ groupId }) }),
 
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) => request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),
