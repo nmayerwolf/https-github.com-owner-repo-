@@ -108,4 +108,53 @@ describe('auth routes', () => {
     expect(mockAuthRequired).toHaveBeenCalled();
     expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
   });
+
+  it('resets password when current password is valid', async () => {
+    bcrypt.compare.mockResolvedValueOnce(true);
+    bcrypt.hash.mockResolvedValueOnce('newhash123');
+    query
+      .mockResolvedValueOnce({ rows: [{ password_hash: 'oldhash' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .set('Authorization', 'Bearer old.token')
+      .send({ currentPassword: 'abc12345', newPassword: 'newpass123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(query).toHaveBeenNthCalledWith(1, 'SELECT password_hash FROM users WHERE id = $1', ['u1']);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      ['newhash123', 'u1']
+    );
+  });
+
+  it('returns 401 when current password is invalid on reset-password', async () => {
+    bcrypt.compare.mockResolvedValueOnce(false);
+    query.mockResolvedValueOnce({ rows: [{ password_hash: 'oldhash' }] });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .set('Authorization', 'Bearer old.token')
+      .send({ currentPassword: 'wrong', newPassword: 'newpass123' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('INVALID_CURRENT_PASSWORD');
+  });
+
+  it('returns 422 when new password is weak on reset-password', async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .set('Authorization', 'Bearer old.token')
+      .send({ currentPassword: 'abc12345', newPassword: 'abc' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('WEAK_PASSWORD');
+    expect(query).not.toHaveBeenCalled();
+  });
 });
