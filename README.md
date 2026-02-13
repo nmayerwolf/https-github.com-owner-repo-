@@ -1,70 +1,62 @@
-# Getting Started with Create React App
+# NexusFin (Phase 1 MVP)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Implementación inicial basada en `nexusfin-spec.md`.
 
-## Available Scripts
+## Incluye
 
-In the project directory, you can run:
+- React + Vite + React Router
+- Carga secuencial de watchlist con Finnhub
+- WebSocket Finnhub para updates en vivo de equities (reconexión automática)
+- Carga background de macro assets (metales/commodities/bonos) con Alpha Vantage + cache local
+- Motor técnico: RSI, MACD, Bollinger, SMA50/200, ATR, volumen anómalo
+- Confluencia BUY/SELL/HOLD + alertas + SL/TP ATR adaptativo
+- Dashboard, Markets, Asset Detail, Alerts, Portfolio, Settings, Screener
+- AI Thesis desde alertas con JSON estructurado (fallback local)
+- Watchlist editable (agregar/quitar) persistida en localStorage
+- Persistencia local de portfolio/configuración/watchlist
 
-### `npm start`
+## Ejecutar
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```bash
+npm install
+npm run dev
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Calidad
 
-### `npm test`
+```bash
+npm test
+npm run test:coverage
+npm run build
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## CI (GitHub Actions)
 
-### `npm run build`
+Pipeline en `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Job `test` (Node `20.x` y `22.x`):
+  - `npm ci`
+  - `npm run test:coverage`
+- Job `build` (Node `20.x`, depende de `test`):
+  - `npm ci`
+  - `npm run build`
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Además:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+- `workflow_dispatch` habilitado para ejecución manual
+- `concurrency` para cancelar runs anteriores del mismo branch/PR
+- permisos mínimos (`contents: read`)
 
-### `npm run eject`
+## PR Template
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Template en `/Users/nmayerwolf/Documents/nexusfin/.github/pull_request_template.md` con checklist obligatorio de calidad.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Variables opcionales
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```bash
+VITE_FINNHUB_KEY=...
+VITE_ALPHA_VANTAGE_KEY=...
+VITE_ANTHROPIC_KEY=...
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Si no se define `VITE_ANTHROPIC_KEY`, el Screener y AI Thesis usan fallback local.
