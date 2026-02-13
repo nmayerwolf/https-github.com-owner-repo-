@@ -5,8 +5,11 @@ const mapGroupError = (err, fallback) => {
   if (err?.error === 'GROUP_LIMIT_REACHED') return 'Llegaste al máximo de 5 grupos por usuario.';
   if (err?.error === 'GROUP_MEMBER_LIMIT_REACHED') return 'Este grupo ya alcanzó su máximo de 20 miembros.';
   if (err?.error === 'GROUP_NOT_FOUND') return 'El grupo o código no existe.';
+  if (err?.error === 'GROUP_MEMBER_NOT_FOUND') return 'El miembro seleccionado no existe.';
   if (err?.error === 'ALREADY_MEMBER') return 'Ya sos miembro de este grupo.';
   if (err?.error === 'ADMIN_ONLY') return 'Solo admins pueden editar el nombre del grupo.';
+  if (err?.error === 'CANNOT_REMOVE_ADMIN') return 'No podés expulsar a otro admin.';
+  if (err?.error === 'USE_LEAVE_FOR_SELF') return 'Para salir vos, usá el botón Salir.';
   if (err?.error === 'VALIDATION_ERROR') return 'Nombre de grupo inválido.';
   return err?.message || fallback;
 };
@@ -144,6 +147,22 @@ const Groups = () => {
     }
   };
 
+  const removeMember = async (memberUserId) => {
+    if (!selectedGroupId) return;
+
+    setDetailLoading(true);
+    setError('');
+    try {
+      await api.removeMember(selectedGroupId, memberUserId);
+      await loadDetail(selectedGroupId);
+      await load();
+    } catch (err) {
+      setError(mapGroupError(err, 'No se pudo expulsar al miembro'));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   return (
     <div className="grid">
       {error && <div className="card" style={{ borderColor: '#FF4757AA' }}>{error}</div>}
@@ -255,6 +274,13 @@ const Groups = () => {
                     ))}
                     {!member.positions?.length && <div className="muted">Sin posiciones activas.</div>}
                   </div>
+                  {groupDetail.role === 'admin' && member.role === 'member' && (
+                    <div className="row" style={{ marginTop: 8 }}>
+                      <button type="button" onClick={() => removeMember(member.userId)} disabled={detailLoading || loading}>
+                        Expulsar
+                      </button>
+                    </div>
+                  )}
                 </article>
               ))}
               {!groupDetail.members?.length && <div className="muted">Este grupo no tiene miembros.</div>}
