@@ -1,11 +1,20 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, notFound } = require('../utils/errors');
+const { createPushNotifier } = require('../services/push');
 
 const router = express.Router();
+const pushNotifier = createPushNotifier({ query });
 
 const isBoolean = (v) => typeof v === 'boolean';
 const validTime = (v) => v == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v));
+
+router.get('/vapid-public-key', (_req, res) => {
+  return res.json({
+    publicKey: pushNotifier.getPublicKey(),
+    enabled: pushNotifier.hasVapidConfig
+  });
+});
 
 router.post('/subscribe', async (req, res, next) => {
   try {

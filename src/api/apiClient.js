@@ -94,5 +94,11 @@ export const api = {
   deleteGroup: (id) => request(`/groups/${id}`, { method: 'DELETE' }),
   removeMember: (groupId, userId) => request(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
 
+  getNotificationPreferences: () => request('/notifications/preferences'),
+  updateNotificationPreferences: (data) => request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),
+  getNotificationPublicKey: () => request('/notifications/vapid-public-key'),
+  subscribeNotifications: (subscription) =>
+    request('/notifications/subscribe', { method: 'POST', body: JSON.stringify({ platform: 'web', subscription }) }),
+
   migrate: (data) => request('/migrate', { method: 'POST', body: JSON.stringify(data) })
 };

@@ -27,6 +27,15 @@ describe('notifications routes', () => {
     query.mockReset();
   });
 
+  it('returns vapid key payload', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/notifications/vapid-public-key');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('enabled');
+    expect(res.body).toHaveProperty('publicKey');
+  });
+
   it('returns default preferences when user has none', async () => {
     query.mockResolvedValueOnce({ rows: [] });
 
