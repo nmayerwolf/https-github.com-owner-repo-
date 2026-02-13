@@ -6,6 +6,7 @@ const links = [
   ['/alerts', 'Alertas'],
   ['/portfolio', 'Portfolio'],
   ['/screener', 'Screener'],
+  ['/groups', 'Grupos'],
   ['/settings', 'Config']
 ];
 
