@@ -100,6 +100,9 @@ Notifications (Fase 3 foundation):
 - `PUT /api/notifications/preferences`
 - `DELETE /api/notifications/subscribe/:id`
 
+Export:
+- `GET /api/export/portfolio?format=csv&filter=all|active|sold`
+
 Migration:
 - `POST /api/migrate`
 

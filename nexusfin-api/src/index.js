@@ -23,6 +23,7 @@ const groupsRoutes = require('./routes/groups');
 const migrateRoutes = require('./routes/migrate');
 const alertsRoutes = require('./routes/alerts');
 const notificationsRoutes = require('./routes/notifications');
+const exportRoutes = require('./routes/export');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/watchlist', authRequired, requireCsrf, watchlistRoutes);
 app.use('/api/groups', authRequired, requireCsrf, groupsRoutes);
 app.use('/api/alerts', authRequired, requireCsrf, alertsRoutes);
 app.use('/api/notifications', authRequired, requireCsrf, notificationsRoutes);
+app.use('/api/export', authRequired, requireCsrf, exportRoutes);
 app.use('/api/migrate', authRequired, requireCsrf, migrateRoutes);
 
 app.use(errorHandler);
