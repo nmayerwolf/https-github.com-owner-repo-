@@ -14,5 +14,7 @@ const notFound = (message = 'No encontrado', code = 'NOT_FOUND') => new AppError
 const conflict = (message, code = 'CONFLICT') => new AppError(409, code, message);
 const tooManyRequests = (message = 'Demasiados intentos', code = 'TOO_MANY_REQUESTS', details = null) =>
   new AppError(429, code, message, details);
+const serviceUnavailable = (message = 'Servicio no disponible', code = 'SERVICE_UNAVAILABLE') =>
+  new AppError(503, code, message);
 
-module.exports = { AppError, badRequest, unauthorized, forbidden, notFound, conflict, tooManyRequests };
+module.exports = { AppError, badRequest, unauthorized, forbidden, notFound, conflict, tooManyRequests, serviceUnavailable };

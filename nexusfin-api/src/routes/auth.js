@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const express = require('express');
+const { env } = require('../config/env');
 const { query } = require('../config/db');
 const {
   authRequired,
@@ -11,7 +12,18 @@ const {
   setAuthCookies,
   clearAuthCookies
 } = require('../middleware/auth');
-const { conflict, tooManyRequests, unauthorized } = require('../utils/errors');
+const {
+  OAUTH_STATE_COOKIE,
+  buildCookieOptions,
+  makeOAuthState,
+  verifyOAuthState,
+  isGoogleConfigured,
+  isAppleConfigured,
+  buildGoogleAuthUrl,
+  exchangeGoogleCode,
+  buildAppleAuthUrl
+} = require('../services/oauth');
+const { conflict, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
 
 const router = express.Router();
@@ -33,6 +45,141 @@ const recordAttempt = async (email, success) => {
 };
 
 const isMobileClient = (req) => String(req.headers['x-client-platform'] || '').toLowerCase() === 'mobile';
+
+const oauthRedirect = (status) => {
+  const qs = new URLSearchParams(status).toString();
+  return `${env.frontendUrl}/${qs ? `?${qs}` : ''}`;
+};
+
+const finishLogin = async (req, res, user, status = 200) => {
+  const token = issueToken(user);
+  await storeSession(user.id, token);
+  setAuthCookies(res, token);
+
+  const body = { user: { id: user.id, email: user.email } };
+  if (isMobileClient(req)) body.token = token;
+
+  return res.status(status).json(body);
+};
+
+const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarUrl }) => {
+  const byOauth = await query('SELECT id, email FROM users WHERE auth_provider = $1 AND oauth_id = $2', [provider, oauthId]);
+  if (byOauth.rows.length) {
+    const updated = await query(
+      `UPDATE users
+       SET display_name = COALESCE($1, display_name),
+           avatar_url = COALESCE($2, avatar_url),
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, email`,
+      [displayName || null, avatarUrl || null, byOauth.rows[0].id]
+    );
+    return updated.rows[0];
+  }
+
+  const byEmail = await query('SELECT id, email FROM users WHERE email = $1', [email]);
+  if (byEmail.rows.length) {
+    const merged = await query(
+      `UPDATE users
+       SET auth_provider = $1,
+           oauth_id = $2,
+           display_name = COALESCE($3, display_name),
+           avatar_url = COALESCE($4, avatar_url),
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING id, email`,
+      [provider, oauthId, displayName || null, avatarUrl || null, byEmail.rows[0].id]
+    );
+    return merged.rows[0];
+  }
+
+  const created = await query(
+    `INSERT INTO users (email, password_hash, display_name, auth_provider, oauth_id, avatar_url)
+     VALUES ($1, NULL, $2, $3, $4, $5)
+     RETURNING id, email`,
+    [email, displayName || null, provider, oauthId, avatarUrl || null]
+  );
+  return created.rows[0];
+};
+
+router.get('/oauth/providers', (_req, res) => {
+  return res.json({
+    google: isGoogleConfigured(),
+    apple: isAppleConfigured()
+  });
+});
+
+router.get('/google', async (_req, res, next) => {
+  try {
+    if (!isGoogleConfigured()) {
+      throw serviceUnavailable('Google OAuth no configurado', 'OAUTH_PROVIDER_DISABLED');
+    }
+
+    const state = makeOAuthState();
+    res.cookie(OAUTH_STATE_COOKIE, state, buildCookieOptions());
+    return res.redirect(302, buildGoogleAuthUrl(state));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/google/callback', async (req, res) => {
+  const state = String(req.query.state || '');
+  const code = String(req.query.code || '');
+  const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
+  res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
+
+  if (!isGoogleConfigured()) {
+    return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
+  }
+
+  if (!state || !code || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
+    return res.redirect(302, oauthRedirect({ oauth_error: 'invalid_oauth_state' }));
+  }
+
+  try {
+    const profile = await exchangeGoogleCode(code);
+    const user = await resolveOAuthUser(profile);
+
+    const token = issueToken(user);
+    await storeSession(user.id, token);
+    setAuthCookies(res, token);
+
+    return res.redirect(302, oauthRedirect({ oauth: 'success' }));
+  } catch {
+    return res.redirect(302, oauthRedirect({ oauth_error: 'google_callback_failed' }));
+  }
+});
+
+router.get('/apple', (_req, res, next) => {
+  try {
+    if (!isAppleConfigured()) {
+      throw serviceUnavailable('Apple OAuth no configurado', 'OAUTH_PROVIDER_DISABLED');
+    }
+
+    const state = makeOAuthState();
+    res.cookie(OAUTH_STATE_COOKIE, state, buildCookieOptions());
+    return res.redirect(302, buildAppleAuthUrl(state));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/apple/callback', (req, res) => {
+  const state = String(req.query.state || '');
+  const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
+  res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
+
+  if (!isAppleConfigured()) {
+    return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
+  }
+
+  if (!state || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
+    return res.redirect(302, oauthRedirect({ oauth_error: 'invalid_oauth_state' }));
+  }
+
+  return res.redirect(302, oauthRedirect({ oauth_error: 'apple_not_implemented' }));
+});
 
 router.post('/register', async (req, res, next) => {
   try {
@@ -76,6 +223,12 @@ router.post('/login', async (req, res, next) => {
     }
 
     const user = found.rows[0];
+
+    if (!user.password_hash) {
+      await recordAttempt(email, false);
+      throw unauthorized('Usá login social para esta cuenta', 'USE_OAUTH_LOGIN');
+    }
+
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
       await recordAttempt(email, false);
@@ -134,6 +287,10 @@ router.post('/reset-password', authRequired, requireCsrf, async (req, res, next)
 
     const found = await query('SELECT password_hash FROM users WHERE id = $1', [userId]);
     if (!found.rows.length) throw unauthorized('No autorizado', 'UNAUTHORIZED');
+
+    if (!found.rows[0].password_hash) {
+      throw unauthorized('Cuenta OAuth sin contraseña local', 'OAUTH_ACCOUNT_NO_PASSWORD');
+    }
 
     const ok = await bcrypt.compare(currentPassword, found.rows[0].password_hash);
     if (!ok) {

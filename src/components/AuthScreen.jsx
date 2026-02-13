@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../store/AuthContext';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 const AuthScreen = () => {
   const { login, register, loading, sessionNotice, clearSessionNotice } = useAuth();
@@ -8,6 +10,23 @@ const AuthScreen = () => {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('oauth_error');
+    if (!oauthError) return;
+
+    const map = {
+      provider_disabled: 'Proveedor OAuth no configurado.',
+      invalid_oauth_state: 'Sesión OAuth inválida, intentá nuevamente.',
+      google_callback_failed: 'No se pudo completar login con Google.',
+      apple_not_implemented: 'Sign in with Apple aún no está habilitado en esta build.'
+    };
+
+    setError(map[oauthError] || 'Error de autenticación social.');
+    params.delete('oauth_error');
+    window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -23,7 +42,11 @@ const AuthScreen = () => {
       if (mode === 'login') await login(email, password);
       else await register(email, password);
     } catch (err) {
-      setError(err?.message || 'No se pudo completar la autenticación.');
+      if (err?.error === 'USE_OAUTH_LOGIN') {
+        setError('Esta cuenta usa login social. Entrá con Google o Apple.');
+      } else {
+        setError(err?.message || 'No se pudo completar la autenticación.');
+      }
     }
   };
 
@@ -32,10 +55,23 @@ const AuthScreen = () => {
       <section className="card" style={{ width: 'min(420px, 100%)' }}>
         <h2>{mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}</h2>
         <p className="muted" style={{ marginTop: 6 }}>
-          NexusFin Fase 2
+          NexusFin Fase 3
         </p>
 
         {sessionNotice && <div className="card" style={{ marginTop: 10, borderColor: '#FBBF24AA' }}>{sessionNotice}</div>}
+
+        <div className="grid" style={{ marginTop: 10 }}>
+          <button type="button" onClick={() => (window.location.href = `${API_BASE}/auth/google`)} disabled={loading}>
+            Continuar con Google
+          </button>
+          <button type="button" onClick={() => (window.location.href = `${API_BASE}/auth/apple`)} disabled={loading}>
+            Continuar con Apple
+          </button>
+        </div>
+
+        <div className="row" style={{ marginTop: 10, justifyContent: 'center' }}>
+          <span className="muted">o con email</span>
+        </div>
 
         <form onSubmit={submit} className="grid" style={{ marginTop: 10 }}>
           <label className="label">

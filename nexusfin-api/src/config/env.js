@@ -31,6 +31,16 @@ const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   cookieDomain: process.env.COOKIE_DOMAIN || '',
 
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL || '',
+
+  appleClientId: process.env.APPLE_CLIENT_ID || '',
+  appleTeamId: process.env.APPLE_TEAM_ID || '',
+  appleKeyId: process.env.APPLE_KEY_ID || '',
+  applePrivateKey: process.env.APPLE_PRIVATE_KEY || '',
+  appleCallbackUrl: process.env.APPLE_CALLBACK_URL || '',
+
   cronEnabled: asBool(process.env.CRON_ENABLED, false),
   cronMarketIntervalMinutes: asPositiveInt(process.env.CRON_MARKET_INTERVAL, 5),
   cronCryptoIntervalMinutes: asPositiveInt(process.env.CRON_CRYPTO_INTERVAL, 15),

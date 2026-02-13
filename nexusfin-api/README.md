@@ -27,6 +27,16 @@ FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
 FRONTEND_URL=http://localhost:5173
 NODE_ENV=development
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=http://localhost:3001/api/auth/google/callback
+APPLE_CLIENT_ID=
+APPLE_TEAM_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY=
+APPLE_CALLBACK_URL=http://localhost:3001/api/auth/apple/callback
+
 CRON_ENABLED=false
 VAPID_PUBLIC_KEY=<vapid-public>
 VAPID_PRIVATE_KEY=<vapid-private>
@@ -47,6 +57,11 @@ Auth:
 - `POST /api/auth/reset-password` (autenticado)
 - `GET /api/auth/csrf` (autenticado)
 - `GET /api/auth/me` (autenticado)
+- `GET /api/auth/oauth/providers`
+- `GET /api/auth/google`
+- `GET /api/auth/google/callback`
+- `GET /api/auth/apple`
+- `GET /api/auth/apple/callback`
 
 Datos de usuario:
 - `GET|POST|PATCH|DELETE /api/portfolio`
@@ -100,6 +115,8 @@ Realtime scaffold (Fase 3):
 
 - Todas las rutas excepto `/api/health` y `/api/auth/*` requieren auth (Bearer o cookie `nxf_token`).
 - En modo web con cookie, mutaciones requieren header `X-CSRF-Token` obtenido desde `GET /api/auth/csrf`.
+- Google OAuth está funcional vía callback HTTP.
+- Apple OAuth queda scaffolded: inicia flujo y valida state, callback final aún pendiente de exchange token en backend.
 - API keys viven solo en backend.
 - Lockout de login devuelve `429` con body `retryAfter` y header `Retry-After`.
 - Migración localStorage se bloquea con `409 ALREADY_MIGRATED` si el usuario ya tiene datos.
