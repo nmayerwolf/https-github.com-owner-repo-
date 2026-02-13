@@ -31,24 +31,24 @@ router.post('/', async (req, res, next) => {
     let migratedPositions = 0;
     for (const p of positions) {
       if (!p.symbol || !p.buyDate || !p.buyPrice || !p.quantity) continue;
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO positions (user_id, symbol, name, category, buy_date, buy_price, quantity, sell_date, sell_price, notes)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [req.user.id, p.symbol, p.name || p.symbol, p.category || 'equity', p.buyDate, p.buyPrice, p.quantity, p.sellDate || null, p.sellPrice || null, p.notes || null]
       );
-      migratedPositions += 1;
+      migratedPositions += inserted.rowCount || 0;
     }
 
     let migratedWatchlist = 0;
     for (const w of watchlist) {
       if (!w.symbol) continue;
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO watchlist_items (user_id, symbol, name, type, category)
          VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (user_id, symbol) DO NOTHING`,
         [req.user.id, w.symbol, w.name || w.symbol, w.type || 'stock', w.category || 'equity']
       );
-      migratedWatchlist += 1;
+      migratedWatchlist += inserted.rowCount || 0;
     }
 
     let migratedConfig = false;
