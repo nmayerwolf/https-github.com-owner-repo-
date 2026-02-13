@@ -1,25 +1,11 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
 const { query } = require('../config/db');
-const { env } = require('../config/env');
-const { authRequired, tokenHash } = require('../middleware/auth');
+const { authRequired, issueToken, storeSession } = require('../middleware/auth');
 const { conflict, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
 
 const router = express.Router();
-
-const issueToken = (user) =>
-  jwt.sign(
-    {
-      userId: user.id,
-      email: user.email,
-      sid: uuidv4()
-    },
-    env.jwtSecret,
-    { expiresIn: '7d' }
-  );
 
 const enforceLoginLock = async (email) => {
   const recent = await query(
@@ -29,30 +15,12 @@ const enforceLoginLock = async (email) => {
     [email]
   );
   if (recent.rows[0].failures >= 5) {
-    throw tooManyRequests('Demasiados intentos. Esperá 15 minutos.', 'TOO_MANY_ATTEMPTS');
+    throw tooManyRequests('Demasiados intentos. Esperá 15 minutos.', 'TOO_MANY_ATTEMPTS', { retryAfter: 900 });
   }
 };
 
 const recordAttempt = async (email, success) => {
   await query('INSERT INTO login_attempts (email, success) VALUES ($1, $2)', [email, success]);
-};
-
-const storeSession = async (userId, rawToken) => {
-  await query(`INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')`, [
-    userId,
-    tokenHash(rawToken)
-  ]);
-
-  await query(
-    `DELETE FROM sessions
-     WHERE id IN (
-       SELECT id FROM sessions
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       OFFSET 5
-     )`,
-    [userId]
-  );
 };
 
 router.post('/register', async (req, res, next) => {
