@@ -105,6 +105,28 @@ describe('groups routes', () => {
     expect(res.body.error).toBe('VALIDATION_ERROR');
   });
 
+  it('allows admin to delete group', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).delete('/api/groups/g1');
+
+    expect(res.status).toBe(204);
+    expect(query).toHaveBeenNthCalledWith(2, 'DELETE FROM groups WHERE id = $1', ['g1']);
+  });
+
+  it('rejects delete group when requester is not admin', async () => {
+    query.mockResolvedValueOnce({ rows: [{ role: 'member' }] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).delete('/api/groups/g1');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('ADMIN_ONLY');
+  });
+
   it('prevents admin from removing another admin', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })

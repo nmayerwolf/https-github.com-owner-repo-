@@ -33,6 +33,7 @@ Auth:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
+- `POST /api/auth/reset-password` (autenticado)
 
 Datos de usuario:
 - `GET|POST|PATCH|DELETE /api/portfolio`
@@ -53,6 +54,7 @@ Groups:
 - `GET /api/groups`
 - `GET /api/groups/:id`
 - `PATCH /api/groups/:id`
+- `DELETE /api/groups/:id`
 - `DELETE /api/groups/:id/members/:userId`
 - `DELETE /api/groups/:id/leave`
 

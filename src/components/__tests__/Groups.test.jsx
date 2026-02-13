@@ -10,6 +10,7 @@ const { apiMock } = vi.hoisted(() => ({
     renameGroup: vi.fn(),
     joinGroup: vi.fn(),
     getGroup: vi.fn(),
+    deleteGroup: vi.fn(),
     removeMember: vi.fn(),
     leaveGroup: vi.fn()
   }
@@ -32,6 +33,7 @@ describe('Groups', () => {
     apiMock.renameGroup.mockReset();
     apiMock.joinGroup.mockReset();
     apiMock.getGroup.mockReset();
+    apiMock.deleteGroup.mockReset();
     apiMock.removeMember.mockReset();
     apiMock.leaveGroup.mockReset();
 
@@ -93,6 +95,33 @@ describe('Groups', () => {
     expect(apiMock.renameGroup).toHaveBeenCalledWith('g1', 'Grupo Nuevo');
   });
 
+  it('allows admin to delete group', async () => {
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo Admin', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
+    });
+
+    render(<Groups />);
+
+    await screen.findByText('Grupo Admin');
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar grupo' }));
+
+    expect(apiMock.deleteGroup).toHaveBeenCalledWith('g1');
+  });
+
+  it('maps ADMIN_ONLY when delete group is rejected by backend', async () => {
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo Admin', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
+    });
+    apiMock.deleteGroup.mockRejectedValueOnce({ error: 'ADMIN_ONLY' });
+
+    render(<Groups />);
+
+    await screen.findByText('Grupo Admin');
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar grupo' }));
+
+    expect(await screen.findByText('Solo admins pueden editar este grupo.')).toBeTruthy();
+  });
+
   it('maps ADMIN_ONLY when rename is rejected by backend', async () => {
     apiMock.getGroups.mockResolvedValue({
       groups: [{ id: 'g1', name: 'Grupo', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
@@ -107,7 +136,7 @@ describe('Groups', () => {
     fireEvent.change(screen.getByPlaceholderText('Nuevo nombre del grupo'), { target: { value: 'Otro Nombre' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
-    expect(await screen.findByText('Solo admins pueden editar el nombre del grupo.')).toBeTruthy();
+    expect(await screen.findByText('Solo admins pueden editar este grupo.')).toBeTruthy();
   });
 
   it('loads and renders group detail in read-only mode', async () => {

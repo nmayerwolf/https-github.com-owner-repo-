@@ -195,6 +195,19 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const role = await memberRole(req.params.id, req.user.id);
+    if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+    if (role !== 'admin') throw forbidden('Solo admin puede eliminar el grupo', 'ADMIN_ONLY');
+
+    await query('DELETE FROM groups WHERE id = $1', [req.params.id]);
+    return res.status(204).end();
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.delete('/:id/members/:userId', async (req, res, next) => {
   try {
     const requesterRole = await memberRole(req.params.id, req.user.id);
