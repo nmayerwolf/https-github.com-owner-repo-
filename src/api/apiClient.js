@@ -84,6 +84,7 @@ export const api = {
 
   getGroups: () => request('/groups'),
   createGroup: (name) => request('/groups', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameGroup: (id, name) => request('/groups/' + id, { method: 'PATCH', body: JSON.stringify({ name }) }),
   joinGroup: (code) => request('/groups/join', { method: 'POST', body: JSON.stringify({ code }) }),
   getGroup: (id) => request(`/groups/${id}`),
   leaveGroup: (id) => request(`/groups/${id}/leave`, { method: 'DELETE' }),
