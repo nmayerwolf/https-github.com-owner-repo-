@@ -1,6 +1,6 @@
-# NexusFin API (Phase 2)
+# NexusFin API (Phase 2/3 Foundation)
 
-Backend de NexusFin para auth, persistencia multi-usuario y proxy seguro de market data.
+Backend de NexusFin para auth, persistencia multi-usuario, proxy seguro de market data y base de Fase 3.
 
 ## Setup local
 
@@ -59,6 +59,17 @@ Groups:
 - `DELETE /api/groups/:id/members/:userId`
 - `DELETE /api/groups/:id/leave`
 
+Alerts (Fase 3 foundation):
+- `GET /api/alerts`
+- `GET /api/alerts/:id`
+- `POST /api/alerts/:id/share`
+
+Notifications (Fase 3 foundation):
+- `POST /api/notifications/subscribe`
+- `GET /api/notifications/preferences`
+- `PUT /api/notifications/preferences`
+- `DELETE /api/notifications/subscribe/:id`
+
 Migration:
 - `POST /api/migrate`
 
@@ -71,6 +82,12 @@ Health:
 - API keys viven solo en backend.
 - Lockout de login devuelve `429` con body `retryAfter` y header `Retry-After`.
 - Migración localStorage se bloquea con `409 ALREADY_MIGRATED` si el usuario ya tiene datos.
+- `POST /api/auth/reset-password` invalida otras sesiones activas del usuario.
+
+## Migraciones
+
+- `001_initial.sql`: base de Fase 2.
+- `002_phase3_foundation.sql`: tablas base de Fase 3 (alerts, notifications, social feed, shared alerts, campos OAuth).
 
 ## Tests
 
