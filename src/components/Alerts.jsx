@@ -1,21 +1,96 @@
-import { useMemo, useState } from 'react';
-import { useApp } from '../store/AppContext';
+import React, { useEffect, useMemo, useState } from 'react';
+import { api } from '../api/apiClient';
 import { generateInvestmentThesis } from '../api/claude';
 import { calculateConfluence } from '../engine/confluence';
-import ConfluenceBar from './common/ConfluenceBar';
-import { formatUSD } from '../utils/format';
+import { useApp } from '../store/AppContext';
+import { formatPct, formatUSD, shortDate } from '../utils/format';
 import AIThesis from './AIThesis';
+import ConfluenceBar from './common/ConfluenceBar';
 
-const TABS = ['all', 'compra', 'venta', 'stoploss'];
+const MAIN_TABS = ['live', 'history', 'performance'];
+const LIVE_TABS = ['all', 'compra', 'venta', 'stoploss'];
+const HISTORY_TYPE_TABS = ['all', 'opportunity', 'bearish', 'stop_loss'];
+const OUTCOME_TABS = ['all', 'win', 'loss', 'open'];
+
+const MAIN_LABEL = {
+  live: 'En vivo',
+  history: 'Historial',
+  performance: 'Performance'
+};
+
+const HISTORY_TYPE_LABEL = {
+  all: 'Todos',
+  opportunity: 'Compra',
+  bearish: 'Venta',
+  stop_loss: 'Stop Loss'
+};
+
+const OUTCOME_LABEL = {
+  all: 'Todos',
+  win: 'Win',
+  loss: 'Loss',
+  open: 'Open'
+};
 
 const Alerts = () => {
   const { state, actions } = useApp();
-  const [tab, setTab] = useState('all');
+
+  const [mainTab, setMainTab] = useState('live');
+  const [liveTab, setLiveTab] = useState('all');
+
   const [loadingId, setLoadingId] = useState('');
   const [thesis, setThesis] = useState(null);
   const [thesisSymbol, setThesisSymbol] = useState('');
 
-  const list = useMemo(() => state.alerts.filter((a) => tab === 'all' || a.type === tab), [tab, state.alerts]);
+  const [historyType, setHistoryType] = useState('all');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit] = useState(20);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [historyData, setHistoryData] = useState({
+    alerts: [],
+    pagination: { page: 1, limit: 20, total: 0, pages: 1 },
+    stats: { total: 0, opportunities: 0, bearish: 0, stopLoss: 0, hitRate: 0, avgReturn: 0 }
+  });
+
+  const [outcomeFilter, setOutcomeFilter] = useState('all');
+
+  const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
+
+  const historyList = historyData.alerts || [];
+  const performanceList = useMemo(
+    () => historyList.filter((a) => outcomeFilter === 'all' || a.outcome === outcomeFilter),
+    [historyList, outcomeFilter]
+  );
+
+  useEffect(() => {
+    if (mainTab === 'live') return;
+
+    let active = true;
+
+    const fetchHistory = async () => {
+      setHistoryLoading(true);
+      setHistoryError('');
+
+      try {
+        const type = historyType === 'all' ? null : historyType;
+        const out = await api.getAlerts({ page: historyPage, limit: historyLimit, type });
+        if (!active) return;
+        setHistoryData(out);
+      } catch {
+        if (!active) return;
+        setHistoryError('No se pudo cargar historial de alertas.');
+      } finally {
+        if (active) setHistoryLoading(false);
+      }
+    };
+
+    fetchHistory();
+
+    return () => {
+      active = false;
+    };
+  }, [mainTab, historyType, historyPage, historyLimit]);
 
   const openThesis = async (alert) => {
     const asset = actions.getAssetBySymbol(alert.symbol);
@@ -32,19 +107,17 @@ const Alerts = () => {
     }
   };
 
-  return (
-    <div className="grid">
-      {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
-
+  const renderLive = () => (
+    <>
       <section className="card row" style={{ flexWrap: 'wrap' }}>
-        {TABS.map((t) => (
-          <button key={t} type="button" onClick={() => setTab(t)} style={{ borderColor: tab === t ? '#00E08E' : undefined }}>
+        {LIVE_TABS.map((t) => (
+          <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
             {t}
           </button>
         ))}
       </section>
 
-      {list.map((a) => (
+      {liveList.map((a) => (
         <article key={a.id} className="card">
           <div className="row">
             <strong>{a.title}</strong>
@@ -64,7 +137,163 @@ const Alerts = () => {
           )}
         </article>
       ))}
-      {!list.length && <div className="card muted">No hay alertas para este filtro.</div>}
+      {!liveList.length && <div className="card muted">No hay alertas para este filtro.</div>}
+    </>
+  );
+
+  const renderHistory = () => (
+    <>
+      <section className="card row" style={{ flexWrap: 'wrap' }}>
+        {HISTORY_TYPE_TABS.map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => {
+              setHistoryType(type);
+              setHistoryPage(1);
+            }}
+            style={{ borderColor: historyType === type ? '#00E08E' : undefined }}
+          >
+            {HISTORY_TYPE_LABEL[type]}
+          </button>
+        ))}
+      </section>
+
+      {historyLoading && <div className="card muted">Cargando historial...</div>}
+      {!!historyError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{historyError}</div>}
+
+      {!historyLoading && !historyError && (
+        <>
+          {historyList.map((a) => (
+            <article key={a.id} className="card">
+              <div className="row">
+                <strong>
+                  {a.symbol} · {a.recommendation}
+                </strong>
+                <span className="muted">{shortDate(a.createdAt)}</span>
+              </div>
+              <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{HISTORY_TYPE_LABEL[a.type] || a.type}</span>
+                <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>{a.outcome || 'open'}</span>
+                <span className="muted">Precio alerta: {formatUSD(a.priceAtAlert)}</span>
+                <span className="muted">Confianza: {a.confidence}</span>
+              </div>
+            </article>
+          ))}
+
+          {!historyList.length && <div className="card muted">No hay alertas en historial para este filtro.</div>}
+
+          <section className="card row" style={{ marginTop: 8 }}>
+            <span className="muted">
+              Página {historyData.pagination.page} de {historyData.pagination.pages}
+            </span>
+            <div className="row" style={{ gap: 6 }}>
+              <button
+                type="button"
+                disabled={historyData.pagination.page <= 1 || historyLoading}
+                onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={historyData.pagination.page >= historyData.pagination.pages || historyLoading}
+                onClick={() => setHistoryPage((p) => p + 1)}
+              >
+                Siguiente
+              </button>
+            </div>
+          </section>
+        </>
+      )}
+    </>
+  );
+
+  const renderPerformance = () => {
+    const stats = historyData.stats || {};
+    const hitRatePct = Number(stats.hitRate || 0) * 100;
+
+    return (
+      <>
+        <section className="grid grid-2">
+          <article className="card">
+            <h3>Hit Rate</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRatePct)}</div>
+          </article>
+          <article className="card">
+            <h3>Retorno Promedio</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(Number(stats.avgReturn || 0))}</div>
+          </article>
+          <article className="card">
+            <h3>Total alertas</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{Number(stats.total || 0)}</div>
+          </article>
+          <article className="card">
+            <h3>Breakdown</h3>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · StopLoss: {Number(stats.stopLoss || 0)}
+            </div>
+          </article>
+        </section>
+
+        <section className="card row" style={{ flexWrap: 'wrap' }}>
+          {OUTCOME_TABS.map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setOutcomeFilter(type)}
+              style={{ borderColor: outcomeFilter === type ? '#00E08E' : undefined }}
+            >
+              {OUTCOME_LABEL[type]}
+            </button>
+          ))}
+        </section>
+
+        {historyLoading && <div className="card muted">Cargando performance...</div>}
+        {!!historyError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{historyError}</div>}
+
+        {!historyLoading && !historyError && (
+          <div className="grid">
+            {performanceList.map((a) => (
+              <article key={a.id} className="card row" style={{ flexWrap: 'wrap' }}>
+                <strong>{a.symbol}</strong>
+                <span className="muted">{a.recommendation}</span>
+                <span className="muted">{shortDate(a.createdAt)}</span>
+                <span className="muted">Outcome: {a.outcome}</span>
+                <span className="muted">Precio: {formatUSD(a.priceAtAlert)}</span>
+              </article>
+            ))}
+
+            {!performanceList.length && <div className="card muted">No hay alertas para este filtro de outcome.</div>}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className="grid">
+      {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
+
+      <section className="card row" style={{ flexWrap: 'wrap' }}>
+        {MAIN_TABS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => {
+              setMainTab(t);
+              if (t !== 'live') setHistoryPage(1);
+            }}
+            style={{ borderColor: mainTab === t ? '#00E08E' : undefined }}
+          >
+            {MAIN_LABEL[t]}
+          </button>
+        ))}
+      </section>
+
+      {mainTab === 'live' && renderLive()}
+      {mainTab === 'history' && renderHistory()}
+      {mainTab === 'performance' && renderPerformance()}
     </div>
   );
 };
