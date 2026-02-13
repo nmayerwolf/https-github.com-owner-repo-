@@ -86,3 +86,11 @@ Pipeline en `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`:
 Abrí siempre los PR contra `main` para que corra CI:
 - `base: main`
 - `compare: codex/<tu-rama>`
+
+## Release
+
+- Notas de cierre de fase: 
+
+## Release
+
+- Notas de cierre de fase: /Users/nmayerwolf/Documents/nexusfin/PHASE2_RELEASE_NOTES.md
