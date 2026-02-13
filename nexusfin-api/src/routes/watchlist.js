@@ -4,6 +4,10 @@ const { badRequest } = require('../utils/errors');
 
 const router = express.Router();
 
+const SYMBOL_PATTERN = /^[A-Z0-9./:-]{1,20}$/;
+
+const normalizeSymbol = (value) => String(value || '').trim().toUpperCase();
+
 router.get('/', async (req, res, next) => {
   try {
     const rows = await query('SELECT symbol, name, type, category, added_at FROM watchlist_items WHERE user_id = $1 ORDER BY added_at DESC', [
@@ -20,6 +24,11 @@ router.post('/', async (req, res, next) => {
     const { symbol, name, type, category } = req.body;
     if (!symbol || !name || !type || !category) throw badRequest('Faltan campos para watchlist');
 
+    const normalized = normalizeSymbol(symbol);
+    if (!SYMBOL_PATTERN.test(normalized)) {
+      throw badRequest('Símbolo inválido para watchlist');
+    }
+
     const count = await query('SELECT COUNT(*)::int AS total FROM watchlist_items WHERE user_id = $1', [req.user.id]);
     if (count.rows[0].total >= 50) return res.status(403).json({ error: 'LIMIT_REACHED', message: 'Máximo 50 símbolos' });
 
@@ -28,7 +37,7 @@ router.post('/', async (req, res, next) => {
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (user_id, symbol) DO NOTHING
        RETURNING symbol, name, type, category, added_at`,
-      [req.user.id, symbol, name, type, category]
+      [req.user.id, normalized, name, type, category]
     );
 
     if (!saved.rows.length) return res.status(409).json({ error: 'ALREADY_EXISTS', message: 'Símbolo ya existente' });
@@ -40,7 +49,10 @@ router.post('/', async (req, res, next) => {
 
 router.delete('/:symbol', async (req, res, next) => {
   try {
-    await query('DELETE FROM watchlist_items WHERE user_id = $1 AND symbol = $2', [req.user.id, req.params.symbol]);
+    const symbol = normalizeSymbol(req.params.symbol);
+    if (!SYMBOL_PATTERN.test(symbol)) throw badRequest('Símbolo inválido para watchlist');
+
+    await query('DELETE FROM watchlist_items WHERE user_id = $1 AND symbol = $2', [req.user.id, symbol]);
     return res.status(204).end();
   } catch (error) {
     return next(error);
