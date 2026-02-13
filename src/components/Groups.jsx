@@ -4,8 +4,10 @@ import { api } from '../api/apiClient';
 const mapGroupError = (err, fallback) => {
   if (err?.error === 'GROUP_LIMIT_REACHED') return 'Llegaste al máximo de 5 grupos por usuario.';
   if (err?.error === 'GROUP_MEMBER_LIMIT_REACHED') return 'Este grupo ya alcanzó su máximo de 20 miembros.';
-  if (err?.error === 'GROUP_NOT_FOUND') return 'El código de invitación no existe.';
+  if (err?.error === 'GROUP_NOT_FOUND') return 'El grupo o código no existe.';
   if (err?.error === 'ALREADY_MEMBER') return 'Ya sos miembro de este grupo.';
+  if (err?.error === 'ADMIN_ONLY') return 'Solo admins pueden editar el nombre del grupo.';
+  if (err?.error === 'VALIDATION_ERROR') return 'Nombre de grupo inválido.';
   return err?.message || fallback;
 };
 
@@ -13,6 +15,8 @@ const Groups = () => {
   const [groups, setGroups] = useState([]);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,6 +79,38 @@ const Groups = () => {
       await load();
     } catch (err) {
       setError(mapGroupError(err, 'No se pudo salir del grupo'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startRename = (group) => {
+    setEditingId(group.id);
+    setEditName(group.name);
+    setError('');
+  };
+
+  const cancelRename = () => {
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const rename = async (id) => {
+    if (!editName.trim()) {
+      setError('Nombre de grupo inválido.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await api.renameGroup(id, editName.trim());
+      setEditingId(null);
+      setEditName('');
+      await load();
+    } catch (err) {
+      setError(mapGroupError(err, 'No se pudo renombrar el grupo'));
+    } finally {
       setLoading(false);
     }
   };
@@ -122,6 +158,29 @@ const Groups = () => {
                   {g.role}
                 </span>
               </div>
+              {g.role === 'admin' && (
+                <div className="row" style={{ marginTop: 8 }}>
+                  {editingId === g.id ? (
+                    <>
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Nuevo nombre del grupo"
+                      />
+                      <button type="button" onClick={() => rename(g.id)} disabled={loading}>
+                        Guardar
+                      </button>
+                      <button type="button" onClick={cancelRename} disabled={loading}>
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => startRename(g)} disabled={loading}>
+                      Renombrar
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="row" style={{ marginTop: 8 }}>
                 <span className="muted">Miembros: {g.members}</span>
                 <button type="button" onClick={() => leave(g.id)} disabled={loading}>
