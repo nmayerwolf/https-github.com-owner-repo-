@@ -76,5 +76,5 @@ Health:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
-DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm test
+DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm run check
 ```
