@@ -58,8 +58,8 @@ describe('migrate routes', () => {
         .fn()
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [{ positions_count: '0', watchlist_count: '0', config_count: '0' }] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 1 })
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] }),
       release: jest.fn()
@@ -80,6 +80,39 @@ describe('migrate routes', () => {
     expect(res.body.migratedPositions).toBe(1);
     expect(res.body.migratedWatchlist).toBe(1);
     expect(res.body.migratedConfig).toBe(true);
+    expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+  });
+
+  it('counts only unique watchlist inserts when duplicates are present', async () => {
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ positions_count: '0', watchlist_count: '0', config_count: '0' }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 0 })
+        .mockResolvedValueOnce({ rows: [] }),
+      release: jest.fn()
+    };
+
+    mockConnect.mockResolvedValueOnce(client);
+
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/migrate')
+      .send({
+        positions: [],
+        watchlist: [
+          { symbol: 'AAPL', name: 'Apple Inc.', type: 'stock', category: 'equity' },
+          { symbol: 'AAPL', name: 'Apple Inc.', type: 'stock', category: 'equity' }
+        ],
+        config: null
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.migratedPositions).toBe(0);
+    expect(res.body.migratedWatchlist).toBe(1);
+    expect(res.body.migratedConfig).toBe(false);
     expect(client.query).toHaveBeenLastCalledWith('COMMIT');
   });
 });
