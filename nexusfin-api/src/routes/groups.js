@@ -107,7 +107,7 @@ router.patch('/:id', async (req, res, next) => {
     const name = String(req.body.name || '').trim();
     if (!name) throw badRequest('Nombre requerido', 'VALIDATION_ERROR');
 
-    const updated = await query('UPDATE groups SET name =  WHERE id =  RETURNING id, name, code', [name, req.params.id]);
+    const updated = await query('UPDATE groups SET name = $1 WHERE id = $2 RETURNING id, name, code', [name, req.params.id]);
     if (!updated.rows.length) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
 
     const members = await groupMemberCount(req.params.id);

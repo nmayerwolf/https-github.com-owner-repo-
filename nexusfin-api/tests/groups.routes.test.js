@@ -72,6 +72,11 @@ describe('groups routes', () => {
     expect(res.body.name).toBe('Nuevo Nombre');
     expect(res.body.role).toBe('admin');
     expect(res.body.members).toBe(3);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE groups SET name = $1 WHERE id = $2 RETURNING id, name, code',
+      ['Nuevo Nombre', 'g1']
+    );
   });
 
   it('rejects rename when requester is not admin', async () => {

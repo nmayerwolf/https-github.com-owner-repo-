@@ -9,6 +9,7 @@ const { apiMock } = vi.hoisted(() => ({
     createGroup: vi.fn(),
     renameGroup: vi.fn(),
     joinGroup: vi.fn(),
+    getGroup: vi.fn(),
     leaveGroup: vi.fn()
   }
 }));
@@ -29,6 +30,7 @@ describe('Groups', () => {
     apiMock.createGroup.mockReset();
     apiMock.renameGroup.mockReset();
     apiMock.joinGroup.mockReset();
+    apiMock.getGroup.mockReset();
     apiMock.leaveGroup.mockReset();
 
     apiMock.getGroups.mockResolvedValue({ groups: [] });
@@ -91,5 +93,39 @@ describe('Groups', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     expect(await screen.findByText('Solo admins pueden editar el nombre del grupo.')).toBeTruthy();
+  });
+
+  it('loads and renders group detail in read-only mode', async () => {
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo 1', code: 'NXF-A7K2M', role: 'member', members: 2 }]
+    });
+    apiMock.getGroup.mockResolvedValue({
+      id: 'g1',
+      name: 'Grupo 1',
+      code: 'NXF-A7K2M',
+      role: 'member',
+      members: [
+        {
+          userId: 'u1',
+          displayName: 'nicolas',
+          role: 'admin',
+          positions: [{ symbol: 'AAPL', category: 'equity', quantity: 10, plPercent: null }]
+        }
+      ]
+    });
+
+    render(<Groups />);
+
+    await screen.findByText('Grupo 1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+
+    expect(apiMock.getGroup).toHaveBeenCalledWith('g1');
+    expect(await screen.findByText('Detalle de grupo')).toBeTruthy();
+    expect(await screen.findByText('nicolas')).toBeTruthy();
+    expect(await screen.findByText('AAPL')).toBeTruthy();
+    expect(await screen.findByText('Qty: 10')).toBeTruthy();
+    expect(await screen.findByText('P&L: N/D')).toBeTruthy();
+    expect(screen.queryByText(/buyPrice/i)).toBeNull();
   });
 });

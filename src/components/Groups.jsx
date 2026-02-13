@@ -11,12 +11,20 @@ const mapGroupError = (err, fallback) => {
   return err?.message || fallback;
 };
 
+const formatPercent = (value) => {
+  if (typeof value !== 'number') return 'N/D';
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+};
+
 const Groups = () => {
   const [groups, setGroups] = useState([]);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [groupDetail, setGroupDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -76,6 +84,10 @@ const Groups = () => {
     setError('');
     try {
       await api.leaveGroup(id);
+      if (selectedGroupId === id) {
+        setSelectedGroupId(null);
+        setGroupDetail(null);
+      }
       await load();
     } catch (err) {
       setError(mapGroupError(err, 'No se pudo salir del grupo'));
@@ -108,10 +120,27 @@ const Groups = () => {
       setEditingId(null);
       setEditName('');
       await load();
+      if (selectedGroupId === id) {
+        await loadDetail(id);
+      }
     } catch (err) {
       setError(mapGroupError(err, 'No se pudo renombrar el grupo'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDetail = async (id) => {
+    setDetailLoading(true);
+    setError('');
+    try {
+      const detail = await api.getGroup(id);
+      setSelectedGroupId(id);
+      setGroupDetail(detail);
+    } catch (err) {
+      setError(mapGroupError(err, 'No se pudo cargar el detalle del grupo'));
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -158,6 +187,12 @@ const Groups = () => {
                   {g.role}
                 </span>
               </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <span className="muted">Miembros: {g.members}</span>
+                <button type="button" onClick={() => loadDetail(g.id)} disabled={loading || detailLoading}>
+                  Ver detalle
+                </button>
+              </div>
               {g.role === 'admin' && (
                 <div className="row" style={{ marginTop: 8 }}>
                   {editingId === g.id ? (
@@ -182,7 +217,6 @@ const Groups = () => {
                 </div>
               )}
               <div className="row" style={{ marginTop: 8 }}>
-                <span className="muted">Miembros: {g.members}</span>
                 <button type="button" onClick={() => leave(g.id)} disabled={loading}>
                   Salir
                 </button>
@@ -192,6 +226,42 @@ const Groups = () => {
           {!groups.length && <div className="muted">No estás en grupos todavía.</div>}
         </div>
       </section>
+
+      {selectedGroupId && (
+        <section className="card">
+          <h2>Detalle de grupo</h2>
+          {detailLoading && <div className="muted">Cargando detalle...</div>}
+          {!detailLoading && groupDetail && (
+            <div className="grid" style={{ marginTop: 8 }}>
+              <div>
+                <strong>{groupDetail.name}</strong>
+                <div className="muted">Código: {groupDetail.code}</div>
+              </div>
+              {(groupDetail.members || []).map((member) => (
+                <article key={member.userId} className="card" style={{ padding: 10 }}>
+                  <div className="row">
+                    <strong>{member.displayName}</strong>
+                    <span className="badge" style={{ background: '#C084FC22', color: '#C084FC' }}>
+                      {member.role}
+                    </span>
+                  </div>
+                  <div className="grid" style={{ marginTop: 8 }}>
+                    {(member.positions || []).map((position) => (
+                      <div key={`${member.userId}-${position.symbol}`} className="row">
+                        <span>{position.symbol}</span>
+                        <span className="muted">Qty: {position.quantity}</span>
+                        <span className="muted">P&L: {formatPercent(position.plPercent)}</span>
+                      </div>
+                    ))}
+                    {!member.positions?.length && <div className="muted">Sin posiciones activas.</div>}
+                  </div>
+                </article>
+              ))}
+              {!groupDetail.members?.length && <div className="muted">Este grupo no tiene miembros.</div>}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 };
