@@ -49,17 +49,23 @@ router.patch('/:id', async (req, res, next) => {
     if (!current.rows.length) throw notFound('Posición no encontrada');
 
     const row = current.rows[0];
-    if (row.sell_date || row.sell_price) {
-      const onlySell = req.body.sellDate && req.body.sellPrice;
-      if (!onlySell) throw forbidden('No se puede editar una posición vendida', 'POSITION_SOLD');
+    const alreadySold = !!(row.sell_date || row.sell_price);
+    if (alreadySold) {
+      throw forbidden('No se puede editar una posición vendida', 'POSITION_SOLD');
+    }
+
+    const hasSellDate = req.body.sellDate !== undefined;
+    const hasSellPrice = req.body.sellPrice !== undefined;
+    if (hasSellDate !== hasSellPrice) {
+      throw badRequest('Para vender se requieren sellDate y sellPrice juntos', 'VALIDATION_ERROR');
     }
 
     const next = {
       buyPrice: req.body.buyPrice ?? row.buy_price,
       quantity: req.body.quantity ?? row.quantity,
       notes: req.body.notes ?? row.notes,
-      sellDate: req.body.sellDate ?? row.sell_date,
-      sellPrice: req.body.sellPrice ?? row.sell_price
+      sellDate: hasSellDate ? req.body.sellDate : row.sell_date,
+      sellPrice: hasSellPrice ? req.body.sellPrice : row.sell_price
     };
 
     const updated = await query(
@@ -72,7 +78,7 @@ router.patch('/:id', async (req, res, next) => {
         validatePositiveNumber(next.quantity, 'quantity'),
         next.notes,
         next.sellDate,
-        next.sellPrice ? validatePositiveNumber(next.sellPrice, 'sellPrice') : null,
+        next.sellPrice !== null && next.sellPrice !== undefined ? validatePositiveNumber(next.sellPrice, 'sellPrice') : null,
         req.params.id,
         req.user.id
       ]
