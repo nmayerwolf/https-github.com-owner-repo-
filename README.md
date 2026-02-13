@@ -1,62 +1,87 @@
-# NexusFin (Phase 1 MVP)
+# NexusFin (Phase 2)
 
-Implementación inicial basada en `nexusfin-spec.md`.
+Plataforma de monitoreo financiero en tiempo real con análisis técnico, alertas, portfolio multi-usuario y grupos.
 
-## Incluye
+## Arquitectura
 
-- React + Vite + React Router
-- Carga secuencial de watchlist con Finnhub
-- WebSocket Finnhub para updates en vivo de equities (reconexión automática)
-- Carga background de macro assets (metales/commodities/bonos) con Alpha Vantage + cache local
-- Motor técnico: RSI, MACD, Bollinger, SMA50/200, ATR, volumen anómalo
-- Confluencia BUY/SELL/HOLD + alertas + SL/TP ATR adaptativo
-- Dashboard, Markets, Asset Detail, Alerts, Portfolio, Settings, Screener
-- AI Thesis desde alertas con JSON estructurado (fallback local)
-- Watchlist editable (agregar/quitar) persistida en localStorage
-- Persistencia local de portfolio/configuración/watchlist
+- Frontend: React + Vite + React Router (`/Users/nmayerwolf/Documents/nexusfin`)
+- Backend: Node.js + Express + PostgreSQL (`/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`)
+- Market data proxy: Finnhub + Alpha Vantage (keys solo en backend)
+- Auth: email/password + JWT bearer
 
-## Ejecutar
+## Estado actual (Phase 2)
+
+- Auth (`register/login/refresh`) con lockout y `Retry-After` en 429
+- Portfolio / Config / Watchlist persistidos en PostgreSQL
+- Market proxy backend para quote/candles/forex/commodity/profile
+- Migración `localStorage -> backend` vía `POST /api/migrate`
+- Grupos: crear, unirse, renombrar, ver detalle, expulsar miembro, salir
+- Detalle de grupos con posiciones read-only y `plPercent` live (sin exponer `buyPrice`)
+
+## Variables de entorno (frontend)
+
+Crear `/Users/nmayerwolf/Documents/nexusfin/.env` desde `.env.example`:
 
 ```bash
+VITE_API_URL=http://localhost:3001/api
+VITE_ANTHROPIC_KEY=
+```
+
+Notas:
+- `VITE_API_URL` debe apuntar al backend.
+- Las keys de Finnhub/Alpha Vantage no van en frontend.
+
+## Desarrollo local
+
+1. Backend
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
+npm install
+npm run migrate
+npm run dev
+```
+
+2. Frontend
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
 npm install
 npm run dev
 ```
 
 ## Calidad
 
+Frontend:
+
 ```bash
+cd /Users/nmayerwolf/Documents/nexusfin
 npm test
 npm run test:coverage
 npm run build
 ```
 
-## CI (GitHub Actions)
-
-Pipeline en `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`:
-
-- Job `test` (Node `20.x` y `22.x`):
-  - `npm ci`
-  - `npm run test:coverage`
-- Job `build` (Node `20.x`, depende de `test`):
-  - `npm ci`
-  - `npm run build`
-
-Además:
-
-- `workflow_dispatch` habilitado para ejecución manual
-- `concurrency` para cancelar runs anteriores del mismo branch/PR
-- permisos mínimos (`contents: read`)
-
-## PR Template
-
-Template en `/Users/nmayerwolf/Documents/nexusfin/.github/pull_request_template.md` con checklist obligatorio de calidad.
-
-## Variables opcionales
+Backend:
 
 ```bash
-VITE_FINNHUB_KEY=...
-VITE_ALPHA_VANTAGE_KEY=...
-VITE_ANTHROPIC_KEY=...
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
+DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm test
 ```
 
-Si no se define `VITE_ANTHROPIC_KEY`, el Screener y AI Thesis usan fallback local.
+## Deploy (mínimo recomendado)
+
+1. Provisionar PostgreSQL (Railway / Neon / Supabase).
+2. Deploy backend con variables de `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.example`.
+3. Deploy frontend con `VITE_API_URL=https://<tu-backend>/api`.
+4. Ejecutar smoke test:
+- `GET /api/health` devuelve `{ ok: true }`
+- login/register funciona
+- dashboard carga market data vía backend
+- portfolio/config/watchlist persisten tras recargar
+- groups create/join/detail/remove/leave funcionan
+
+## CI
+
+Pipeline en `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`:
+- test matrix Node 20.x / 22.x
+- build frontend
