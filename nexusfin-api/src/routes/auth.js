@@ -88,4 +88,27 @@ router.post('/refresh', authRequired, async (req, res, next) => {
   }
 });
 
+router.post('/reset-password', authRequired, async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    const currentPassword = String(req.body.currentPassword || '');
+    const newPassword = validatePassword(req.body.newPassword);
+
+    const found = await query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    if (!found.rows.length) throw unauthorized('No autorizado', 'UNAUTHORIZED');
+
+    const ok = await bcrypt.compare(currentPassword, found.rows[0].password_hash);
+    if (!ok) {
+      throw unauthorized('La contraseña actual es incorrecta', 'INVALID_CURRENT_PASSWORD');
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, userId]);
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 module.exports = router;
