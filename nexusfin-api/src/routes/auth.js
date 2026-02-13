@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const express = require('express');
 const { query } = require('../config/db');
-const { authRequired, issueToken, storeSession } = require('../middleware/auth');
+const { authRequired, issueToken, storeSession, tokenHash } = require('../middleware/auth');
 const { conflict, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
 
@@ -83,6 +83,18 @@ router.post('/refresh', authRequired, async (req, res, next) => {
     const token = issueToken(user);
     await storeSession(user.id, token);
     return res.json({ token });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/logout', authRequired, async (req, res, next) => {
+  try {
+    const rawToken = req.rawToken;
+    if (!rawToken) throw unauthorized('Token requerido', 'TOKEN_REQUIRED');
+
+    await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash = $2', [req.user.id, tokenHash(rawToken)]);
+    return res.status(204).end();
   } catch (error) {
     return next(error);
   }

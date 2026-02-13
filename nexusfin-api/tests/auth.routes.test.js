@@ -17,13 +17,16 @@ const mockIssueToken = jest.fn(() => 'jwt-token');
 const mockStoreSession = jest.fn(async () => {});
 const mockAuthRequired = jest.fn((req, _res, next) => {
   req.user = { id: 'u1', email: 'user@mail.com' };
+  req.rawToken = 'old.token';
   next();
 });
+const mockTokenHash = jest.fn(() => 'hashed-old-token');
 
 jest.mock('../src/middleware/auth', () => ({
   authRequired: (...args) => mockAuthRequired(...args),
   issueToken: (...args) => mockIssueToken(...args),
-  storeSession: (...args) => mockStoreSession(...args)
+  storeSession: (...args) => mockStoreSession(...args),
+  tokenHash: (...args) => mockTokenHash(...args)
 }));
 
 const { query } = require('../src/config/db');
@@ -47,6 +50,7 @@ describe('auth routes', () => {
     mockIssueToken.mockClear();
     mockStoreSession.mockClear();
     mockAuthRequired.mockClear();
+    mockTokenHash.mockClear();
   });
 
   it('registers a new user', async () => {
@@ -107,6 +111,18 @@ describe('auth routes', () => {
     expect(res.body.token).toBe('jwt-token');
     expect(mockAuthRequired).toHaveBeenCalled();
     expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+  });
+
+  it('invalidates active session on logout', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/auth/logout').set('Authorization', 'Bearer old.token');
+
+    expect(res.status).toBe(204);
+    expect(mockAuthRequired).toHaveBeenCalled();
+    expect(mockTokenHash).toHaveBeenCalledWith('old.token');
+    expect(query).toHaveBeenCalledWith('DELETE FROM sessions WHERE user_id = $1 AND token_hash = $2', ['u1', 'hashed-old-token']);
   });
 
   it('resets password when current password is valid', async () => {
