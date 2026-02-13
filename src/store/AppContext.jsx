@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import { fetchMacroAssets, getAlphaHealth } from '../api/alphavantage';
+import { api } from '../api/apiClient';
 import { getClaudeHealth } from '../api/claude';
 import { createFinnhubSocket, fetchAssetSnapshot, getFinnhubHealth } from '../api/finnhub';
 import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
 import { calculateConfluence } from '../engine/confluence';
 import { WATCHLIST_CATALOG } from '../utils/constants';
+import { useAuth } from './AuthContext';
 import { loadPortfolio, savePortfolio } from './portfolioStore';
 import { loadConfig, saveConfig } from './configStore';
 import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
@@ -28,7 +30,8 @@ const initialState = {
     alphavantage: getAlphaHealth(),
     claude: getClaudeHealth()
   },
-  uiErrors: []
+  uiErrors: [],
+  sourceMode: 'local'
 };
 
 export const appReducer = (state, action) => {
@@ -57,6 +60,8 @@ export const appReducer = (state, action) => {
       return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
     case 'DISMISS_UI_ERROR':
       return { ...state, uiErrors: state.uiErrors.filter((e) => e.id !== action.payload) };
+    case 'SET_SOURCE_MODE':
+      return { ...state, sourceMode: action.payload };
     default:
       return state;
   }
@@ -93,6 +98,46 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
   return watchlistSymbols.map((s) => bySymbol[s]).filter(Boolean);
 };
 
+const normalizePosition = (row) => ({
+  id: row.id,
+  symbol: row.symbol,
+  name: row.name,
+  category: row.category,
+  buyDate: row.buyDate || row.buy_date,
+  buyPrice: Number(row.buyPrice ?? row.buy_price),
+  quantity: Number(row.quantity),
+  sellDate: row.sellDate || row.sell_date || null,
+  sellPrice: row.sellPrice || row.sell_price ? Number(row.sellPrice ?? row.sell_price) : null,
+  notes: row.notes || ''
+});
+
+const fetchSnapshotViaProxy = async (meta) => {
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const fromSec = nowSec - 60 * 60 * 24 * 90;
+
+    if (meta.source === 'finnhub_stock') {
+      const [quote, candles] = await Promise.all([api.quote(meta.symbol), api.candles(meta.symbol, fromSec, nowSec)]);
+      return { quote, candles };
+    }
+
+    if (meta.source === 'finnhub_crypto') {
+      const [quote, candles] = await Promise.all([api.quote(`BINANCE:${meta.symbol}`), api.cryptoCandles(meta.symbol, fromSec, nowSec)]);
+      return { quote, candles };
+    }
+
+    if (meta.source === 'finnhub_fx') {
+      const [base, quote] = meta.symbol.split('_');
+      const [fxCandles, fxQuote] = await Promise.all([api.forexCandles(base, quote, fromSec, nowSec), api.quote(`OANDA:${meta.symbol}`)]);
+      return { quote: fxQuote, candles: fxCandles };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 export const makeUiError = (module, message) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   module,
@@ -103,10 +148,16 @@ export const AppProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const assetsRef = useRef([]);
   const macroLoadedRef = useRef(false);
+  const auth = useAuth();
+  const isAuthenticated = !!auth?.isAuthenticated;
 
   useEffect(() => {
     assetsRef.current = state.assets;
   }, [state.assets]);
+
+  useEffect(() => {
+    dispatch({ type: 'SET_SOURCE_MODE', payload: isAuthenticated ? 'remote' : 'local' });
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const tick = () => {
@@ -124,6 +175,24 @@ export const AppProvider = ({ children }) => {
     return () => clearInterval(id);
   }, []);
 
+  const syncRemoteUserData = async () => {
+    if (!isAuthenticated) return;
+
+    try {
+      const [portfolio, config, watchlist] = await Promise.all([api.getPortfolio(), api.getConfig(), api.getWatchlist()]);
+
+      const positions = (portfolio?.positions || []).map(normalizePosition);
+      const configNext = config || loadConfig();
+      const symbols = (watchlist?.symbols || []).map((x) => x.symbol);
+
+      dispatch({ type: 'SET_POSITIONS', payload: positions });
+      dispatch({ type: 'SET_CONFIG', payload: configNext });
+      dispatch({ type: 'SET_WATCHLIST', payload: symbols.length ? symbols : state.watchlistSymbols });
+    } catch {
+      dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Sync', 'No se pudo sincronizar datos de usuario desde backend.') });
+    }
+  };
+
   const loadAssets = async (watchlistSymbols = state.watchlistSymbols) => {
     const watchlist = resolveWatchlistAssets(watchlistSymbols);
     dispatch({ type: 'SET_LOADING', payload: true });
@@ -133,7 +202,8 @@ export const AppProvider = ({ children }) => {
     const loaded = [];
     for (let i = 0; i < watchlist.length; i += 1) {
       const meta = watchlist[i];
-      const data = await fetchAssetSnapshot(meta);
+      const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
+
       if (data?.quote && data?.candles?.c?.length) {
         loaded.push(
           withIndicators({
@@ -156,8 +226,15 @@ export const AppProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    loadAssets(state.watchlistSymbols);
-  }, []);
+    const run = async () => {
+      if (isAuthenticated) {
+        await syncRemoteUserData();
+      }
+      await loadAssets(state.watchlistSymbols);
+    };
+
+    run();
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (state.loading || !state.assets.length || macroLoadedRef.current) return;
@@ -187,7 +264,7 @@ export const AppProvider = ({ children }) => {
   }, [state.loading, state.assets.length]);
 
   useEffect(() => {
-    if (state.loading || !state.assets.length) return undefined;
+    if (state.loading || !state.assets.length || isAuthenticated) return undefined;
 
     const wsSymbols = state.assets.filter((a) => a.source === 'finnhub_stock').map((a) => a.symbol);
     const socket = createFinnhubSocket({
@@ -236,7 +313,7 @@ export const AppProvider = ({ children }) => {
     });
 
     return () => socket.close();
-  }, [state.loading]);
+  }, [state.loading, isAuthenticated]);
 
   useEffect(() => {
     const enriched = state.assets.map((asset) => ({ ...asset, signal: calculateConfluence(asset, state.config) }));
@@ -249,21 +326,74 @@ export const AppProvider = ({ children }) => {
   const actions = useMemo(
     () => ({
       reloadAssets: () => loadAssets(state.watchlistSymbols),
-      setConfig: (config) => {
+      setConfig: async (config) => {
+        if (isAuthenticated) {
+          try {
+            const out = await api.updateConfig(config);
+            dispatch({ type: 'SET_CONFIG', payload: out });
+            return;
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Config', 'No se pudo guardar configuración en backend.') });
+          }
+        }
+
         saveConfig(config);
         dispatch({ type: 'SET_CONFIG', payload: config });
       },
-      addPosition: (position) => {
+      addPosition: async (position) => {
+        if (isAuthenticated) {
+          try {
+            const payload = {
+              symbol: position.symbol,
+              name: position.name,
+              category: position.category,
+              buyDate: position.buyDate,
+              buyPrice: Number(position.buyPrice),
+              quantity: Number(position.quantity),
+              notes: position.notes || ''
+            };
+            const out = await api.addPosition(payload);
+            dispatch({ type: 'SET_POSITIONS', payload: [normalizePosition(out), ...state.positions] });
+            return;
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo agregar la posición.') });
+            return;
+          }
+        }
+
         const next = [...state.positions, position];
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
-      sellPosition: (id, sellPrice, sellDate) => {
+      sellPosition: async (id, sellPrice, sellDate) => {
+        if (isAuthenticated) {
+          try {
+            const out = await api.updatePosition(id, { sellPrice, sellDate });
+            const updated = normalizePosition(out);
+            dispatch({ type: 'SET_POSITIONS', payload: state.positions.map((p) => (p.id === id ? updated : p)) });
+            return;
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo vender la posición.') });
+            return;
+          }
+        }
+
         const next = state.positions.map((p) => (p.id === id ? { ...p, sellPrice, sellDate } : p));
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
-      deletePosition: (id) => {
+      deletePosition: async (id) => {
+        if (isAuthenticated) {
+          try {
+            await api.deletePosition(id);
+            dispatch({ type: 'SET_POSITIONS', payload: state.positions.filter((p) => p.id !== id) });
+            return;
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo eliminar la posición.') });
+            return;
+          }
+        }
+
         const next = state.positions.filter((p) => p.id !== id);
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
@@ -274,10 +404,21 @@ export const AppProvider = ({ children }) => {
         if (!meta) return;
 
         const nextWatchlist = [...state.watchlistSymbols, symbol];
-        saveWatchlistSymbols(nextWatchlist);
+
+        if (isAuthenticated) {
+          try {
+            await api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type: 'stock', category: meta.category });
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${symbol} en backend.`) });
+            return;
+          }
+        } else {
+          saveWatchlistSymbols(nextWatchlist);
+        }
+
         dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
 
-        const data = await fetchAssetSnapshot(meta);
+        const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
         if (!(data?.quote && data?.candles?.c?.length)) {
           dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${symbol}.`) });
           return;
@@ -295,9 +436,20 @@ export const AppProvider = ({ children }) => {
         if (current.some((x) => x.symbol === nextAsset.symbol)) return;
         dispatch({ type: 'SET_ASSETS', payload: [...current, nextAsset] });
       },
-      removeFromWatchlist: (symbol) => {
+      removeFromWatchlist: async (symbol) => {
         const nextWatchlist = state.watchlistSymbols.filter((s) => s !== symbol);
-        saveWatchlistSymbols(nextWatchlist);
+
+        if (isAuthenticated) {
+          try {
+            await api.removeFromWatchlist(symbol);
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo quitar ${symbol} en backend.`) });
+            return;
+          }
+        } else {
+          saveWatchlistSymbols(nextWatchlist);
+        }
+
         dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
         const current = assetsRef.current;
         dispatch({ type: 'SET_ASSETS', payload: current.filter((a) => a.symbol !== symbol) });
@@ -305,7 +457,7 @@ export const AppProvider = ({ children }) => {
       getAssetBySymbol: (symbol) => state.assets.find((a) => a.symbol === symbol),
       dismissUiError: (id) => dispatch({ type: 'DISMISS_UI_ERROR', payload: id })
     }),
-    [state.positions, state.assets, state.watchlistSymbols]
+    [state.positions, state.assets, state.watchlistSymbols, isAuthenticated]
   );
 
   return <AppContext.Provider value={{ state, actions }}>{children}</AppContext.Provider>;
