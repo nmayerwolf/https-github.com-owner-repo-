@@ -232,4 +232,60 @@ describe('groups routes', () => {
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('GROUP_NOT_FOUND');
   });
+  it('returns group feed with reactions and pagination', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'member' }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'e1',
+            type: 'signal_shared',
+            user_id: 'u-admin',
+            data: { symbol: 'NVDA' },
+            created_at: '2026-02-13T10:00:00Z',
+            display_name: 'owner'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ reaction: 'agree', total: 2 }, { reaction: 'disagree', total: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ reaction: 'agree' }] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).get('/api/groups/g1/feed?page=1&limit=30');
+
+    expect(res.status).toBe(200);
+    expect(res.body.events).toHaveLength(1);
+    expect(res.body.events[0].reactions).toEqual({ agree: 2, disagree: 1, userReaction: 'agree' });
+    expect(res.body.pagination.total).toBe(1);
+  });
+
+  it('reacts to group feed event with upsert', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'member' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'e1' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ reaction: 'agree', total: 3 }] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).post('/api/groups/g1/feed/e1/react').send({ reaction: 'agree' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reactions).toEqual({ agree: 3, disagree: 0 });
+  });
+
+  it('removes reaction when reaction is null', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'member' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'e1' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).post('/api/groups/g1/feed/e1/react').send({ reaction: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reactions).toEqual({ agree: 0, disagree: 0 });
+  });
+
 });

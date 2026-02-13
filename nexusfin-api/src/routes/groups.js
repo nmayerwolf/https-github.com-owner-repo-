@@ -260,4 +260,108 @@ router.delete('/:id/leave', async (req, res, next) => {
   }
 });
 
+
+router.get('/:id/feed', async (req, res, next) => {
+  try {
+    const role = await memberRole(req.params.id, req.user.id);
+    if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 30)));
+    const offset = (page - 1) * limit;
+
+    const events = await query(
+      `SELECT ge.id, ge.type, ge.user_id, ge.data, ge.created_at,
+              COALESCE(u.display_name, split_part(u.email, '@', 1)) AS display_name
+       FROM group_events ge
+       JOIN users u ON u.id = ge.user_id
+       WHERE ge.group_id = $1
+       ORDER BY ge.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [req.params.id, limit, offset]
+    );
+
+    const totalOut = await query('SELECT COUNT(*)::int AS total FROM group_events WHERE group_id = $1', [req.params.id]);
+
+    const payload = [];
+    for (const e of events.rows) {
+      const reactionRows = await query(
+        `SELECT reaction, COUNT(*)::int AS total
+         FROM event_reactions
+         WHERE event_id = $1
+         GROUP BY reaction`,
+        [e.id]
+      );
+
+      const mine = await query('SELECT reaction FROM event_reactions WHERE event_id = $1 AND user_id = $2', [e.id, req.user.id]);
+
+      const reactions = { agree: 0, disagree: 0, userReaction: mine.rows[0]?.reaction || null };
+      for (const r of reactionRows.rows) reactions[r.reaction] = Number(r.total || 0);
+
+      payload.push({
+        id: e.id,
+        type: e.type,
+        userId: e.user_id,
+        displayName: e.display_name,
+        data: e.data || {},
+        reactions,
+        createdAt: e.created_at
+      });
+    }
+
+    return res.json({
+      events: payload,
+      pagination: {
+        page,
+        limit,
+        total: Number(totalOut.rows[0]?.total || 0)
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/:groupId/feed/:eventId/react', async (req, res, next) => {
+  try {
+    const role = await memberRole(req.params.groupId, req.user.id);
+    if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+
+    const event = await query('SELECT id FROM group_events WHERE id = $1 AND group_id = $2', [req.params.eventId, req.params.groupId]);
+    if (!event.rows.length) throw notFound('Evento no encontrado', 'GROUP_EVENT_NOT_FOUND');
+
+    const reaction = req.body?.reaction;
+    if (reaction === null) {
+      await query('DELETE FROM event_reactions WHERE event_id = $1 AND user_id = $2', [req.params.eventId, req.user.id]);
+    } else {
+      if (!['agree', 'disagree'].includes(reaction)) {
+        throw badRequest('Reacción inválida', 'VALIDATION_ERROR');
+      }
+
+      await query(
+        `INSERT INTO event_reactions (event_id, user_id, reaction)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (event_id, user_id)
+         DO UPDATE SET reaction = EXCLUDED.reaction, created_at = NOW()`,
+        [req.params.eventId, req.user.id, reaction]
+      );
+    }
+
+    const totals = await query(
+      `SELECT reaction, COUNT(*)::int AS total
+       FROM event_reactions
+       WHERE event_id = $1
+       GROUP BY reaction`,
+      [req.params.eventId]
+    );
+
+    const out = { agree: 0, disagree: 0 };
+    for (const r of totals.rows) out[r.reaction] = Number(r.total || 0);
+
+    return res.json({ reactions: out });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 module.exports = router;

@@ -58,6 +58,8 @@ Groups:
 - `DELETE /api/groups/:id`
 - `DELETE /api/groups/:id/members/:userId`
 - `DELETE /api/groups/:id/leave`
+- `GET /api/groups/:id/feed`
+- `POST /api/groups/:groupId/feed/:eventId/react`
 
 Alerts (Fase 3 foundation):
 - `GET /api/alerts`
