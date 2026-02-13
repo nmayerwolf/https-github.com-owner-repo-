@@ -4,6 +4,10 @@ const { badRequest } = require('../utils/errors');
 
 const router = express.Router();
 
+const ALLOWED_RISK = ['conservador', 'moderado', 'agresivo'];
+const ALLOWED_HORIZON = ['corto', 'mediano', 'largo'];
+const ALLOWED_SECTORS = ['tech', 'finance', 'health', 'energy', 'auto', 'crypto', 'metals', 'bonds', 'fx'];
+
 const defaults = {
   risk_profile: 'moderado',
   horizon: 'mediano',
@@ -30,6 +34,43 @@ const toApi = (row) => ({
   minConfluence: row.min_confluence
 });
 
+const assertNumberInRange = (value, key, min, max) => {
+  if (value === undefined) return;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw badRequest(`${key} fuera de rango`, 'VALIDATION_ERROR');
+  }
+};
+
+const validateInput = (input) => {
+  if (input.riskProfile !== undefined && !ALLOWED_RISK.includes(input.riskProfile)) {
+    throw badRequest('riskProfile inválido', 'VALIDATION_ERROR');
+  }
+
+  if (input.horizon !== undefined && !ALLOWED_HORIZON.includes(input.horizon)) {
+    throw badRequest('horizon inválido', 'VALIDATION_ERROR');
+  }
+
+  if (input.sectors !== undefined) {
+    if (!Array.isArray(input.sectors)) {
+      throw badRequest('sectors debe ser un array', 'VALIDATION_ERROR');
+    }
+
+    const invalidSector = input.sectors.find((s) => !ALLOWED_SECTORS.includes(s));
+    if (invalidSector) {
+      throw badRequest(`sector inválido: ${invalidSector}`, 'VALIDATION_ERROR');
+    }
+  }
+
+  assertNumberInRange(input.maxPE, 'maxPE', 10, 100);
+  assertNumberInRange(input.minDivYield, 'minDivYield', 0, 5);
+  assertNumberInRange(input.minMktCap, 'minMktCap', 0, 1000);
+  assertNumberInRange(input.rsiOS, 'rsiOS', 15, 40);
+  assertNumberInRange(input.rsiOB, 'rsiOB', 60, 85);
+  assertNumberInRange(input.volThresh, 'volThresh', 1.2, 4);
+  assertNumberInRange(input.minConfluence, 'minConfluence', 1, 5);
+};
+
 router.get('/', async (req, res, next) => {
   try {
     const found = await query('SELECT * FROM user_configs WHERE user_id = $1', [req.user.id]);
@@ -43,9 +84,7 @@ router.get('/', async (req, res, next) => {
 router.put('/', async (req, res, next) => {
   try {
     const input = req.body || {};
-    if (input.riskProfile && !['conservador', 'moderado', 'agresivo'].includes(input.riskProfile)) {
-      throw badRequest('riskProfile inválido', 'VALIDATION_ERROR');
-    }
+    validateInput(input);
 
     const current = await query('SELECT * FROM user_configs WHERE user_id = $1', [req.user.id]);
     const base = current.rows[0] || defaults;
