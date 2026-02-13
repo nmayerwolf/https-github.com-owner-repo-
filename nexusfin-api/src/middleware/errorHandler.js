@@ -2,7 +2,11 @@ const { AppError } = require('../utils/errors');
 
 const errorHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
-    return res.status(err.status).json({ error: err.code, message: err.message, details: err.details || undefined });
+    const payload = { error: err.code, message: err.message, details: err.details || undefined };
+    if (err.status === 429 && err.details?.retryAfter) {
+      payload.retryAfter = err.details.retryAfter;
+    }
+    return res.status(err.status).json(payload);
   }
 
   console.error(err);
