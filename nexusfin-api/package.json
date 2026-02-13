@@ -6,7 +6,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "migrate": "node migrations/run.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "check": "npm test"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

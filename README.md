@@ -11,11 +11,11 @@ Plataforma de monitoreo financiero en tiempo real con análisis técnico, alerta
 
 ## Estado actual (Phase 2)
 
-- Auth (`register/login/refresh`) con lockout y `Retry-After` en 429
+- Auth (`register/login/refresh/logout/reset-password`) con lockout y `Retry-After` en 429
 - Portfolio / Config / Watchlist persistidos en PostgreSQL
 - Market proxy backend para quote/candles/forex/commodity/profile
 - Migración `localStorage -> backend` vía `POST /api/migrate`
-- Grupos: crear, unirse, renombrar, ver detalle, expulsar miembro, salir
+- Grupos: crear, unirse, renombrar, eliminar grupo, ver detalle, expulsar miembro, salir
 - Detalle de grupos con posiciones read-only y `plPercent` live (sin exponer `buyPrice`)
 
 ## Variables de entorno (frontend)
@@ -56,32 +56,33 @@ Frontend:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin
-npm test
+npm run check
 npm run test:coverage
-npm run build
 ```
 
 Backend:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
-DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm test
+DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm run check
 ```
 
 ## Deploy (mínimo recomendado)
 
 1. Provisionar PostgreSQL (Railway / Neon / Supabase).
 2. Deploy backend con variables de `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.example`.
-3. Deploy frontend con `VITE_API_URL=https://<tu-backend>/api`.
-4. Ejecutar smoke test:
-- `GET /api/health` devuelve `{ ok: true }`
-- login/register funciona
-- dashboard carga market data vía backend
-- portfolio/config/watchlist persisten tras recargar
-- groups create/join/detail/remove/leave funcionan
+3. Ejecutar migraciones en backend: `npm run migrate`.
+4. Deploy frontend con `VITE_API_URL=https://<tu-backend>/api`.
+5. Ejecutar smoke test del release usando `/Users/nmayerwolf/Documents/nexusfin/RELEASE_CHECKLIST.md`.
 
 ## CI
 
 Pipeline en `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`:
 - test matrix Node 20.x / 22.x
 - build frontend
+
+## Nota importante sobre PR
+
+Abrí siempre los PR contra `main` para que corra CI:
+- `base: main`
+- `compare: codex/<tu-rama>`
