@@ -10,6 +10,7 @@ const { apiMock } = vi.hoisted(() => ({
     renameGroup: vi.fn(),
     joinGroup: vi.fn(),
     getGroup: vi.fn(),
+    removeMember: vi.fn(),
     leaveGroup: vi.fn()
   }
 }));
@@ -31,6 +32,7 @@ describe('Groups', () => {
     apiMock.renameGroup.mockReset();
     apiMock.joinGroup.mockReset();
     apiMock.getGroup.mockReset();
+    apiMock.removeMember.mockReset();
     apiMock.leaveGroup.mockReset();
 
     apiMock.getGroups.mockResolvedValue({ groups: [] });
@@ -127,5 +129,68 @@ describe('Groups', () => {
     expect(await screen.findByText('Qty: 10')).toBeTruthy();
     expect(await screen.findByText('P&L: N/D')).toBeTruthy();
     expect(screen.queryByText(/buyPrice/i)).toBeNull();
+  });
+
+  it('allows admin to remove member from selected group', async () => {
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo Admin', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
+    });
+
+    apiMock.getGroup
+      .mockResolvedValueOnce({
+        id: 'g1',
+        name: 'Grupo Admin',
+        code: 'NXF-A7K2M',
+        role: 'admin',
+        members: [
+          { userId: 'u-admin', displayName: 'owner', role: 'admin', positions: [] },
+          { userId: 'u-member', displayName: 'amigo', role: 'member', positions: [] }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'g1',
+        name: 'Grupo Admin',
+        code: 'NXF-A7K2M',
+        role: 'admin',
+        members: [{ userId: 'u-admin', displayName: 'owner', role: 'admin', positions: [] }]
+      });
+
+    render(<Groups />);
+
+    await screen.findByText('Grupo Admin');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+
+    expect(await screen.findByText('amigo')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expulsar' }));
+
+    expect(apiMock.removeMember).toHaveBeenCalledWith('g1', 'u-member');
+  });
+
+  it('maps CANNOT_REMOVE_ADMIN when backend rejects remove member', async () => {
+    apiMock.getGroups.mockResolvedValue({
+      groups: [{ id: 'g1', name: 'Grupo Admin', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
+    });
+
+    apiMock.getGroup.mockResolvedValue({
+      id: 'g1',
+      name: 'Grupo Admin',
+      code: 'NXF-A7K2M',
+      role: 'admin',
+      members: [{ userId: 'u-member', displayName: 'amigo', role: 'member', positions: [] }]
+    });
+
+    apiMock.removeMember.mockRejectedValueOnce({ error: 'CANNOT_REMOVE_ADMIN' });
+
+    render(<Groups />);
+
+    await screen.findByText('Grupo Admin');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+
+    expect(await screen.findByText('amigo')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expulsar' }));
+
+    expect(await screen.findByText('No podés expulsar a otro admin.')).toBeTruthy();
   });
 });
