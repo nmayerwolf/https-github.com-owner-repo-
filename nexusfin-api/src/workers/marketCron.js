@@ -1,26 +1,26 @@
 const cron = require('node-cron');
 const { env } = require('../config/env');
 
-const buildTasks = (config = env) => [
+const buildTasks = (config = env, runners = {}) => [
   {
     name: 'market-us',
     schedule: `*/${Math.max(1, config.cronMarketIntervalMinutes)} * * * *`,
-    run: async () => ({ scanned: 0, generated: 0, market: 'us' })
+    run: runners.us || (async () => ({ scanned: 0, generated: 0, market: 'us' }))
   },
   {
     name: 'market-crypto',
     schedule: `*/${Math.max(1, config.cronCryptoIntervalMinutes)} * * * *`,
-    run: async () => ({ scanned: 0, generated: 0, market: 'crypto' })
+    run: runners.crypto || (async () => ({ scanned: 0, generated: 0, market: 'crypto' }))
   },
   {
     name: 'market-forex',
     schedule: `*/${Math.max(1, config.cronForexIntervalMinutes)} * * * *`,
-    run: async () => ({ scanned: 0, generated: 0, market: 'forex' })
+    run: runners.forex || (async () => ({ scanned: 0, generated: 0, market: 'forex' }))
   },
   {
     name: 'market-commodity',
     schedule: `*/${Math.max(1, config.cronCommodityIntervalMinutes)} * * * *`,
-    run: async () => ({ scanned: 0, generated: 0, market: 'commodity' })
+    run: runners.commodity || (async () => ({ scanned: 0, generated: 0, market: 'commodity' }))
   }
 ];
 
