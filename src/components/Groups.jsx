@@ -1,5 +1,13 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api/apiClient';
+
+const mapGroupError = (err, fallback) => {
+  if (err?.error === 'GROUP_LIMIT_REACHED') return 'Llegaste al máximo de 5 grupos por usuario.';
+  if (err?.error === 'GROUP_MEMBER_LIMIT_REACHED') return 'Este grupo ya alcanzó su máximo de 20 miembros.';
+  if (err?.error === 'GROUP_NOT_FOUND') return 'El código de invitación no existe.';
+  if (err?.error === 'ALREADY_MEMBER') return 'Ya sos miembro de este grupo.';
+  return err?.message || fallback;
+};
 
 const Groups = () => {
   const [groups, setGroups] = useState([]);
@@ -15,7 +23,7 @@ const Groups = () => {
       const out = await api.getGroups();
       setGroups(out.groups || []);
     } catch (err) {
-      setError(err?.message || 'No se pudieron cargar grupos');
+      setError(mapGroupError(err, 'No se pudieron cargar grupos'));
     } finally {
       setLoading(false);
     }
@@ -36,7 +44,7 @@ const Groups = () => {
       setName('');
       await load();
     } catch (err) {
-      setError(err?.message || 'No se pudo crear el grupo');
+      setError(mapGroupError(err, 'No se pudo crear el grupo'));
     } finally {
       setLoading(false);
     }
@@ -53,7 +61,7 @@ const Groups = () => {
       setCode('');
       await load();
     } catch (err) {
-      setError(err?.message || 'No se pudo unir al grupo');
+      setError(mapGroupError(err, 'No se pudo unir al grupo'));
     } finally {
       setLoading(false);
     }
@@ -66,7 +74,7 @@ const Groups = () => {
       await api.leaveGroup(id);
       await load();
     } catch (err) {
-      setError(err?.message || 'No se pudo salir del grupo');
+      setError(mapGroupError(err, 'No se pudo salir del grupo'));
       setLoading(false);
     }
   };
