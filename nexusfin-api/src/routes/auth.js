@@ -117,6 +117,10 @@ router.post('/reset-password', authRequired, async (req, res, next) => {
     const newHash = await bcrypt.hash(newPassword, 10);
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, userId]);
 
+    if (req.rawToken) {
+      await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [userId, tokenHash(req.rawToken)]);
+    }
+
     return res.json({ ok: true });
   } catch (error) {
     return next(error);

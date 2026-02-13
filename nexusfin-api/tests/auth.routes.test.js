@@ -146,6 +146,12 @@ describe('auth routes', () => {
       'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
       ['newhash123', 'u1']
     );
+    expect(mockTokenHash).toHaveBeenCalledWith('old.token');
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      'DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2',
+      ['u1', 'hashed-old-token']
+    );
   });
 
   it('returns 401 when current password is invalid on reset-password', async () => {
