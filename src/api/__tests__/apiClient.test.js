@@ -24,9 +24,7 @@ describe('apiClient', () => {
   it('updates in-memory token from X-Refresh-Token header', async () => {
     setToken('old-token');
 
-    global.fetch.mockResolvedValueOnce(
-      makeResponse({ ok: true, status: 200, body: { ok: true }, refreshToken: 'new-token' })
-    );
+    global.fetch.mockResolvedValueOnce(makeResponse({ ok: true, status: 200, body: { ok: true }, refreshToken: 'new-token' }));
 
     const out = await api.health();
 
@@ -66,5 +64,23 @@ describe('apiClient', () => {
 
     await expect(api.login('user@mail.com', 'bad-pass')).rejects.toMatchObject({ status: 401, error: 'INVALID_CREDENTIALS' });
     expect(onAuthFailure).not.toHaveBeenCalled();
+  });
+
+  it('calls reset-password endpoint with expected payload', async () => {
+    setToken('jwt-token');
+
+    global.fetch.mockResolvedValueOnce(makeResponse({ ok: true, status: 200, body: { ok: true } }));
+
+    const out = await api.resetPassword('old12345', 'newpass123');
+
+    expect(out).toEqual({ ok: true });
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/api/auth/reset-password',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
+        body: JSON.stringify({ currentPassword: 'old12345', newPassword: 'newpass123' })
+      })
+    );
   });
 });
