@@ -8,7 +8,6 @@ const router = express.Router();
 
 const MAX_GROUPS_PER_USER = 5;
 const MAX_MEMBERS_PER_GROUP = 20;
-const GROUP_CODE_PATTERN = /^NXF-[A-Z0-9]{5}$/;
 
 const memberRole = async (groupId, userId) => {
   const found = await query('SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
@@ -82,9 +81,6 @@ router.post('/', async (req, res, next) => {
 router.post('/join', async (req, res, next) => {
   try {
     const code = String(req.body.code || '').trim().toUpperCase();
-    if (!GROUP_CODE_PATTERN.test(code)) {
-      return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'Código de invitación inválido' });
-    }
     const group = await query('SELECT id, name, code FROM groups WHERE code = $1', [code]);
     if (!group.rows.length) return res.status(404).json({ error: 'GROUP_NOT_FOUND', message: 'Código de invitación inválido' });
 

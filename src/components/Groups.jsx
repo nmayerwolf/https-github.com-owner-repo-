@@ -10,7 +10,10 @@ const mapGroupError = (err, fallback) => {
   if (err?.error === 'ADMIN_ONLY') return 'Solo admins pueden editar el nombre del grupo.';
   if (err?.error === 'CANNOT_REMOVE_ADMIN') return 'No podés expulsar a otro admin.';
   if (err?.error === 'USE_LEAVE_FOR_SELF') return 'Para salir vos, usá el botón Salir.';
-  if (err?.error === 'VALIDATION_ERROR') return 'Nombre de grupo inválido.';
+  if (err?.error === 'VALIDATION_ERROR') {
+    if (typeof err?.message === 'string' && err.message.trim()) return err.message;
+    return 'Datos inválidos.';
+  }
   return err?.message || fallback;
 };
 
