@@ -14,6 +14,7 @@ import AssetDetail from './components/AssetDetail';
 import AuthScreen from './components/AuthScreen';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
+import { WATCHLIST_CATALOG } from './utils/constants';
 
 const HealthBadge = ({ label, ok, detail }) => (
   <span className="badge" title={detail} style={{ background: ok ? '#00E08E22' : '#FF475722', color: ok ? '#00E08E' : '#FF4757' }}>
@@ -21,7 +22,7 @@ const HealthBadge = ({ label, ok, detail }) => (
   </span>
 );
 
-const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
+const MigrationModal = ({ stats, onAccept, onSkip, loading, error }) => (
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
       <h3>Migrar datos locales</h3>
@@ -42,6 +43,11 @@ const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
           <strong>{stats.hasConfig ? 'Sí' : 'No'}</strong>
         </div>
       </div>
+      {error && (
+        <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>
+          {error}
+        </div>
+      )}
       <div className="row" style={{ marginTop: 10 }}>
         <button type="button" onClick={onSkip} disabled={loading}>
           Más tarde
@@ -59,6 +65,7 @@ const App = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
+  const [migrationError, setMigrationError] = useState('');
 
   const migrationPayload = useMemo(() => {
     try {
@@ -66,8 +73,19 @@ const App = () => {
       const watchlist = JSON.parse(localStorage.getItem('nexusfin_watchlist') || '[]');
       const config = JSON.parse(localStorage.getItem('nexusfin_config') || 'null');
 
+      const catalogBySymbol = Object.fromEntries(WATCHLIST_CATALOG.map((item) => [item.symbol, item]));
       const watchlistObjects = Array.isArray(watchlist)
-        ? watchlist.map((symbol) => ({ symbol, name: symbol, type: 'stock', category: 'equity' }))
+        ? watchlist
+            .map((symbol) => {
+              const meta = catalogBySymbol[symbol];
+              return {
+                symbol,
+                name: meta?.name || symbol,
+                type: meta?.type || 'stock',
+                category: meta?.category || 'equity'
+              };
+            })
+            .filter((item) => !!item.symbol)
         : [];
 
       return {
@@ -83,6 +101,7 @@ const App = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       setMigrationPrompt(null);
+      setMigrationError('');
       return;
     }
 
@@ -92,19 +111,27 @@ const App = () => {
 
     if (positions || watchlist || hasConfig) {
       setMigrationPrompt({ positions, watchlist, hasConfig });
+      setMigrationError('');
     }
   }, [isAuthenticated, migrationPayload]);
 
   const runMigration = async () => {
     setMigrationLoading(true);
+    setMigrationError('');
+
     try {
       await api.migrate(migrationPayload);
       localStorage.removeItem('nexusfin_portfolio');
       localStorage.removeItem('nexusfin_watchlist');
       localStorage.removeItem('nexusfin_config');
+      await actions.refreshRemoteUserData();
       setMigrationPrompt(null);
-    } catch {
-      setMigrationPrompt(null);
+    } catch (err) {
+      if (err?.status === 409) {
+        setMigrationError('Tu cuenta ya tiene datos en backend. No migramos los datos locales para evitar duplicados.');
+        return;
+      }
+      setMigrationError('No se pudo migrar ahora. Podés reintentar en unos minutos.');
     } finally {
       setMigrationLoading(false);
     }
@@ -124,7 +151,15 @@ const App = () => {
 
   return (
     <div className="app">
-      {migrationPrompt && <MigrationModal stats={migrationPrompt} onAccept={runMigration} onSkip={() => setMigrationPrompt(null)} loading={migrationLoading} />}
+      {migrationPrompt && (
+        <MigrationModal
+          stats={migrationPrompt}
+          onAccept={runMigration}
+          onSkip={() => setMigrationPrompt(null)}
+          loading={migrationLoading}
+          error={migrationError}
+        />
+      )}
 
       <header className="header">
         <div className="row" style={{ alignItems: 'flex-end' }}>

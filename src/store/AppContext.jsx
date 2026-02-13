@@ -184,12 +184,16 @@ export const AppProvider = ({ children }) => {
       const positions = (portfolio?.positions || []).map(normalizePosition);
       const configNext = config || loadConfig();
       const symbols = (watchlist?.symbols || []).map((x) => x.symbol);
+      const nextSymbols = symbols.length ? symbols : state.watchlistSymbols;
 
       dispatch({ type: 'SET_POSITIONS', payload: positions });
       dispatch({ type: 'SET_CONFIG', payload: configNext });
-      dispatch({ type: 'SET_WATCHLIST', payload: symbols.length ? symbols : state.watchlistSymbols });
+      dispatch({ type: 'SET_WATCHLIST', payload: nextSymbols });
+
+      return { positions, config: configNext, symbols: nextSymbols };
     } catch {
       dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Sync', 'No se pudo sincronizar datos de usuario desde backend.') });
+      return null;
     }
   };
 
@@ -453,6 +457,13 @@ export const AppProvider = ({ children }) => {
         dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
         const current = assetsRef.current;
         dispatch({ type: 'SET_ASSETS', payload: current.filter((a) => a.symbol !== symbol) });
+      },
+      refreshRemoteUserData: async () => {
+        if (!isAuthenticated) return;
+        const remote = await syncRemoteUserData();
+        if (remote?.symbols?.length) {
+          await loadAssets(remote.symbols);
+        }
       },
       getAssetBySymbol: (symbol) => state.assets.find((a) => a.symbol === symbol),
       dismissUiError: (id) => dispatch({ type: 'DISMISS_UI_ERROR', payload: id })
