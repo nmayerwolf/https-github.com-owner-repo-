@@ -14,11 +14,16 @@ router.post('/', async (req, res, next) => {
     const existing = await client.query(
       `SELECT
         (SELECT COUNT(*) FROM positions WHERE user_id = $1 AND deleted_at IS NULL) AS positions_count,
-        (SELECT COUNT(*) FROM watchlist_items WHERE user_id = $1) AS watchlist_count`,
+        (SELECT COUNT(*) FROM watchlist_items WHERE user_id = $1) AS watchlist_count,
+        (SELECT COUNT(*) FROM user_configs WHERE user_id = $1) AS config_count`,
       [req.user.id]
     );
 
-    if (Number(existing.rows[0].positions_count) > 0 || Number(existing.rows[0].watchlist_count) > 0) {
+    if (
+      Number(existing.rows[0].positions_count) > 0 ||
+      Number(existing.rows[0].watchlist_count) > 0 ||
+      Number(existing.rows[0].config_count) > 0
+    ) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'ALREADY_MIGRATED', message: 'El usuario ya tiene datos en backend' });
     }
