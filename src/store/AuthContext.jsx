@@ -9,22 +9,36 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [sessionNotice, setSessionNotice] = useState('');
 
-  const logout = (notice = '') => {
+  const clearLocalSession = (notice = '') => {
     setToken(null);
     setTokenState(null);
     setUser(null);
     setSessionNotice(notice);
   };
 
+  const logout = async (notice = '', options = {}) => {
+    const { remote = true } = options;
+
+    if (remote && tokenState) {
+      try {
+        await api.logout();
+      } catch {
+        // Even if backend logout fails, close local session to avoid stale auth state.
+      }
+    }
+
+    clearLocalSession(notice);
+  };
+
   useEffect(() => {
     setAuthFailureHandler(() => {
-      logout('Tu sesión expiró. Volvé a iniciar sesión.');
+      logout('Tu sesión expiró. Volvé a iniciar sesión.', { remote: false });
     });
 
     return () => {
       setAuthFailureHandler(null);
     };
-  }, []);
+  }, [tokenState]);
 
   const login = async (email, password) => {
     setLoading(true);
