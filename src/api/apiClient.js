@@ -94,6 +94,13 @@ export const api = {
   deleteGroup: (id) => request(`/groups/${id}`, { method: 'DELETE' }),
   removeMember: (groupId, userId) => request(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
 
+  getAlerts: ({ page = 1, limit = 20, type = null } = {}) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (type) params.set('type', type);
+    return request(`/alerts?${params.toString()}`);
+  },
+  getAlertDetail: (id) => request(`/alerts/${id}`),
+
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) => request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),
   getNotificationPublicKey: () => request('/notifications/vapid-public-key'),
