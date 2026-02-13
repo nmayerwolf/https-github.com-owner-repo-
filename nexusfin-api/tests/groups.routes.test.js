@@ -51,6 +51,15 @@ describe('groups routes', () => {
     expect(res.body.error).toBe('GROUP_LIMIT_REACHED');
   });
 
+  it('rejects join with invalid invitation code format', async () => {
+    const app = makeApp('u-admin');
+    const res = await request(app).post('/api/groups/join').send({ code: 'invalid-code' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('rejects join when target group is full', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Mi Grupo', code: 'NXF-A7K2M' }] })
