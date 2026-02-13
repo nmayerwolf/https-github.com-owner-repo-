@@ -88,6 +88,7 @@ export const api = {
   joinGroup: (code) => request('/groups/join', { method: 'POST', body: JSON.stringify({ code }) }),
   getGroup: (id) => request(`/groups/${id}`),
   leaveGroup: (id) => request(`/groups/${id}/leave`, { method: 'DELETE' }),
+  deleteGroup: (id) => request(`/groups/${id}`, { method: 'DELETE' }),
   removeMember: (groupId, userId) => request(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
 
   migrate: (data) => request('/migrate', { method: 'POST', body: JSON.stringify(data) })

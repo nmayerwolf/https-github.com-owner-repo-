@@ -7,7 +7,7 @@ const mapGroupError = (err, fallback) => {
   if (err?.error === 'GROUP_NOT_FOUND') return 'El grupo o código no existe.';
   if (err?.error === 'GROUP_MEMBER_NOT_FOUND') return 'El miembro seleccionado no existe.';
   if (err?.error === 'ALREADY_MEMBER') return 'Ya sos miembro de este grupo.';
-  if (err?.error === 'ADMIN_ONLY') return 'Solo admins pueden editar el nombre del grupo.';
+  if (err?.error === 'ADMIN_ONLY') return 'Solo admins pueden editar este grupo.';
   if (err?.error === 'CANNOT_REMOVE_ADMIN') return 'No podés expulsar a otro admin.';
   if (err?.error === 'USE_LEAVE_FOR_SELF') return 'Para salir vos, usá el botón Salir.';
   if (err?.error === 'VALIDATION_ERROR') {
@@ -97,6 +97,23 @@ const Groups = () => {
       await load();
     } catch (err) {
       setError(mapGroupError(err, 'No se pudo salir del grupo'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteGroup = async (id) => {
+    setLoading(true);
+    setError('');
+    try {
+      await api.deleteGroup(id);
+      if (selectedGroupId === id) {
+        setSelectedGroupId(null);
+        setGroupDetail(null);
+      }
+      await load();
+    } catch (err) {
+      setError(mapGroupError(err, 'No se pudo eliminar el grupo'));
     } finally {
       setLoading(false);
     }
@@ -219,11 +236,7 @@ const Groups = () => {
                 <div className="row" style={{ marginTop: 8 }}>
                   {editingId === g.id ? (
                     <>
-                      <input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        placeholder="Nuevo nombre del grupo"
-                      />
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nuevo nombre del grupo" />
                       <button type="button" onClick={() => rename(g.id)} disabled={loading}>
                         Guardar
                       </button>
@@ -232,9 +245,14 @@ const Groups = () => {
                       </button>
                     </>
                   ) : (
-                    <button type="button" onClick={() => startRename(g)} disabled={loading}>
-                      Renombrar
-                    </button>
+                    <>
+                      <button type="button" onClick={() => startRename(g)} disabled={loading}>
+                        Renombrar
+                      </button>
+                      <button type="button" onClick={() => deleteGroup(g.id)} disabled={loading}>
+                        Eliminar grupo
+                      </button>
+                    </>
                   )}
                 </div>
               )}
