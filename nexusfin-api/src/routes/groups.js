@@ -148,7 +148,7 @@ router.get('/:id', async (req, res, next) => {
       });
     }
 
-    return res.json({ ...group.rows[0], role, members: payloadMembers });
+    return res.json({ ...group.rows[0], role, memberCount: members.rows.length, members: payloadMembers });
   } catch (error) {
     return next(error);
   }

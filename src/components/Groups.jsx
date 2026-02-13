@@ -255,6 +255,7 @@ const Groups = () => {
               <div>
                 <strong>{groupDetail.name}</strong>
                 <div className="muted">Código: {groupDetail.code}</div>
+                <div className="muted">Miembros: {groupDetail.memberCount ?? groupDetail.members?.length ?? 0}</div>
               </div>
               {(groupDetail.members || []).map((member) => (
                 <article key={member.userId} className="card" style={{ padding: 10 }}>

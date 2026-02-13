@@ -132,4 +132,44 @@ describe('groups routes', () => {
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('GROUP_MEMBER_NOT_FOUND');
   });
+
+  it('returns group detail with privacy-safe member positions', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Mi Grupo', code: 'NXF-A7K2M' }] })
+      .mockResolvedValueOnce({
+        rows: [
+          { user_id: 'u-admin', role: 'admin', joined_at: '2026-02-13T10:00:00Z', display_name: 'owner' },
+          { user_id: 'u-member', role: 'member', joined_at: '2026-02-13T10:01:00Z', display_name: 'amigo' }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ symbol: 'AAPL', category: 'equity', quantity: '10' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).get('/api/groups/g1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('g1');
+    expect(res.body.role).toBe('admin');
+    expect(res.body.memberCount).toBe(2);
+    expect(res.body.members).toHaveLength(2);
+    expect(res.body.members[0]).toEqual({
+      userId: 'u-admin',
+      displayName: 'owner',
+      role: 'admin',
+      positions: [{ symbol: 'AAPL', category: 'equity', quantity: 10, plPercent: null }]
+    });
+    expect(res.body.members[0].positions[0].buyPrice).toBeUndefined();
+  });
+
+  it('returns 404 on group detail when requester is not member', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-outsider');
+    const res = await request(app).get('/api/groups/g1');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('GROUP_NOT_FOUND');
+  });
 });
