@@ -25,6 +25,11 @@ FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
 FRONTEND_URL=http://localhost:5173
 NODE_ENV=development
+CRON_ENABLED=false
+CRON_MARKET_INTERVAL=5
+CRON_CRYPTO_INTERVAL=15
+CRON_FOREX_INTERVAL=15
+CRON_COMMODITY_INTERVAL=60
 ```
 
 ## Endpoints principales
@@ -77,6 +82,10 @@ Migration:
 
 Health:
 - `GET /api/health`
+
+Realtime scaffold (Fase 3):
+- `WS /ws?token=<jwt>`
+- cron worker configurable por `CRON_*` vars
 
 ## Reglas importantes
 

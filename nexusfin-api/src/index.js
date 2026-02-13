@@ -1,3 +1,4 @@
+const http = require('http');
 const cors = require('cors');
 const express = require('express');
 const helmet = require('helmet');
@@ -6,6 +7,8 @@ const { query } = require('./config/db');
 const { authRequired } = require('./middleware/auth');
 const { errorHandler } = require('./middleware/errorHandler');
 const { authLimiter, marketLimiter } = require('./middleware/rateLimiter');
+const { startWSHub } = require('./realtime/wsHub');
+const { startMarketCron } = require('./workers/marketCron');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -50,10 +53,31 @@ app.use('/api/migrate', authRequired, migrateRoutes);
 
 app.use(errorHandler);
 
-if (require.main === module) {
-  app.listen(env.port, () => {
-    console.log(`nexusfin-api listening on :${env.port}`);
+const startHttpServer = ({ port = env.port } = {}) => {
+  const server = http.createServer(app);
+  const wsHub = startWSHub(server);
+  const cronRuntime = startMarketCron();
+
+  server.listen(port, () => {
+    console.log(`nexusfin-api listening on :${port}`);
+    console.log(`ws hub ready on :${port}/ws`);
+    console.log(`cron ${cronRuntime.enabled ? 'enabled' : 'disabled'}`);
   });
+
+  const shutdown = () => {
+    cronRuntime.stop();
+    wsHub.close().catch(() => {});
+    server.close(() => process.exit(0));
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
+  return { server, wsHub, cronRuntime };
+};
+
+if (require.main === module) {
+  startHttpServer();
 }
 
-module.exports = { app };
+module.exports = { app, startHttpServer };
