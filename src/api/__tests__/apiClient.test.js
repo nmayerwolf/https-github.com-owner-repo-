@@ -83,4 +83,21 @@ describe('apiClient', () => {
       })
     );
   });
+
+  it('calls logout endpoint with bearer token', async () => {
+    setToken('jwt-token');
+
+    global.fetch.mockResolvedValueOnce(makeResponse({ ok: true, status: 204, body: {} }));
+
+    const out = await api.logout();
+
+    expect(out).toBeNull();
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/api/auth/logout',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' })
+      })
+    );
+  });
 });
