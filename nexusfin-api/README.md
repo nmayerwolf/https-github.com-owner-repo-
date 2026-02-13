@@ -21,6 +21,8 @@ npm run dev
 PORT=3001
 DATABASE_URL=postgresql://user:pass@host:5432/nexusfin
 JWT_SECRET=<secret-largo>
+CSRF_SECRET=<secret-csrf>
+COOKIE_DOMAIN=
 FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
 FRONTEND_URL=http://localhost:5173
@@ -43,6 +45,8 @@ Auth:
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout` (autenticado)
 - `POST /api/auth/reset-password` (autenticado)
+- `GET /api/auth/csrf` (autenticado)
+- `GET /api/auth/me` (autenticado)
 
 Datos de usuario:
 - `GET|POST|PATCH|DELETE /api/portfolio`
@@ -94,7 +98,8 @@ Realtime scaffold (Fase 3):
 
 ## Reglas importantes
 
-- Todas las rutas excepto `/api/health` y `/api/auth/*` requieren `Authorization: Bearer <jwt>`.
+- Todas las rutas excepto `/api/health` y `/api/auth/*` requieren auth (Bearer o cookie `nxf_token`).
+- En modo web con cookie, mutaciones requieren header `X-CSRF-Token` obtenido desde `GET /api/auth/csrf`.
 - API keys viven solo en backend.
 - Lockout de login devuelve `429` con body `retryAfter` y header `Retry-After`.
 - Migración localStorage se bloquea con `409 ALREADY_MIGRATED` si el usuario ya tiene datos.

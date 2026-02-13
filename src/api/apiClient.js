@@ -1,6 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 let token = null;
+let csrfToken = null;
 let authFailureHandler = null;
 
 export const setToken = (next) => {
@@ -11,12 +12,19 @@ export const getToken = () => token;
 
 export const isAuthenticated = () => !!token;
 
+export const setCsrfToken = (next) => {
+  csrfToken = next || null;
+};
+
+export const getCsrfToken = () => csrfToken;
+
 export const setAuthFailureHandler = (handler) => {
   authFailureHandler = typeof handler === 'function' ? handler : null;
 };
 
 export const resetApiClientStateForTests = () => {
   token = null;
+  csrfToken = null;
   authFailureHandler = null;
 };
 
@@ -29,21 +37,34 @@ const parseError = async (res) => {
   }
 };
 
-const request = async (path, options = {}) => {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
+const isMutationMethod = (method) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || 'GET').toUpperCase());
 
-  const hadToken = !!token;
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+const request = async (path, options = {}) => {
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (isMutationMethod(method) && csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+  const hadSession = !!token || !!csrfToken;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    method,
+    headers,
+    credentials: 'include'
+  });
+
   const maybeRefresh = res.headers.get('X-Refresh-Token');
   if (maybeRefresh) token = maybeRefresh;
 
   if (!res.ok) {
     const err = await parseError(res);
 
-    const authExpired = res.status === 401 && (err?.error === 'TOKEN_EXPIRED' || err?.error === 'INVALID_SESSION');
-    if (hadToken && authExpired) {
+    const authExpired = res.status === 401 && ['TOKEN_EXPIRED', 'INVALID_SESSION', 'TOKEN_REQUIRED', 'CSRF_INVALID'].includes(err?.error);
+    if (hadSession && authExpired) {
       token = null;
+      csrfToken = null;
       if (authFailureHandler) authFailureHandler(err);
     }
 
@@ -59,6 +80,8 @@ export const api = {
   login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   refresh: () => request('/auth/refresh', { method: 'POST' }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  me: () => request('/auth/me'),
+  getCsrf: () => request('/auth/csrf'),
   resetPassword: (currentPassword, newPassword) =>
     request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   health: () => request('/health'),
