@@ -21,7 +21,8 @@ app.use(helmet());
 app.use(
   cors({
     origin: env.frontendUrl,
-    credentials: false
+    credentials: false,
+    exposedHeaders: ['X-Refresh-Token']
   })
 );
 app.use(express.json({ limit: '1mb' }));
