@@ -83,6 +83,7 @@ describe('auth routes', () => {
     expect(res.status).toBe(429);
     expect(res.body.error).toBe('TOO_MANY_ATTEMPTS');
     expect(res.body.retryAfter).toBe(900);
+    expect(res.headers['retry-after']).toBe('900');
   });
 
   it('returns 401 when login credentials are invalid', async () => {
