@@ -36,7 +36,7 @@ const mergeConfig = (row = {}) => ({
 
 const toNumberArray = (input) => (Array.isArray(input) ? input.map((x) => Number(x)).filter((x) => Number.isFinite(x)) : []);
 
-const createAlertEngine = ({ query, finnhub, wsHub, logger = console }) => {
+const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger = console }) => {
   const hasRecentDuplicate = async ({ userId, symbol, type, recommendation }) => {
     const exists = await query(
       `SELECT id FROM alerts
@@ -63,7 +63,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, logger = console }) => {
           $7, $8, $9::jsonb,
           $10, $11, $12,
           $13::jsonb, $14)
-       RETURNING id, symbol, type, recommendation, confidence, created_at`,
+       RETURNING id, symbol, type, recommendation, confidence, price_at_alert, stop_loss, take_profit, created_at`,
       [
         payload.userId,
         payload.symbol,
@@ -82,6 +82,38 @@ const createAlertEngine = ({ query, finnhub, wsHub, logger = console }) => {
       ]
     );
     return inserted.rows[0];
+  };
+
+  const setNotified = async (alertId, notified) => {
+    await query('UPDATE alerts SET notified = $2 WHERE id = $1', [alertId, Boolean(notified)]);
+  };
+
+  const notifyAndBroadcast = async ({ userId, savedAlert }) => {
+    wsHub?.broadcastAlert?.({ userId, ...savedAlert });
+
+    let sent = 0;
+    if (pushNotifier?.notifyAlert) {
+      try {
+        const out = await pushNotifier.notifyAlert({
+          userId,
+          alert: {
+            id: savedAlert.id,
+            symbol: savedAlert.symbol,
+            type: savedAlert.type,
+            recommendation: savedAlert.recommendation,
+            confidence: savedAlert.confidence,
+            priceAtAlert: Number(savedAlert.price_at_alert),
+            stopLoss: savedAlert.stop_loss ? Number(savedAlert.stop_loss) : null,
+            takeProfit: savedAlert.take_profit ? Number(savedAlert.take_profit) : null
+          }
+        });
+        sent = Number(out?.sent || 0);
+      } catch (error) {
+        logger.warn?.(`[alertEngine] push failed (${savedAlert.id})`, error?.message || error);
+      }
+    }
+
+    await setNotified(savedAlert.id, sent > 0);
   };
 
   const buildAssetFromMarketData = (symbol, quoteData, candlesData) => {
@@ -239,7 +271,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, logger = console }) => {
 
       const saved = await insertAlert(payload);
       created.push(saved);
-      wsHub?.broadcastAlert?.({ userId, ...saved });
+      await notifyAndBroadcast({ userId, savedAlert: saved });
     }
 
     for (const position of activePositions) {
@@ -264,7 +296,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, logger = console }) => {
 
       const saved = await insertAlert(payload);
       created.push(saved);
-      wsHub?.broadcastAlert?.({ userId, ...saved });
+      await notifyAndBroadcast({ userId, savedAlert: saved });
     }
 
     return {

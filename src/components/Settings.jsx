@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api/apiClient';
+import { subscribeBrowserPush } from '../lib/notifications';
 import { useApp } from '../store/AppContext';
 
 const hasStrongPasswordShape = (value) => value.length >= 8 && /[a-zA-Z]/.test(value) && /[0-9]/.test(value);
@@ -14,6 +15,48 @@ const Settings = () => {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  const [notifLoading, setNotifLoading] = useState(true);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifSubscribing, setNotifSubscribing] = useState(false);
+  const [notifError, setNotifError] = useState('');
+  const [notifSuccess, setNotifSuccess] = useState('');
+  const [notif, setNotif] = useState({
+    stopLoss: true,
+    opportunities: true,
+    groupActivity: true,
+    quietHoursStart: '',
+    quietHoursEnd: ''
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        const prefs = await api.getNotificationPreferences();
+        if (!mounted) return;
+        setNotif({
+          stopLoss: prefs.stopLoss ?? true,
+          opportunities: prefs.opportunities ?? true,
+          groupActivity: prefs.groupActivity ?? true,
+          quietHoursStart: prefs.quietHoursStart || '',
+          quietHoursEnd: prefs.quietHoursEnd || ''
+        });
+      } catch {
+        if (!mounted) return;
+        setNotifError('No se pudieron cargar preferencias de notificaciones.');
+      } finally {
+        if (mounted) setNotifLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
@@ -47,6 +90,60 @@ const Settings = () => {
       }
     } finally {
       setPasswordLoading(false);
+    }
+  };
+
+  const handleSaveNotif = async () => {
+    setNotifError('');
+    setNotifSuccess('');
+    setNotifSaving(true);
+
+    try {
+      const updated = await api.updateNotificationPreferences({
+        stopLoss: notif.stopLoss,
+        opportunities: notif.opportunities,
+        groupActivity: notif.groupActivity,
+        quietHoursStart: notif.quietHoursStart || null,
+        quietHoursEnd: notif.quietHoursEnd || null
+      });
+
+      setNotif({
+        stopLoss: updated.stopLoss,
+        opportunities: updated.opportunities,
+        groupActivity: updated.groupActivity,
+        quietHoursStart: updated.quietHoursStart || '',
+        quietHoursEnd: updated.quietHoursEnd || ''
+      });
+      setNotifSuccess('Preferencias de notificación guardadas.');
+    } catch (err) {
+      setNotifError(err?.message || 'No se pudieron guardar las preferencias.');
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  const handleEnablePush = async () => {
+    setNotifError('');
+    setNotifSuccess('');
+    setNotifSubscribing(true);
+
+    try {
+      const out = await subscribeBrowserPush();
+      if (!out.ok) {
+        const reasonMap = {
+          UNSUPPORTED: 'Tu navegador no soporta Web Push.',
+          DENIED: 'Permiso de notificaciones denegado.',
+          NO_REGISTRATION: 'No se pudo registrar el service worker.',
+          PUSH_DISABLED: 'Push no está habilitado en backend (faltan VAPID keys).'
+        };
+        setNotifError(reasonMap[out.reason] || 'No se pudo activar notificaciones push.');
+        return;
+      }
+      setNotifSuccess('Notificaciones push activadas.');
+    } catch {
+      setNotifError('No se pudo activar notificaciones push.');
+    } finally {
+      setNotifSubscribing(false);
     }
   };
 
@@ -104,6 +201,75 @@ const Settings = () => {
         <button type="button" onClick={() => actions.setConfig(local)}>
           Guardar y aplicar
         </button>
+      </div>
+
+      <div className="card">
+        <h2>Notificaciones</h2>
+        <p className="muted" style={{ marginTop: 6 }}>
+          Configurá alertas push y franjas de silencio (UTC).
+        </p>
+
+        {notifLoading ? (
+          <p className="muted" style={{ marginTop: 8 }}>Cargando preferencias...</p>
+        ) : (
+          <>
+            <div className="grid grid-2" style={{ marginTop: 10 }}>
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={notif.stopLoss}
+                  onChange={(e) => setNotif((p) => ({ ...p, stopLoss: e.target.checked }))}
+                />
+                <span className="muted">Stop loss</span>
+              </label>
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={notif.opportunities}
+                  onChange={(e) => setNotif((p) => ({ ...p, opportunities: e.target.checked }))}
+                />
+                <span className="muted">Oportunidades</span>
+              </label>
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={notif.groupActivity}
+                  onChange={(e) => setNotif((p) => ({ ...p, groupActivity: e.target.checked }))}
+                />
+                <span className="muted">Actividad de grupos</span>
+              </label>
+              <div />
+              <label className="label">
+                <span className="muted">Silencio desde (UTC)</span>
+                <input
+                  type="time"
+                  value={notif.quietHoursStart}
+                  onChange={(e) => setNotif((p) => ({ ...p, quietHoursStart: e.target.value }))}
+                />
+              </label>
+              <label className="label">
+                <span className="muted">Silencio hasta (UTC)</span>
+                <input
+                  type="time"
+                  value={notif.quietHoursEnd}
+                  onChange={(e) => setNotif((p) => ({ ...p, quietHoursEnd: e.target.value }))}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={handleSaveNotif} disabled={notifSaving}>
+                {notifSaving ? 'Guardando...' : 'Guardar preferencias'}
+              </button>
+              <button type="button" onClick={handleEnablePush} disabled={notifSubscribing}>
+                {notifSubscribing ? 'Activando...' : 'Activar notificaciones push'}
+              </button>
+            </div>
+
+            {notifError && <div className="card" style={{ borderColor: '#FF4757AA', marginTop: 10 }}>{notifError}</div>}
+            {notifSuccess && <div className="card" style={{ borderColor: '#00E08E88', marginTop: 10 }}>{notifSuccess}</div>}
+          </>
+        )}
       </div>
 
       <div className="card">

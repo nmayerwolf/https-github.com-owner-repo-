@@ -11,6 +11,7 @@ const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const { createAlertEngine } = require('./services/alertEngine');
+const { createPushNotifier } = require('./services/push');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -58,8 +59,9 @@ app.use(errorHandler);
 const startHttpServer = ({ port = env.port } = {}) => {
   const server = http.createServer(app);
   const wsHub = startWSHub(server);
+  const pushNotifier = createPushNotifier({ query, logger: console });
 
-  const alertEngine = createAlertEngine({ query, finnhub, wsHub, logger: console });
+  const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, logger: console });
   const cronTasks = buildTasks(env, {
     us: () => alertEngine.runGlobalCycle(),
     crypto: () => alertEngine.runGlobalCycle(),
@@ -72,6 +74,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
     console.log(`nexusfin-api listening on :${port}`);
     console.log(`ws hub ready on :${port}/ws`);
     console.log(`cron ${cronRuntime.enabled ? 'enabled' : 'disabled'}`);
+    console.log(`push ${pushNotifier.hasVapidConfig ? 'enabled' : 'disabled'}`);
   });
 
   const shutdown = () => {
@@ -83,7 +86,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  return { server, wsHub, cronRuntime, alertEngine };
+  return { server, wsHub, cronRuntime, alertEngine, pushNotifier };
 };
 
 if (require.main === module) {

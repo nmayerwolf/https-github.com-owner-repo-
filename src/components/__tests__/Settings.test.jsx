@@ -1,11 +1,13 @@
 /* @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiMock, appCtxMock } = vi.hoisted(() => ({
+const { apiMock, appCtxMock, subscribeBrowserPushMock } = vi.hoisted(() => ({
   apiMock: {
-    resetPassword: vi.fn()
+    resetPassword: vi.fn(),
+    getNotificationPreferences: vi.fn(),
+    updateNotificationPreferences: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -21,11 +23,16 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
     actions: {
       setConfig: vi.fn()
     }
-  }
+  },
+  subscribeBrowserPushMock: vi.fn()
 }));
 
 vi.mock('../../api/apiClient', () => ({
   api: apiMock
+}));
+
+vi.mock('../../lib/notifications', () => ({
+  subscribeBrowserPush: subscribeBrowserPushMock
 }));
 
 vi.mock('../../store/AppContext', () => ({
@@ -41,7 +48,18 @@ afterEach(() => {
 describe('Settings', () => {
   beforeEach(() => {
     apiMock.resetPassword.mockReset();
+    apiMock.getNotificationPreferences.mockReset();
+    apiMock.updateNotificationPreferences.mockReset();
     appCtxMock.actions.setConfig.mockReset();
+    subscribeBrowserPushMock.mockReset();
+
+    apiMock.getNotificationPreferences.mockResolvedValue({
+      stopLoss: true,
+      opportunities: true,
+      groupActivity: true,
+      quietHoursStart: null,
+      quietHoursEnd: null
+    });
   });
 
   it('updates password successfully', async () => {
@@ -81,5 +99,40 @@ describe('Settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }));
 
     expect(await screen.findByText('La contraseña actual es incorrecta.')).toBeTruthy();
+  });
+
+  it('saves notification preferences', async () => {
+    apiMock.updateNotificationPreferences.mockResolvedValueOnce({
+      stopLoss: false,
+      opportunities: true,
+      groupActivity: true,
+      quietHoursStart: '23:00',
+      quietHoursEnd: '08:00'
+    });
+
+    render(<Settings />);
+
+    await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByLabelText('Stop loss'));
+    fireEvent.change(screen.getByLabelText('Silencio desde (UTC)'), { target: { value: '23:00' } });
+    fireEvent.change(screen.getByLabelText('Silencio hasta (UTC)'), { target: { value: '08:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar preferencias' }));
+
+    await waitFor(() => expect(apiMock.updateNotificationPreferences).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Preferencias de notificación guardadas.')).toBeTruthy();
+  });
+
+  it('activates browser push from settings', async () => {
+    subscribeBrowserPushMock.mockResolvedValueOnce({ ok: true });
+
+    render(<Settings />);
+
+    await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones push' }));
+
+    await waitFor(() => expect(subscribeBrowserPushMock).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Notificaciones push activadas.')).toBeTruthy();
   });
 });

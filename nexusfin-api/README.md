@@ -26,6 +26,9 @@ ALPHA_VANTAGE_KEY=<key>
 FRONTEND_URL=http://localhost:5173
 NODE_ENV=development
 CRON_ENABLED=false
+VAPID_PUBLIC_KEY=<vapid-public>
+VAPID_PRIVATE_KEY=<vapid-private>
+VAPID_SUBJECT=mailto:admin@nexusfin.app
 CRON_MARKET_INTERVAL=5
 CRON_CRYPTO_INTERVAL=15
 CRON_FOREX_INTERVAL=15
@@ -72,6 +75,7 @@ Alerts (Fase 3 foundation):
 - `POST /api/alerts/:id/share`
 
 Notifications (Fase 3 foundation):
+- `GET /api/notifications/vapid-public-key`
 - `POST /api/notifications/subscribe`
 - `GET /api/notifications/preferences`
 - `PUT /api/notifications/preferences`
