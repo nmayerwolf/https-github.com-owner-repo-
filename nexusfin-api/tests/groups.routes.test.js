@@ -59,6 +59,41 @@ describe('groups routes', () => {
     expect(res.body.error).toBe('GROUP_MEMBER_LIMIT_REACHED');
   });
 
+  it('allows admin to rename group', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Nuevo Nombre', code: 'NXF-A7K2M' }] })
+      .mockResolvedValueOnce({ rows: [{ total: 3 }] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).patch('/api/groups/g1').send({ name: 'Nuevo Nombre' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Nuevo Nombre');
+    expect(res.body.role).toBe('admin');
+    expect(res.body.members).toBe(3);
+  });
+
+  it('rejects rename when requester is not admin', async () => {
+    query.mockResolvedValueOnce({ rows: [{ role: 'member' }] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).patch('/api/groups/g1').send({ name: 'Nuevo Nombre' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('ADMIN_ONLY');
+  });
+
+  it('rejects rename when name is empty', async () => {
+    query.mockResolvedValueOnce({ rows: [{ role: 'admin' }] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).patch('/api/groups/g1').send({ name: '   ' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
   it('prevents admin from removing another admin', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })

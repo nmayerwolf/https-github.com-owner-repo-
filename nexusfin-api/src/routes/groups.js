@@ -98,6 +98,25 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const role = await memberRole(req.params.id, req.user.id);
+    if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+    if (role !== 'admin') throw forbidden('Solo admin puede editar el grupo', 'ADMIN_ONLY');
+
+    const name = String(req.body.name || '').trim();
+    if (!name) throw badRequest('Nombre requerido', 'VALIDATION_ERROR');
+
+    const updated = await query('UPDATE groups SET name =  WHERE id =  RETURNING id, name, code', [name, req.params.id]);
+    if (!updated.rows.length) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+
+    const members = await groupMemberCount(req.params.id);
+    return res.json({ ...updated.rows[0], role: 'admin', members });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const role = await memberRole(req.params.id, req.user.id);
