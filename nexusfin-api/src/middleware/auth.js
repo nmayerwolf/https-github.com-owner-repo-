@@ -49,7 +49,7 @@ const authRequired = async (req, res, next) => {
   try {
     const header = req.headers.authorization || '';
     const [scheme, token] = header.split(' ');
-    if (scheme !== 'Bearer' || !token) throw unauthorized('Token requerido');
+    if (scheme !== 'Bearer' || !token) throw unauthorized('Token requerido', 'TOKEN_REQUIRED');
 
     const payload = jwt.verify(token, env.jwtSecret);
     const session = await query('SELECT id FROM sessions WHERE user_id = $1 AND token_hash = $2 AND expires_at > NOW()', [
@@ -70,6 +70,9 @@ const authRequired = async (req, res, next) => {
 
     return next();
   } catch (error) {
+    if (error?.status === 401) {
+      return next(error);
+    }
     return next(unauthorized('Token inválido o expirado', 'TOKEN_EXPIRED'));
   }
 };

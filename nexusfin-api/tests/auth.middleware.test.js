@@ -31,12 +31,45 @@ const makeApp = () => {
   return app;
 };
 
-describe('auth middleware auto-refresh', () => {
+describe('auth middleware', () => {
   beforeEach(() => {
     query.mockReset();
     jwt.verify.mockReset();
     jwt.sign.mockReset();
     jwt.sign.mockReturnValue('refreshed.jwt.token');
+  });
+
+  it('returns TOKEN_REQUIRED when auth header is missing', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/protected');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('TOKEN_REQUIRED');
+  });
+
+  it('returns INVALID_SESSION when token signature is valid but session is not found', async () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    jwt.verify.mockReturnValueOnce({ userId: 'u1', email: 'user@mail.com', exp: now + 60 * 60 * 48 });
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp();
+    const res = await request(app).get('/protected').set('Authorization', 'Bearer valid.token');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('INVALID_SESSION');
+  });
+
+  it('returns TOKEN_EXPIRED when JWT verification fails', async () => {
+    jwt.verify.mockImplementationOnce(() => {
+      throw new Error('jwt expired');
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/protected').set('Authorization', 'Bearer expired.token');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('TOKEN_EXPIRED');
   });
 
   it('adds X-Refresh-Token when token expires within 24h', async () => {
