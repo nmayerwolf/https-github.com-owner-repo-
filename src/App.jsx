@@ -56,7 +56,7 @@ const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
 
 const App = () => {
   const { state, actions } = useApp();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, loading: authLoading } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
@@ -135,6 +135,10 @@ const App = () => {
       clearInterval(id);
     };
   }, [isAuthenticated]);
+
+  if (authLoading) {
+    return <LoadingScreen loaded={0} total={1} />;
+  }
 
   if (!isAuthenticated) {
     return <AuthScreen />;

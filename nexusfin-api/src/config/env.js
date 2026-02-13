@@ -24,10 +24,12 @@ const env = {
   port: Number(process.env.PORT || 3001),
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET,
+  csrfSecret: process.env.CSRF_SECRET || process.env.JWT_SECRET,
   finnhubKey: process.env.FINNHUB_KEY || '',
   alphaVantageKey: process.env.ALPHA_VANTAGE_KEY || '',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   nodeEnv: process.env.NODE_ENV || 'development',
+  cookieDomain: process.env.COOKIE_DOMAIN || '',
 
   cronEnabled: asBool(process.env.CRON_ENABLED, false),
   cronMarketIntervalMinutes: asPositiveInt(process.env.CRON_MARKET_INTERVAL, 5),

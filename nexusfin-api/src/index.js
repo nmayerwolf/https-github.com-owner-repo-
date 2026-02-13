@@ -1,10 +1,11 @@
 const http = require('http');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const express = require('express');
 const helmet = require('helmet');
 const { env } = require('./config/env');
 const { query } = require('./config/db');
-const { authRequired } = require('./middleware/auth');
+const { authRequired, requireCsrf } = require('./middleware/auth');
 const { errorHandler } = require('./middleware/errorHandler');
 const { authLimiter, marketLimiter } = require('./middleware/rateLimiter');
 const { startWSHub } = require('./realtime/wsHub');
@@ -29,10 +30,11 @@ app.use(helmet());
 app.use(
   cors({
     origin: env.frontendUrl,
-    credentials: false,
+    credentials: true,
     exposedHeaders: ['X-Refresh-Token']
   })
 );
+app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', async (_req, res) => {
@@ -46,13 +48,13 @@ app.get('/api/health', async (_req, res) => {
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/market', authRequired, marketLimiter, marketRoutes);
-app.use('/api/portfolio', authRequired, portfolioRoutes);
-app.use('/api/config', authRequired, configRoutes);
-app.use('/api/watchlist', authRequired, watchlistRoutes);
-app.use('/api/groups', authRequired, groupsRoutes);
-app.use('/api/alerts', authRequired, alertsRoutes);
-app.use('/api/notifications', authRequired, notificationsRoutes);
-app.use('/api/migrate', authRequired, migrateRoutes);
+app.use('/api/portfolio', authRequired, requireCsrf, portfolioRoutes);
+app.use('/api/config', authRequired, requireCsrf, configRoutes);
+app.use('/api/watchlist', authRequired, requireCsrf, watchlistRoutes);
+app.use('/api/groups', authRequired, requireCsrf, groupsRoutes);
+app.use('/api/alerts', authRequired, requireCsrf, alertsRoutes);
+app.use('/api/notifications', authRequired, requireCsrf, notificationsRoutes);
+app.use('/api/migrate', authRequired, requireCsrf, migrateRoutes);
 
 app.use(errorHandler);
 

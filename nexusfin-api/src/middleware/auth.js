@@ -20,6 +20,62 @@ const issueToken = (user) =>
     { expiresIn: '7d' }
   );
 
+const issueCsrfToken = (rawToken) => {
+  if (!rawToken) return null;
+  return crypto.createHmac('sha256', env.csrfSecret).update(rawToken).digest('hex');
+};
+
+const verifyCsrfToken = (rawToken, csrfToken) => {
+  const expected = issueCsrfToken(rawToken);
+  if (!expected || !csrfToken) return false;
+
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(String(csrfToken));
+  if (expectedBuf.length !== providedBuf.length) return false;
+
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
+};
+
+const cookieOptions = () => ({
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: env.nodeEnv === 'production',
+  path: '/api',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
+});
+
+const clearCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: env.nodeEnv === 'production',
+  path: '/api',
+  ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
+});
+
+const setAuthCookies = (res, rawToken) => {
+  res.cookie('nxf_token', rawToken, cookieOptions());
+};
+
+const clearAuthCookies = (res) => {
+  res.clearCookie('nxf_token', clearCookieOptions());
+};
+
+const resolveRequestToken = (req) => {
+  const header = req.headers.authorization || '';
+  const [scheme, token] = header.split(' ');
+  if (scheme === 'Bearer' && token) {
+    return { mode: 'bearer', token };
+  }
+
+  const cookieToken = req.cookies?.nxf_token;
+  if (cookieToken) {
+    return { mode: 'cookie', token: cookieToken };
+  }
+
+  return { mode: null, token: null };
+};
+
 const storeSession = async (userId, rawToken) => {
   await query(`INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')`, [
     userId,
@@ -47,25 +103,30 @@ const shouldAutoRefresh = (payload) => {
 
 const authRequired = async (req, res, next) => {
   try {
-    const header = req.headers.authorization || '';
-    const [scheme, token] = header.split(' ');
-    if (scheme !== 'Bearer' || !token) throw unauthorized('Token requerido', 'TOKEN_REQUIRED');
+    const resolved = resolveRequestToken(req);
+    if (!resolved.token) throw unauthorized('Token requerido', 'TOKEN_REQUIRED');
 
-    const payload = jwt.verify(token, env.jwtSecret);
+    const payload = jwt.verify(resolved.token, env.jwtSecret);
     const session = await query('SELECT id FROM sessions WHERE user_id = $1 AND token_hash = $2 AND expires_at > NOW()', [
       payload.userId,
-      tokenHash(token)
+      tokenHash(resolved.token)
     ]);
     if (!session.rows.length) throw unauthorized('Sesión inválida', 'INVALID_SESSION');
 
     req.user = { id: payload.userId, email: payload.email };
     req.tokenPayload = payload;
-    req.rawToken = token;
+    req.rawToken = resolved.token;
+    req.authMode = resolved.mode;
 
     if (shouldAutoRefresh(payload)) {
       const refreshed = issueToken(req.user);
       await storeSession(req.user.id, refreshed);
-      res.setHeader('X-Refresh-Token', refreshed);
+
+      if (resolved.mode === 'cookie') {
+        setAuthCookies(res, refreshed);
+      } else {
+        res.setHeader('X-Refresh-Token', refreshed);
+      }
     }
 
     return next();
@@ -77,4 +138,31 @@ const authRequired = async (req, res, next) => {
   }
 };
 
-module.exports = { authRequired, tokenHash, issueToken, storeSession, shouldAutoRefresh };
+const requireCsrf = (req, _res, next) => {
+  const method = String(req.method || '').toUpperCase();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return next();
+
+  if (req.authMode !== 'cookie') return next();
+
+  const csrf = req.headers['x-csrf-token'];
+  const ok = verifyCsrfToken(req.rawToken, csrf);
+  if (!ok) {
+    return next(unauthorized('CSRF token inválido o faltante', 'CSRF_INVALID'));
+  }
+
+  return next();
+};
+
+module.exports = {
+  authRequired,
+  requireCsrf,
+  tokenHash,
+  issueToken,
+  issueCsrfToken,
+  verifyCsrfToken,
+  storeSession,
+  shouldAutoRefresh,
+  setAuthCookies,
+  clearAuthCookies,
+  resolveRequestToken
+};

@@ -1,29 +1,45 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { api, setAuthFailureHandler, setToken } from '../api/apiClient';
+import { api, setAuthFailureHandler, setCsrfToken, setToken } from '../api/apiClient';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [tokenState, setTokenState] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [sessionNotice, setSessionNotice] = useState('');
 
   const clearLocalSession = (notice = '') => {
     setToken(null);
+    setCsrfToken(null);
     setTokenState(null);
     setUser(null);
     setSessionNotice(notice);
   };
 
+  const hydrateSession = async () => {
+    try {
+      const me = await api.me();
+      const csrf = await api.getCsrf();
+      setCsrfToken(csrf?.csrfToken || null);
+      setUser(me || null);
+      setTokenState('cookie');
+      setSessionNotice('');
+      return me;
+    } catch {
+      clearLocalSession('');
+      return null;
+    }
+  };
+
   const logout = async (notice = '', options = {}) => {
     const { remote = true } = options;
 
-    if (remote && tokenState) {
+    if (remote) {
       try {
         await api.logout();
       } catch {
-        // Even if backend logout fails, close local session to avoid stale auth state.
+        // Keep local logout behavior even if backend fails.
       }
     }
 
@@ -38,16 +54,33 @@ export const AuthProvider = ({ children }) => {
     return () => {
       setAuthFailureHandler(null);
     };
-  }, [tokenState]);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      setLoading(true);
+      await hydrateSession();
+      if (mounted) setLoading(false);
+    };
+
+    init();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const login = async (email, password) => {
     setLoading(true);
     try {
       const out = await api.login(email, password);
-      setToken(out.token);
-      setTokenState(out.token);
-      setUser(out.user || null);
-      setSessionNotice('');
+      if (out?.token) {
+        setToken(out.token);
+        setTokenState(out.token);
+      }
+      await hydrateSession();
       return out;
     } finally {
       setLoading(false);
@@ -58,10 +91,11 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const out = await api.register(email, password);
-      setToken(out.token);
-      setTokenState(out.token);
-      setUser(out.user || null);
-      setSessionNotice('');
+      if (out?.token) {
+        setToken(out.token);
+        setTokenState(out.token);
+      }
+      await hydrateSession();
       return out;
     } finally {
       setLoading(false);
@@ -74,7 +108,7 @@ export const AuthProvider = ({ children }) => {
     () => ({
       user,
       token: tokenState,
-      isAuthenticated: !!tokenState,
+      isAuthenticated: !!user,
       loading,
       login,
       register,

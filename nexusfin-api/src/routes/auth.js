@@ -1,7 +1,16 @@
 const bcrypt = require('bcryptjs');
 const express = require('express');
 const { query } = require('../config/db');
-const { authRequired, issueToken, storeSession, tokenHash } = require('../middleware/auth');
+const {
+  authRequired,
+  requireCsrf,
+  issueCsrfToken,
+  issueToken,
+  storeSession,
+  tokenHash,
+  setAuthCookies,
+  clearAuthCookies
+} = require('../middleware/auth');
 const { conflict, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
 
@@ -23,6 +32,8 @@ const recordAttempt = async (email, success) => {
   await query('INSERT INTO login_attempts (email, success) VALUES ($1, $2)', [email, success]);
 };
 
+const isMobileClient = (req) => String(req.headers['x-client-platform'] || '').toLowerCase() === 'mobile';
+
 router.post('/register', async (req, res, next) => {
   try {
     const email = validateEmail(req.body.email);
@@ -40,8 +51,12 @@ router.post('/register', async (req, res, next) => {
     const user = created.rows[0];
     const token = issueToken(user);
     await storeSession(user.id, token);
+    setAuthCookies(res, token);
 
-    return res.status(201).json({ token, user: { id: user.id, email: user.email, createdAt: user.created_at } });
+    const body = { user: { id: user.id, email: user.email, createdAt: user.created_at } };
+    if (isMobileClient(req)) body.token = token;
+
+    return res.status(201).json(body);
   } catch (error) {
     return next(error);
   }
@@ -70,37 +85,48 @@ router.post('/login', async (req, res, next) => {
     await recordAttempt(email, true);
     const token = issueToken(user);
     await storeSession(user.id, token);
+    setAuthCookies(res, token);
 
-    return res.json({ token, user: { id: user.id, email: user.email } });
+    const body = { user: { id: user.id, email: user.email } };
+    if (isMobileClient(req)) body.token = token;
+
+    return res.json(body);
   } catch (error) {
     return next(error);
   }
 });
 
-router.post('/refresh', authRequired, async (req, res, next) => {
+router.post('/refresh', authRequired, requireCsrf, async (req, res, next) => {
   try {
     const user = req.user;
     const token = issueToken(user);
     await storeSession(user.id, token);
+
+    if (req.authMode === 'cookie') {
+      setAuthCookies(res, token);
+      return res.json({ ok: true });
+    }
+
     return res.json({ token });
   } catch (error) {
     return next(error);
   }
 });
 
-router.post('/logout', authRequired, async (req, res, next) => {
+router.post('/logout', authRequired, requireCsrf, async (req, res, next) => {
   try {
     const rawToken = req.rawToken;
     if (!rawToken) throw unauthorized('Token requerido', 'TOKEN_REQUIRED');
 
     await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash = $2', [req.user.id, tokenHash(rawToken)]);
+    clearAuthCookies(res);
     return res.status(204).end();
   } catch (error) {
     return next(error);
   }
 });
 
-router.post('/reset-password', authRequired, async (req, res, next) => {
+router.post('/reset-password', authRequired, requireCsrf, async (req, res, next) => {
   try {
     const userId = req.user?.id;
     const currentPassword = String(req.body.currentPassword || '');
@@ -122,6 +148,33 @@ router.post('/reset-password', authRequired, async (req, res, next) => {
     }
 
     return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/csrf', authRequired, async (req, res) => {
+  const csrfToken = issueCsrfToken(req.rawToken);
+  return res.json({ csrfToken });
+});
+
+router.get('/me', authRequired, async (req, res, next) => {
+  try {
+    const out = await query('SELECT id, email, display_name, avatar_url, auth_provider, onboarding_completed FROM users WHERE id = $1', [
+      req.user.id
+    ]);
+    const row = out.rows[0];
+
+    if (!row) throw unauthorized('No autorizado', 'UNAUTHORIZED');
+
+    return res.json({
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name || null,
+      avatar: row.avatar_url || null,
+      authProvider: row.auth_provider || 'email',
+      onboardingCompleted: !!row.onboarding_completed
+    });
   } catch (error) {
     return next(error);
   }
