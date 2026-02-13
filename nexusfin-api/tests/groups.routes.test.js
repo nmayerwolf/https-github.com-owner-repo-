@@ -51,6 +51,15 @@ describe('groups routes', () => {
     expect(res.body.error).toBe('GROUP_LIMIT_REACHED');
   });
 
+  it('rejects join with invalid invitation code format', async () => {
+    const app = makeApp('u-admin');
+    const res = await request(app).post('/api/groups/join').send({ code: 'invalid-code' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('rejects join when target group is full', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Mi Grupo', code: 'NXF-A7K2M' }] })
@@ -200,5 +209,37 @@ describe('groups routes', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('GROUP_NOT_FOUND');
+  });
+
+  it('promotes oldest member to admin when last admin leaves', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ user_id: 'u-member-oldest', role: 'member' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).delete('/api/groups/g1/leave');
+
+    expect(res.status).toBe(204);
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      "UPDATE group_members SET role = 'admin' WHERE group_id = $1 AND user_id = $2",
+      ['g1', 'u-member-oldest']
+    );
+  });
+
+  it('deletes group when last member leaves', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).delete('/api/groups/g1/leave');
+
+    expect(res.status).toBe(204);
+    expect(query).toHaveBeenNthCalledWith(4, 'DELETE FROM groups WHERE id = $1', ['g1']);
   });
 });
