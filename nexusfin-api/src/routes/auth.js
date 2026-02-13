@@ -29,7 +29,7 @@ const enforceLoginLock = async (email) => {
     [email]
   );
   if (recent.rows[0].failures >= 5) {
-    throw tooManyRequests('Demasiados intentos. Esperá 15 minutos.', 'TOO_MANY_ATTEMPTS');
+    throw tooManyRequests('Demasiados intentos. Esperá 15 minutos.', 'TOO_MANY_ATTEMPTS', { retryAfter: 900 });
   }
 };
 
