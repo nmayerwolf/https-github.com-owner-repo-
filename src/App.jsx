@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './api/apiClient';
 import Navigation from './components/Navigation';
@@ -59,6 +59,7 @@ const App = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
+  const [backendOffline, setBackendOffline] = useState(false);
 
   const migrationPayload = useMemo(() => {
     try {
@@ -110,6 +111,31 @@ const App = () => {
     }
   };
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setBackendOffline(false);
+      return undefined;
+    }
+
+    let active = true;
+    const checkHealth = async () => {
+      try {
+        await api.health();
+        if (active) setBackendOffline(false);
+      } catch {
+        if (active) setBackendOffline(true);
+      }
+    };
+
+    checkHealth();
+    const id = setInterval(checkHealth, 30000);
+
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [isAuthenticated]);
+
   if (!isAuthenticated) {
     return <AuthScreen />;
   }
@@ -150,6 +176,13 @@ const App = () => {
           <HealthBadge label={`Alpha ${state.apiHealth.alphavantage.calls}/${state.apiHealth.alphavantage.errors}`} ok={alphaOk} detail={state.apiHealth.alphavantage.lastError || 'OK'} />
           <HealthBadge label={`Claude ${state.apiHealth.claude.calls}/${state.apiHealth.claude.errors}`} ok={claudeOk} detail={state.apiHealth.claude.lastError || 'OK'} />
         </div>
+
+        {backendOffline && (
+          <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }}>
+            <strong>Modo offline</strong>
+            <div className="muted">No se pudo conectar con el backend. Verificá tu conexión o VITE_API_URL.</div>
+          </section>
+        )}
 
         {!!state.uiErrors.length && (
           <section className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>
