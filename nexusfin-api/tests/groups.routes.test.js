@@ -12,8 +12,13 @@ jest.mock('../src/services/groupCode', () => ({
   generateUniqueGroupCode: jest.fn()
 }));
 
+jest.mock('../src/services/finnhub', () => ({
+  quote: jest.fn()
+}));
+
 const { query } = require('../src/config/db');
 const { generateUniqueGroupCode } = require('../src/services/groupCode');
+const { quote } = require('../src/services/finnhub');
 const groupsRoutes = require('../src/routes/groups');
 const { errorHandler } = require('../src/middleware/errorHandler');
 
@@ -33,6 +38,7 @@ describe('groups routes', () => {
   beforeEach(() => {
     query.mockReset();
     generateUniqueGroupCode.mockReset();
+    quote.mockReset();
   });
 
   it('rejects create group when user already has 5 groups', async () => {
@@ -133,7 +139,7 @@ describe('groups routes', () => {
     expect(res.body.error).toBe('GROUP_MEMBER_NOT_FOUND');
   });
 
-  it('returns group detail with privacy-safe member positions', async () => {
+  it('returns group detail with privacy-safe member positions and computed plPercent', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Mi Grupo', code: 'NXF-A7K2M' }] })
@@ -143,8 +149,10 @@ describe('groups routes', () => {
           { user_id: 'u-member', role: 'member', joined_at: '2026-02-13T10:01:00Z', display_name: 'amigo' }
         ]
       })
-      .mockResolvedValueOnce({ rows: [{ symbol: 'AAPL', category: 'equity', quantity: '10' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ symbol: 'AAPL', category: 'equity', quantity: '10', buy_price: '100' }] })
+      .mockResolvedValueOnce({ rows: [{ symbol: 'AAPL', category: 'equity', quantity: '2', buy_price: '120' }] });
+
+    quote.mockResolvedValue({ c: 110 });
 
     const app = makeApp('u-admin');
     const res = await request(app).get('/api/groups/g1');
@@ -158,9 +166,30 @@ describe('groups routes', () => {
       userId: 'u-admin',
       displayName: 'owner',
       role: 'admin',
-      positions: [{ symbol: 'AAPL', category: 'equity', quantity: 10, plPercent: null }]
+      positions: [{ symbol: 'AAPL', category: 'equity', quantity: 10, plPercent: 10 }]
     });
     expect(res.body.members[0].positions[0].buyPrice).toBeUndefined();
+    expect(res.body.members[1].positions[0].plPercent).toBeCloseTo(-8.3333, 4);
+    expect(quote).toHaveBeenCalledTimes(1);
+    expect(quote).toHaveBeenCalledWith('AAPL');
+  });
+
+  it('keeps plPercent as null when quote lookup fails', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'admin' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Mi Grupo', code: 'NXF-A7K2M' }] })
+      .mockResolvedValueOnce({
+        rows: [{ user_id: 'u-admin', role: 'admin', joined_at: '2026-02-13T10:00:00Z', display_name: 'owner' }]
+      })
+      .mockResolvedValueOnce({ rows: [{ symbol: 'TSLA', category: 'equity', quantity: '1', buy_price: '200' }] });
+
+    quote.mockRejectedValueOnce(new Error('rate limited'));
+
+    const app = makeApp('u-admin');
+    const res = await request(app).get('/api/groups/g1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.members[0].positions[0].plPercent).toBeNull();
   });
 
   it('returns 404 on group detail when requester is not member', async () => {
