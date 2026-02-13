@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../store/AuthContext';
 
 const AuthScreen = () => {
-  const { login, register, loading } = useAuth();
+  const { login, register, loading, sessionNotice, clearSessionNotice } = useAuth();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -12,6 +12,7 @@ const AuthScreen = () => {
   const submit = async (e) => {
     e.preventDefault();
     setError('');
+    clearSessionNotice();
 
     if (mode === 'register' && password !== confirm) {
       setError('Las contraseñas no coinciden.');
@@ -33,6 +34,8 @@ const AuthScreen = () => {
         <p className="muted" style={{ marginTop: 6 }}>
           NexusFin Fase 2
         </p>
+
+        {sessionNotice && <div className="card" style={{ marginTop: 10, borderColor: '#FBBF24AA' }}>{sessionNotice}</div>}
 
         <form onSubmit={submit} className="grid" style={{ marginTop: 10 }}>
           <label className="label">
@@ -61,7 +64,13 @@ const AuthScreen = () => {
 
         <div className="row" style={{ marginTop: 10 }}>
           <span className="muted">{mode === 'login' ? '¿No tenés cuenta?' : '¿Ya tenés cuenta?'}</span>
-          <button type="button" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+          <button
+            type="button"
+            onClick={() => {
+              clearSessionNotice();
+              setMode(mode === 'login' ? 'register' : 'login');
+            }}
+          >
             {mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión'}
           </button>
         </div>
