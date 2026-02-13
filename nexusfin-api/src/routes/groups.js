@@ -1,6 +1,6 @@
 const express = require('express');
 const { query } = require('../config/db');
-const { forbidden, notFound } = require('../utils/errors');
+const { badRequest, forbidden, notFound } = require('../utils/errors');
 const { generateUniqueGroupCode } = require('../services/groupCode');
 
 const router = express.Router();
@@ -8,6 +8,11 @@ const router = express.Router();
 const memberRole = async (groupId, userId) => {
   const found = await query('SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
   return found.rows[0]?.role || null;
+};
+
+const memberRecord = async (groupId, userId) => {
+  const found = await query('SELECT user_id, role FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+  return found.rows[0] || null;
 };
 
 router.post('/', async (req, res, next) => {
@@ -104,8 +109,20 @@ router.get('/:id', async (req, res, next) => {
 
 router.delete('/:id/members/:userId', async (req, res, next) => {
   try {
-    const role = await memberRole(req.params.id, req.user.id);
-    if (role !== 'admin') throw forbidden('Solo admin puede eliminar miembros', 'ADMIN_ONLY');
+    const requesterRole = await memberRole(req.params.id, req.user.id);
+    if (!requesterRole) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+    if (requesterRole !== 'admin') throw forbidden('Solo admin puede eliminar miembros', 'ADMIN_ONLY');
+
+    if (req.params.userId === req.user.id) {
+      throw badRequest('Usá la acción salir del grupo para tu propio usuario', 'USE_LEAVE_FOR_SELF');
+    }
+
+    const target = await memberRecord(req.params.id, req.params.userId);
+    if (!target) throw notFound('Miembro no encontrado', 'GROUP_MEMBER_NOT_FOUND');
+
+    if (target.role === 'admin') {
+      throw forbidden('No se puede eliminar a un admin del grupo', 'CANNOT_REMOVE_ADMIN');
+    }
 
     await query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [req.params.id, req.params.userId]);
     return res.status(204).end();
