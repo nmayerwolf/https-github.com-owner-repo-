@@ -86,6 +86,7 @@ Health:
 Realtime scaffold (Fase 3):
 - `WS /ws?token=<jwt>`
 - cron worker configurable por `CRON_*` vars
+- alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
 
 ## Reglas importantes
 

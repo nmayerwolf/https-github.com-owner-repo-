@@ -8,7 +8,9 @@ const { authRequired } = require('./middleware/auth');
 const { errorHandler } = require('./middleware/errorHandler');
 const { authLimiter, marketLimiter } = require('./middleware/rateLimiter');
 const { startWSHub } = require('./realtime/wsHub');
-const { startMarketCron } = require('./workers/marketCron');
+const { startMarketCron, buildTasks } = require('./workers/marketCron');
+const finnhub = require('./services/finnhub');
+const { createAlertEngine } = require('./services/alertEngine');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -56,7 +58,15 @@ app.use(errorHandler);
 const startHttpServer = ({ port = env.port } = {}) => {
   const server = http.createServer(app);
   const wsHub = startWSHub(server);
-  const cronRuntime = startMarketCron();
+
+  const alertEngine = createAlertEngine({ query, finnhub, wsHub, logger: console });
+  const cronTasks = buildTasks(env, {
+    us: () => alertEngine.runGlobalCycle(),
+    crypto: () => alertEngine.runGlobalCycle(),
+    forex: () => alertEngine.runGlobalCycle(),
+    commodity: () => alertEngine.runGlobalCycle()
+  });
+  const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console });
 
   server.listen(port, () => {
     console.log(`nexusfin-api listening on :${port}`);
@@ -73,7 +83,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  return { server, wsHub, cronRuntime };
+  return { server, wsHub, cronRuntime, alertEngine };
 };
 
 if (require.main === module) {
