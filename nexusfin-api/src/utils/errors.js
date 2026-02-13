@@ -12,6 +12,7 @@ const unauthorized = (message = 'No autorizado', code = 'UNAUTHORIZED') => new A
 const forbidden = (message = 'Operación no permitida', code = 'FORBIDDEN') => new AppError(403, code, message);
 const notFound = (message = 'No encontrado', code = 'NOT_FOUND') => new AppError(404, code, message);
 const conflict = (message, code = 'CONFLICT') => new AppError(409, code, message);
-const tooManyRequests = (message = 'Demasiados intentos', code = 'TOO_MANY_REQUESTS') => new AppError(429, code, message);
+const tooManyRequests = (message = 'Demasiados intentos', code = 'TOO_MANY_REQUESTS', details = null) =>
+  new AppError(429, code, message, details);
 
 module.exports = { AppError, badRequest, unauthorized, forbidden, notFound, conflict, tooManyRequests };
