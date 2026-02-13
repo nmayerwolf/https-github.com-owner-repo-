@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, forbidden, notFound } = require('../utils/errors');
 const { generateUniqueGroupCode } = require('../services/groupCode');
+const finnhub = require('../services/finnhub');
 
 const router = express.Router();
 
@@ -26,6 +27,30 @@ const userGroupCount = async (userId) => {
 const groupMemberCount = async (groupId) => {
   const out = await query('SELECT COUNT(*)::int AS total FROM group_members WHERE group_id = $1', [groupId]);
   return Number(out.rows[0]?.total || 0);
+};
+
+const parseQuotePrice = (quote) => {
+  const price = Number(quote?.c);
+  return Number.isFinite(price) && price > 0 ? price : null;
+};
+
+const calcPLPercent = (buyPrice, currentPrice) => {
+  if (!Number.isFinite(buyPrice) || buyPrice <= 0) return null;
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+  return ((currentPrice - buyPrice) / buyPrice) * 100;
+};
+
+const getQuotePrice = async (symbol, quoteCache) => {
+  if (quoteCache.has(symbol)) return quoteCache.get(symbol);
+
+  try {
+    const price = parseQuotePrice(await finnhub.quote(symbol));
+    quoteCache.set(symbol, price);
+    return price;
+  } catch {
+    quoteCache.set(symbol, null);
+    return null;
+  }
 };
 
 router.post('/', async (req, res, next) => {
@@ -132,19 +157,35 @@ router.get('/:id', async (req, res, next) => {
       [req.params.id]
     );
 
+    const quoteCache = new Map();
     const payloadMembers = [];
+
     for (const m of members.rows) {
       const positions = await query(
-        `SELECT symbol, category, quantity
+        `SELECT symbol, category, quantity, buy_price
          FROM positions
          WHERE user_id = $1 AND deleted_at IS NULL AND sell_date IS NULL`,
         [m.user_id]
       );
+
+      const payloadPositions = [];
+      for (const p of positions.rows) {
+        const buyPrice = Number(p.buy_price);
+        const currentPrice = await getQuotePrice(p.symbol, quoteCache);
+
+        payloadPositions.push({
+          symbol: p.symbol,
+          category: p.category,
+          quantity: Number(p.quantity),
+          plPercent: calcPLPercent(buyPrice, currentPrice)
+        });
+      }
+
       payloadMembers.push({
         userId: m.user_id,
         displayName: m.display_name,
         role: m.role,
-        positions: positions.rows.map((p) => ({ symbol: p.symbol, category: p.category, quantity: Number(p.quantity), plPercent: null }))
+        positions: payloadPositions
       });
     }
 
