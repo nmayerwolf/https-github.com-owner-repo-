@@ -14,6 +14,8 @@ const watchlistRoutes = require('./routes/watchlist');
 const marketRoutes = require('./routes/market');
 const groupsRoutes = require('./routes/groups');
 const migrateRoutes = require('./routes/migrate');
+const alertsRoutes = require('./routes/alerts');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -42,6 +44,8 @@ app.use('/api/portfolio', authRequired, portfolioRoutes);
 app.use('/api/config', authRequired, configRoutes);
 app.use('/api/watchlist', authRequired, watchlistRoutes);
 app.use('/api/groups', authRequired, groupsRoutes);
+app.use('/api/alerts', authRequired, alertsRoutes);
+app.use('/api/notifications', authRequired, notificationsRoutes);
 app.use('/api/migrate', authRequired, migrateRoutes);
 
 app.use(errorHandler);
