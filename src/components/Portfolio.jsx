@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
@@ -10,6 +11,9 @@ const Portfolio = () => {
   const [tab, setTab] = useState('active');
   const [form, setForm] = useState(emptyForm);
   const [sellModal, setSellModal] = useState(emptySell);
+  const [exportFilter, setExportFilter] = useState('all');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
   const active = state.positions.filter((p) => !p.sellDate);
@@ -34,10 +38,34 @@ const Portfolio = () => {
     setSellModal(emptySell);
   };
 
+  const exportCsv = async () => {
+    setExporting(true);
+    setExportError('');
+
+    try {
+      const csv = await api.exportPortfolioCsv(exportFilter);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nexusfin-portfolio-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err?.message || 'No se pudo exportar el portfolio en CSV.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const rows = tab === 'active' ? active : sold;
 
   return (
     <div className="grid">
+      {exportError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{exportError}</div>}
+
       <section className="card">
         <h2>Nueva posición</h2>
         <form onSubmit={submit} className="grid grid-2" style={{ marginTop: 8 }}>
@@ -82,6 +110,17 @@ const Portfolio = () => {
         </button>
         <button type="button" onClick={() => setTab('sold')} style={{ borderColor: tab === 'sold' ? '#00E08E' : undefined }}>
           Sold
+        </button>
+        <label className="label" style={{ maxWidth: 240 }}>
+          <span className="muted">Exportar</span>
+          <select aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
+            <option value="all">Todas</option>
+            <option value="active">Solo activas</option>
+            <option value="sold">Solo vendidas</option>
+          </select>
+        </label>
+        <button type="button" onClick={exportCsv} disabled={exporting}>
+          {exporting ? 'Exportando...' : 'Exportar CSV'}
         </button>
       </section>
 
