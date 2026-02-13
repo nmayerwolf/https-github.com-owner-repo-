@@ -64,6 +64,19 @@ describe('Groups', () => {
     expect(await screen.findByText('Este grupo ya alcanzó su máximo de 20 miembros.')).toBeTruthy();
   });
 
+  it('maps VALIDATION_ERROR message on join group', async () => {
+    apiMock.joinGroup.mockRejectedValueOnce({ error: 'VALIDATION_ERROR', message: 'Código de invitación inválido' });
+
+    render(<Groups />);
+
+    await screen.findByText('No estás en grupos todavía.');
+
+    fireEvent.change(screen.getByPlaceholderText('NXF-A7K2M'), { target: { value: 'bad' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unirme' }));
+
+    expect(await screen.findByText('Código de invitación inválido')).toBeTruthy();
+  });
+
   it('renames a group when user is admin', async () => {
     apiMock.getGroups.mockResolvedValue({
       groups: [{ id: 'g1', name: 'Grupo Viejo', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
