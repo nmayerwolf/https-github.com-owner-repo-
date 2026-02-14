@@ -34,6 +34,11 @@ const shouldNotifyForAlertType = (prefs, alertType) => {
   return true;
 };
 
+const shouldNotifyForGroupActivity = (prefs) => {
+  if (!prefs) return true;
+  return prefs.group_activity !== false;
+};
+
 const buildPushTitle = (alert) => {
   if (alert.type === 'stop_loss') return `STOP LOSS: ${alert.symbol}`;
   if (alert.type === 'opportunity') return `${alert.recommendation}: ${alert.symbol}`;
@@ -84,6 +89,57 @@ const createPushNotifier = ({ query, logger = console }) => {
   const getPublicKey = () => env.vapidPublicKey || null;
   const webPushEnabled = hasVapidConfig();
 
+  const sendToSubscriptions = async ({ subscriptions, title, body, data }) => {
+    let sent = 0;
+    let skippedWebConfig = false;
+    const payload = JSON.stringify({ title, body, data });
+
+    for (const sub of subscriptions) {
+      if (sub.platform === 'web') {
+        if (!webPushEnabled) {
+          skippedWebConfig = true;
+          continue;
+        }
+
+        try {
+          await webpush.sendNotification(sub.subscription, payload);
+          sent += 1;
+        } catch (error) {
+          const statusCode = Number(error?.statusCode || 0);
+          if (statusCode === 404 || statusCode === 410) {
+            await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+          }
+          logger.warn?.(`[push:web] failed for subscription ${sub.id}`, error?.message || error);
+        }
+      } else if (sub.platform === 'ios' || sub.platform === 'android') {
+        const expoPushToken = String(sub.subscription?.expoPushToken || '').trim();
+        if (!isExpoPushToken(expoPushToken)) {
+          await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+          continue;
+        }
+
+        try {
+          const out = await sendExpoNotification({ to: expoPushToken, title, body, data });
+          const receipt = Array.isArray(out?.data) ? out.data[0] : out?.data;
+          if (receipt?.status === 'ok') {
+            sent += 1;
+            continue;
+          }
+
+          const expoError = receipt?.details?.error || receipt?.message || 'EXPO_PUSH_ERROR';
+          if (expoError === 'DeviceNotRegistered') {
+            await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+          }
+          logger.warn?.(`[push:expo] failed for subscription ${sub.id}`, expoError);
+        } catch (error) {
+          logger.warn?.(`[push:expo] failed for subscription ${sub.id}`, error?.message || error);
+        }
+      }
+    }
+
+    return { sent, skippedWebConfig };
+  };
+
   const notifyAlert = async ({ userId, alert }) => {
     const prefOut = await query(
       `SELECT stop_loss, opportunities, quiet_hours_start, quiet_hours_end
@@ -112,7 +168,8 @@ const createPushNotifier = ({ query, logger = console }) => {
       return { sent: 0, skipped: 'NO_SUBSCRIPTIONS' };
     }
 
-    const payload = JSON.stringify({
+    const { sent, skippedWebConfig } = await sendToSubscriptions({
+      subscriptions: subOut.rows,
       title: buildPushTitle(alert),
       body: buildPushBody(alert),
       data: {
@@ -122,64 +179,53 @@ const createPushNotifier = ({ query, logger = console }) => {
       }
     });
 
-    let sent = 0;
-    let skippedWebConfig = false;
-
-    for (const sub of subOut.rows) {
-      if (sub.platform === 'web') {
-        if (!webPushEnabled) {
-          skippedWebConfig = true;
-          continue;
-        }
-
-        try {
-          await webpush.sendNotification(sub.subscription, payload);
-          sent += 1;
-        } catch (error) {
-          const statusCode = Number(error?.statusCode || 0);
-          if (statusCode === 404 || statusCode === 410) {
-            await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
-          }
-          logger.warn?.(`[push:web] failed for subscription ${sub.id}`, error?.message || error);
-        }
-      } else if (sub.platform === 'ios' || sub.platform === 'android') {
-        const expoPushToken = String(sub.subscription?.expoPushToken || '').trim();
-        if (!isExpoPushToken(expoPushToken)) {
-          await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
-          continue;
-        }
-
-        try {
-          const out = await sendExpoNotification({
-            to: expoPushToken,
-            title: buildPushTitle(alert),
-            body: buildPushBody(alert),
-            data: {
-              type: alert.type,
-              alertId: alert.id,
-              symbol: alert.symbol
-            }
-          });
-
-          const receipt = Array.isArray(out?.data) ? out.data[0] : out?.data;
-          if (receipt?.status === 'ok') {
-            sent += 1;
-            continue;
-          }
-
-          const expoError = receipt?.details?.error || receipt?.message || 'EXPO_PUSH_ERROR';
-          if (expoError === 'DeviceNotRegistered') {
-            await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
-          }
-          logger.warn?.(`[push:expo] failed for subscription ${sub.id}`, expoError);
-        } catch (error) {
-          logger.warn?.(`[push:expo] failed for subscription ${sub.id}`, error?.message || error);
-        }
-      }
-    }
-
     if (sent === 0 && skippedWebConfig && !subOut.rows.some((s) => s.platform === 'ios' || s.platform === 'android')) {
       return { sent: 0, skipped: 'VAPID_NOT_CONFIGURED' };
+    }
+
+    return { sent };
+  };
+
+  const notifyGroupActivity = async ({ groupId, actorUserId, event }) => {
+    if (!groupId || !event?.title || !event?.body) return { sent: 0, skipped: 'INVALID_PAYLOAD' };
+
+    const members = await query('SELECT user_id FROM group_members WHERE group_id = $1 AND user_id <> $2', [groupId, actorUserId]);
+    if (!members.rows.length) return { sent: 0, skipped: 'NO_MEMBERS' };
+
+    let sent = 0;
+    for (const member of members.rows) {
+      const userId = member.user_id;
+
+      const prefOut = await query(
+        `SELECT group_activity, quiet_hours_start, quiet_hours_end
+         FROM notification_preferences WHERE user_id = $1`,
+        [userId]
+      );
+      const prefs = prefOut.rows[0] || null;
+
+      if (!shouldNotifyForGroupActivity(prefs)) continue;
+      if (prefs && isWithinQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end)) continue;
+
+      const subOut = await query(
+        `SELECT id, platform, subscription
+         FROM push_subscriptions
+         WHERE user_id = $1 AND active = true`,
+        [userId]
+      );
+      if (!subOut.rows.length) continue;
+
+      const out = await sendToSubscriptions({
+        subscriptions: subOut.rows,
+        title: String(event.title),
+        body: String(event.body),
+        data: {
+          type: 'group_activity',
+          groupId,
+          eventType: event.type || 'group_event',
+          ...(event.data || {})
+        }
+      });
+      sent += Number(out.sent || 0);
     }
 
     return { sent };
@@ -188,6 +234,7 @@ const createPushNotifier = ({ query, logger = console }) => {
   return {
     getPublicKey,
     notifyAlert,
+    notifyGroupActivity,
     hasVapidConfig: webPushEnabled
   };
 };
@@ -196,6 +243,7 @@ module.exports = {
   createPushNotifier,
   isWithinQuietHours,
   shouldNotifyForAlertType,
+  shouldNotifyForGroupActivity,
   buildPushTitle,
   buildPushBody,
   isExpoPushToken

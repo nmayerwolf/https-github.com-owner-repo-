@@ -6,6 +6,13 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
 jest.mock('../src/config/db', () => ({ query: jest.fn() }));
 
+const mockNotifyGroupActivity = jest.fn(async () => ({ sent: 0 }));
+jest.mock('../src/services/push', () => ({
+  createPushNotifier: () => ({
+    notifyGroupActivity: (...args) => mockNotifyGroupActivity(...args)
+  })
+}));
+
 const { query } = require('../src/config/db');
 const alertsRoutes = require('../src/routes/alerts');
 const { errorHandler } = require('../src/middleware/errorHandler');
@@ -25,6 +32,7 @@ const makeApp = (userId = 'u1') => {
 describe('alerts routes', () => {
   beforeEach(() => {
     query.mockReset();
+    mockNotifyGroupActivity.mockClear();
   });
 
   it('returns paginated alerts with stats', async () => {
@@ -87,6 +95,12 @@ describe('alerts routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.shared).toBe(true);
+    expect(mockNotifyGroupActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupId: 'g1',
+        actorUserId: 'u1'
+      })
+    );
   });
 
   it('returns 409 when alert is already shared to group', async () => {
