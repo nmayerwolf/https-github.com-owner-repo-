@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "NexusFin Mobile",
+    "slug": "nexusfin-mobile",
+    "scheme": "nexusfin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#080F1E"
+      }
+    },
+    "extra": {
+      "apiUrl": "http://localhost:3001/api"
+    }
+  }
+}

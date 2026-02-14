@@ -41,6 +41,7 @@ CRON_ENABLED=false
 VAPID_PUBLIC_KEY=<vapid-public>
 VAPID_PRIVATE_KEY=<vapid-private>
 VAPID_SUBJECT=mailto:admin@nexusfin.app
+EXPO_ACCESS_TOKEN=
 CRON_MARKET_INTERVAL=5
 CRON_CRYPTO_INTERVAL=15
 CRON_FOREX_INTERVAL=15
@@ -101,6 +102,8 @@ Notifications (Fase 3 foundation):
 - `GET /api/notifications/preferences`
 - `PUT /api/notifications/preferences`
 - `DELETE /api/notifications/subscribe/:id`
+  - `platform=web` usa Web Push (VAPID)
+  - `platform=ios|android` usa Expo Push (`expoPushToken`)
 
 Export:
 - `GET /api/export/portfolio?format=csv&filter=all|active|sold`
@@ -111,6 +114,7 @@ Migration:
 
 Health:
 - `GET /api/health`
+- `GET /api/health/realtime` (autenticado)
 
 Realtime scaffold (Fase 3):
 - `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)
@@ -118,6 +122,7 @@ Realtime scaffold (Fase 3):
   - Finnhub: `AAPL`, `BINANCE:BTCUSDT`, `OANDA:EUR_USD`
   - Alpha Vantage macro: `AV:GOLD`, `AV:SILVER`, `AV:WTI`, `AV:TREASURY_YIELD:10YEAR`
   - relay con backoff ante errores y heartbeat para evitar ruido cuando el precio no cambia
+  - estado operativo disponible en `GET /api/health/realtime` (métricas de ciclos, fallos, broadcasts, cooldown)
 - cron worker configurable por `CRON_*` vars
 - alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
 

@@ -64,6 +64,9 @@ describe('ws price runtime', () => {
 
     expect(finnhubSvc.quote).not.toHaveBeenCalled();
     expect(wsHub.broadcastPrice).not.toHaveBeenCalled();
+    const status = runtime.getStatus();
+    expect(status.metrics.cycles).toBeGreaterThanOrEqual(1);
+    expect(status.metrics.symbolsSeen).toBe(0);
 
     runtime.stop();
   });
@@ -117,6 +120,8 @@ describe('ws price runtime', () => {
     await jest.advanceTimersByTimeAsync(5000);
 
     expect(wsHub.broadcastPrice).toHaveBeenCalledTimes(1);
+    const status = runtime.getStatus();
+    expect(status.metrics.broadcastsSuppressed).toBeGreaterThanOrEqual(1);
     runtime.stop();
   });
 
@@ -150,6 +155,9 @@ describe('ws price runtime', () => {
     await jest.advanceTimersByTimeAsync(5000);
     expect(finnhubSvc.quote).toHaveBeenCalledTimes(2);
     expect(wsHub.broadcastPrice).toHaveBeenCalledTimes(1);
+    const status = runtime.getStatus();
+    expect(status.metrics.cooldownSkips).toBeGreaterThanOrEqual(1);
+    expect(status.metrics.quotesFailed).toBe(1);
 
     runtime.stop();
   });

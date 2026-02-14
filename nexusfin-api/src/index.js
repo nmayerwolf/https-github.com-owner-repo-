@@ -44,6 +44,7 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
+app.locals.getWsPriceStatus = () => ({ enabled: false, intervalMs: 0, metrics: {} });
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -52,6 +53,11 @@ app.get('/api/health', async (_req, res) => {
   } catch {
     return res.status(500).json({ ok: false, db: 'down' });
   }
+});
+
+app.get('/api/health/realtime', authRequired, (req, res) => {
+  const status = app.locals.getWsPriceStatus?.();
+  return res.json(status || { enabled: false, intervalMs: 0, metrics: {} });
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
@@ -113,6 +119,16 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
   const heartbeatMs = 60 * 1000;
   let inFlight = false;
   const stateBySymbol = new Map();
+  const metrics = {
+    cycles: 0,
+    symbolsSeen: 0,
+    quotesResolved: 0,
+    quotesFailed: 0,
+    broadcastsSent: 0,
+    broadcastsSuppressed: 0,
+    cooldownSkips: 0,
+    lastCycleAt: null
+  };
 
   const shouldBroadcast = (state, price, now) => {
     if (!state || !Number.isFinite(state.lastBroadcastPrice)) return true;
@@ -126,21 +142,28 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
     inFlight = true;
 
     try {
+      metrics.cycles += 1;
+      metrics.lastCycleAt = new Date().toISOString();
       const symbols = wsHub.getSubscribedSymbols();
       if (!symbols.length) return;
 
       const now = Date.now();
       for (const symbol of symbols) {
+        metrics.symbolsSeen += 1;
         const upper = String(symbol || '').toUpperCase();
         const provider = providerForRealtimeSymbol(upper);
         const symbolState = stateBySymbol.get(upper) || {};
         const minPollMs = provider === 'alphavantage' ? Math.max(intervalMs, avMinPollMs) : intervalMs;
         const nextAllowedAt = Number(symbolState.nextAllowedAt || 0);
-        if (now < nextAllowedAt) continue;
+        if (now < nextAllowedAt) {
+          metrics.cooldownSkips += 1;
+          continue;
+        }
 
         try {
           const out = await resolveRealtimeQuote(upper, { finnhubSvc, alphaSvc });
           if (!out) continue;
+          metrics.quotesResolved += 1;
 
           const nextState = {
             ...symbolState,
@@ -156,12 +179,16 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
               change: out.change,
               timestamp: now
             });
+            metrics.broadcastsSent += 1;
             nextState.lastBroadcastPrice = out.price;
             nextState.lastBroadcastAt = now;
+          } else {
+            metrics.broadcastsSuppressed += 1;
           }
 
           stateBySymbol.set(upper, nextState);
         } catch (error) {
+          metrics.quotesFailed += 1;
           const errorCount = Number(symbolState.errorCount || 0) + 1;
           stateBySymbol.set(upper, {
             ...symbolState,
@@ -182,7 +209,13 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
   return {
     enabled: true,
     intervalMs,
-    stop: () => clearInterval(timer)
+    stop: () => clearInterval(timer),
+    getStatus: () => ({
+      enabled: true,
+      intervalMs,
+      activeSymbols: wsHub.getSubscribedSymbols?.() || [],
+      metrics: { ...metrics }
+    })
   };
 };
 
@@ -200,6 +233,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
   });
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console });
   const wsPriceRuntime = startWsPriceRuntime({ wsHub, finnhubSvc: finnhub, logger: console });
+  app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;
 
   server.listen(port, () => {
     console.log(`nexusfin-api listening on :${port}`);

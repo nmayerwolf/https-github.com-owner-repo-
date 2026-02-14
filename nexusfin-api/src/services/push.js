@@ -48,12 +48,43 @@ const buildPushBody = (alert) => {
   return `${alert.recommendation} | Confianza ${alert.confidence || 'n/a'} | Precio ${Number(alert.priceAtAlert || 0).toFixed(2)}`;
 };
 
+const isExpoPushToken = (value) => /^Expo(nent)?PushToken\[[^\]]+\]$/.test(String(value || ''));
+
+const sendExpoNotification = async ({ to, title, body, data }) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
+  };
+
+  if (env.expoAccessToken) {
+    headers.Authorization = `Bearer ${env.expoAccessToken}`;
+  }
+
+  const res = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      to,
+      title,
+      body,
+      data,
+      sound: 'default',
+      priority: 'high'
+    })
+  });
+
+  if (!res.ok) {
+    throw new Error(`EXPO_PUSH_HTTP_${res.status}`);
+  }
+
+  return res.json();
+};
+
 const createPushNotifier = ({ query, logger = console }) => {
   const getPublicKey = () => env.vapidPublicKey || null;
+  const webPushEnabled = hasVapidConfig();
 
   const notifyAlert = async ({ userId, alert }) => {
-    if (!hasVapidConfig()) return { sent: 0, skipped: 'VAPID_NOT_CONFIGURED' };
-
     const prefOut = await query(
       `SELECT stop_loss, opportunities, quiet_hours_start, quiet_hours_end
        FROM notification_preferences WHERE user_id = $1`,
@@ -92,20 +123,63 @@ const createPushNotifier = ({ query, logger = console }) => {
     });
 
     let sent = 0;
+    let skippedWebConfig = false;
 
     for (const sub of subOut.rows) {
-      if (sub.platform !== 'web') continue;
-
-      try {
-        await webpush.sendNotification(sub.subscription, payload);
-        sent += 1;
-      } catch (error) {
-        const statusCode = Number(error?.statusCode || 0);
-        if (statusCode === 404 || statusCode === 410) {
-          await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+      if (sub.platform === 'web') {
+        if (!webPushEnabled) {
+          skippedWebConfig = true;
+          continue;
         }
-        logger.warn?.(`[push] failed for subscription ${sub.id}`, error?.message || error);
+
+        try {
+          await webpush.sendNotification(sub.subscription, payload);
+          sent += 1;
+        } catch (error) {
+          const statusCode = Number(error?.statusCode || 0);
+          if (statusCode === 404 || statusCode === 410) {
+            await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+          }
+          logger.warn?.(`[push:web] failed for subscription ${sub.id}`, error?.message || error);
+        }
+      } else if (sub.platform === 'ios' || sub.platform === 'android') {
+        const expoPushToken = String(sub.subscription?.expoPushToken || '').trim();
+        if (!isExpoPushToken(expoPushToken)) {
+          await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+          continue;
+        }
+
+        try {
+          const out = await sendExpoNotification({
+            to: expoPushToken,
+            title: buildPushTitle(alert),
+            body: buildPushBody(alert),
+            data: {
+              type: alert.type,
+              alertId: alert.id,
+              symbol: alert.symbol
+            }
+          });
+
+          const receipt = Array.isArray(out?.data) ? out.data[0] : out?.data;
+          if (receipt?.status === 'ok') {
+            sent += 1;
+            continue;
+          }
+
+          const expoError = receipt?.details?.error || receipt?.message || 'EXPO_PUSH_ERROR';
+          if (expoError === 'DeviceNotRegistered') {
+            await query('UPDATE push_subscriptions SET active = false WHERE id = $1', [sub.id]);
+          }
+          logger.warn?.(`[push:expo] failed for subscription ${sub.id}`, expoError);
+        } catch (error) {
+          logger.warn?.(`[push:expo] failed for subscription ${sub.id}`, error?.message || error);
+        }
       }
+    }
+
+    if (sent === 0 && skippedWebConfig && !subOut.rows.some((s) => s.platform === 'ios' || s.platform === 'android')) {
+      return { sent: 0, skipped: 'VAPID_NOT_CONFIGURED' };
     }
 
     return { sent };
@@ -114,7 +188,7 @@ const createPushNotifier = ({ query, logger = console }) => {
   return {
     getPublicKey,
     notifyAlert,
-    hasVapidConfig: hasVapidConfig()
+    hasVapidConfig: webPushEnabled
   };
 };
 
@@ -123,5 +197,6 @@ module.exports = {
   isWithinQuietHours,
   shouldNotifyForAlertType,
   buildPushTitle,
-  buildPushBody
+  buildPushBody,
+  isExpoPushToken
 };
