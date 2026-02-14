@@ -38,17 +38,19 @@ router.post('/subscribe', async (req, res, next) => {
     const dedupeKey = platform === 'web' ? String(payload.endpoint || '').trim() : String(payload.expoPushToken || '').trim();
     const dedupeExpr = platform === 'web' ? "subscription->>'endpoint'" : "subscription->>'expoPushToken'";
 
-    const existing = await query(
-      `SELECT id
-       FROM push_subscriptions
-       WHERE user_id = $1
-         AND platform = $2
-         AND ${dedupeExpr} = $3
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [req.user.id, platform, dedupeKey]
-    );
+    const findExisting = async () =>
+      query(
+        `SELECT id
+         FROM push_subscriptions
+         WHERE user_id = $1
+           AND platform = $2
+           AND ${dedupeExpr} = $3
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [req.user.id, platform, dedupeKey]
+      );
 
+    const existing = await findExisting();
     if (existing.rows.length) {
       const updated = await query(
         `UPDATE push_subscriptions
@@ -61,14 +63,33 @@ router.post('/subscribe', async (req, res, next) => {
       return res.json(updated.rows[0]);
     }
 
-    const inserted = await query(
-      `INSERT INTO push_subscriptions (user_id, platform, subscription, active)
-       VALUES ($1, $2, $3::jsonb, true)
-       RETURNING id, platform, active`,
-      [req.user.id, platform, JSON.stringify(payload)]
-    );
+    try {
+      const inserted = await query(
+        `INSERT INTO push_subscriptions (user_id, platform, subscription, active)
+         VALUES ($1, $2, $3::jsonb, true)
+         RETURNING id, platform, active`,
+        [req.user.id, platform, JSON.stringify(payload)]
+      );
 
-    return res.status(201).json(inserted.rows[0]);
+      return res.status(201).json(inserted.rows[0]);
+    } catch (error) {
+      const isUniqueViolation = Number(error?.code) === 23505 || String(error?.code) === '23505';
+      if (!isUniqueViolation) throw error;
+
+      const raced = await findExisting();
+      if (raced.rows.length) {
+        const updated = await query(
+          `UPDATE push_subscriptions
+           SET subscription = $1::jsonb,
+               active = true
+           WHERE id = $2
+           RETURNING id, platform, active`,
+          [JSON.stringify(payload), raced.rows[0].id]
+        );
+        return res.json(updated.rows[0]);
+      }
+      throw error;
+    }
   } catch (error) {
     return next(error);
   }

@@ -107,6 +107,11 @@ const SettingsScreen = ({ onLogout }) => {
     setPrefsSaving(true);
     setMessage('');
     try {
+      const validTime = (value) => value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value));
+      if (!validTime(prefs.quietHoursStart) || !validTime(prefs.quietHoursEnd)) {
+        throw new Error('Quiet hours inválidas. Usá formato HH:MM (UTC).');
+      }
+
       const out = await api.updateNotificationPreferences({
         stopLoss: prefs.stopLoss,
         opportunities: prefs.opportunities,

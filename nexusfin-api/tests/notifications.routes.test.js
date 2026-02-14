@@ -120,6 +120,23 @@ describe('notifications routes', () => {
     expect(res.body.id).toBe('existing-ios');
   });
 
+  it('handles concurrent subscribe race by recovering from unique violation', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce({ code: '23505' })
+      .mockResolvedValueOnce({ rows: [{ id: 'raced-web' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'raced-web', platform: 'web', active: true }] });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/notifications/subscribe').send({
+      platform: 'web',
+      subscription: { endpoint: 'https://example.com/sub', keys: { p256dh: 'k', auth: 'a' } }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('raced-web');
+  });
+
   it('rejects invalid quiet hours format', async () => {
     const app = makeApp();
     const res = await request(app).put('/api/notifications/preferences').send({ quietHoursStart: '25:99' });
