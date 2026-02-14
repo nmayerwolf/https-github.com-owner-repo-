@@ -143,4 +143,29 @@ describe('apiClient', () => {
     );
   });
 
+
+  it('downloads alert pdf using export endpoint', async () => {
+    setToken('jwt-token');
+    const payload = new Uint8Array([37, 80, 68, 70]).buffer;
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      arrayBuffer: async () => payload
+    });
+
+    const out = await api.exportAlertPdf('a1');
+
+    expect(out).toBe(payload);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/api/export/alert/a1?format=pdf',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
+        credentials: 'include'
+      })
+    );
+  });
+
 });

@@ -28,7 +28,7 @@ describe('export routes', () => {
     query.mockReset();
   });
 
-  it('returns 422 for unsupported format', async () => {
+  it('returns 422 for unsupported csv format', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/export/portfolio?format=pdf');
 
@@ -36,7 +36,7 @@ describe('export routes', () => {
     expect(res.body.error).toBe('VALIDATION_ERROR');
   });
 
-  it('returns 422 for invalid filter', async () => {
+  it('returns 422 for invalid csv filter', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/export/portfolio?format=csv&filter=bad');
 
@@ -71,5 +71,56 @@ describe('export routes', () => {
     expect(res.text).toContain('Symbol,Name,Category,Buy Date,Buy Price,Quantity,Sell Date,Sell Price,P&L %,Notes');
     expect(res.text).toContain('AAPL,Apple Inc.,equity,2026-01-10,100.0000,2.5,2026-02-01,125.0000,25.00%,"nota, con coma"');
     expect(query).toHaveBeenCalledWith(expect.stringContaining('AND sell_date IS NOT NULL'), ['u1']);
+  });
+
+  it('returns 422 for unsupported pdf format', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/export/alert/a1?format=txt');
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 404 when alert does not exist', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/export/alert/a1?format=pdf');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('ALERT_NOT_FOUND');
+  });
+
+  it('exports alert report as PDF', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'a1',
+          symbol: 'NVDA',
+          name: 'NVIDIA Corp',
+          type: 'opportunity',
+          recommendation: 'STRONG BUY',
+          confidence: 'high',
+          confluence_bull: 5,
+          confluence_bear: 1,
+          signals: [],
+          price_at_alert: '118.2',
+          stop_loss: '108.5',
+          take_profit: '142.3',
+          ai_thesis: { summary: 'Momentum favorable con catalizadores cercanos.' },
+          snapshot: { rsi: 28.3, atr: 4.2 },
+          created_at: '2026-02-10T14:30:00.000Z'
+        }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/export/alert/a1?format=pdf');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('attachment; filename="nexusfin-alert-NVDA-');
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+    expect(res.body.toString('utf8', 0, 4)).toBe('%PDF');
   });
 });

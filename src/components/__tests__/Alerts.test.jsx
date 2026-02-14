@@ -7,7 +7,8 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
   apiMock: {
     getAlerts: vi.fn(),
     getGroups: vi.fn(),
-    shareAlert: vi.fn()
+    shareAlert: vi.fn(),
+    exportAlertPdf: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -31,6 +32,8 @@ import Alerts from '../Alerts';
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('Alerts', () => {
@@ -38,6 +41,7 @@ describe('Alerts', () => {
     apiMock.getAlerts.mockReset();
     apiMock.getGroups.mockReset();
     apiMock.shareAlert.mockReset();
+    apiMock.exportAlertPdf.mockReset();
 
     apiMock.getAlerts.mockResolvedValue({
       alerts: [
@@ -60,6 +64,22 @@ describe('Alerts', () => {
       groups: [{ id: 'g1', name: 'Grupo Principal', code: 'NXF-A7K2M', role: 'admin', members: 2 }]
     });
     apiMock.shareAlert.mockResolvedValue({ shared: true });
+    apiMock.exportAlertPdf.mockResolvedValue(new Uint8Array([37, 80, 68, 70]).buffer);
+
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:url'),
+      revokeObjectURL: vi.fn()
+    });
+
+    const realCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+      if (tag === 'a') {
+        const el = realCreateElement(tag);
+        el.click = vi.fn();
+        return el;
+      }
+      return realCreateElement(tag);
+    });
   });
 
   it('shows live alerts by default and filters by type', async () => {
@@ -106,5 +126,18 @@ describe('Alerts', () => {
 
     await waitFor(() => expect(apiMock.shareAlert).toHaveBeenCalledWith('h1', 'g1'));
     expect(await screen.findByText('Señal compartida en el grupo.')).toBeTruthy();
+  });
+
+  it('exports alert as pdf from history', async () => {
+    render(<Alerts />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Historial' }));
+
+    await waitFor(() => expect(apiMock.getAlerts).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar PDF' }));
+
+    await waitFor(() => expect(apiMock.exportAlertPdf).toHaveBeenCalledWith('h1'));
+    expect(await screen.findByText('PDF exportado correctamente.')).toBeTruthy();
   });
 });
