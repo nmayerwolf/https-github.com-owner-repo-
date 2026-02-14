@@ -386,6 +386,44 @@ describe('auth routes', () => {
     expect(mockExchangeAppleCode).not.toHaveBeenCalled();
   });
 
+  it('returns 422 when mobile oauth redirect_uri is invalid', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/auth/apple').query({ platform: 'mobile', redirect_uri: 'https://evil.test/callback' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('completes apple callback for mobile and redirects with token deep-link', async () => {
+    mockExchangeAppleCode.mockResolvedValueOnce({
+      provider: 'apple',
+      oauthId: 'apple-uid-1',
+      email: 'user@mail.com',
+      displayName: null,
+      avatarUrl: null
+    });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/auth/apple/callback')
+      .type('form')
+      .send({ state: 'valid-state', code: 'apple-code-mobile' })
+      .set('Cookie', ['nxf_oauth_state=valid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location.startsWith('nexusfin://oauth?')).toBe(true);
+    expect(res.headers.location).toContain('oauth=success');
+    expect(res.headers.location).toContain('provider=apple');
+    expect(res.headers.location).toContain('token=jwt-token');
+    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
+    expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code-mobile');
+    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+  });
+
   it('redirects with apple callback failure when provider exchange fails', async () => {
     mockExchangeAppleCode.mockRejectedValueOnce(new Error('boom'));
 

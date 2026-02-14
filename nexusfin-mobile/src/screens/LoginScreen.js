@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { getThemePalette } from '../theme/palette';
 
-const LoginScreen = ({ onSubmit, loading, error, theme = 'dark' }) => {
+const LoginScreen = ({ onSubmit, onOAuth, loading, error, oauthProviders, oauthLoading = false, theme = 'dark' }) => {
   const palette = getThemePalette(theme);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,6 +36,24 @@ const LoginScreen = ({ onSubmit, loading, error, theme = 'dark' }) => {
       <Pressable style={[styles.button, { backgroundColor: palette.primary }]} disabled={loading} onPress={() => onSubmit({ email, password })}>
         <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{loading ? 'Ingresando...' : 'Iniciar sesión'}</Text>
       </Pressable>
+
+      <Text style={[styles.oauthLabel, { color: palette.muted }]}>o continuar con</Text>
+      <View style={styles.oauthRow}>
+        <Pressable
+          style={[styles.oauthBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
+          disabled={loading || oauthLoading || !oauthProviders?.google}
+          onPress={() => onOAuth?.('google')}
+        >
+          <Text style={[styles.oauthBtnLabel, { color: palette.text }]}>{oauthLoading ? '...' : 'Google'}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.oauthBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
+          disabled={loading || oauthLoading || !oauthProviders?.apple}
+          onPress={() => onOAuth?.('apple')}
+        >
+          <Text style={[styles.oauthBtnLabel, { color: palette.text }]}>{oauthLoading ? '...' : 'Apple'}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 };
@@ -68,6 +86,25 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   buttonLabel: {
+    fontWeight: '700'
+  },
+  oauthLabel: {
+    marginTop: 8,
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  oauthRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  oauthBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center'
+  },
+  oauthBtnLabel: {
     fontWeight: '700'
   },
   error: {

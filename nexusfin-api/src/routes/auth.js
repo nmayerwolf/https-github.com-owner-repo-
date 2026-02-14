@@ -28,6 +28,7 @@ const { badRequest, conflict, serviceUnavailable, tooManyRequests, unauthorized 
 const { validateEmail, validatePassword } = require('../utils/validate');
 
 const router = express.Router();
+const OAUTH_MOBILE_REDIRECT_COOKIE = 'nxf_oauth_mobile_redirect';
 
 const enforceLoginLock = async (email) => {
   const recent = await query(
@@ -50,6 +51,39 @@ const isMobileClient = (req) => String(req.headers['x-client-platform'] || '').t
 const oauthRedirect = (status) => {
   const qs = new URLSearchParams(status).toString();
   return `${env.frontendUrl}/${qs ? `?${qs}` : ''}`;
+};
+
+const isAllowedMobileRedirectUri = (raw) => {
+  if (!raw) return false;
+  try {
+    const parsed = new URL(String(raw));
+    return parsed.protocol === 'nexusfin:';
+  } catch {
+    return false;
+  }
+};
+
+const getMobileRedirectCookieValue = (req) => String(req.cookies?.[OAUTH_MOBILE_REDIRECT_COOKIE] || '');
+
+const oauthMobileRedirect = (redirectUri, status = {}, token = null) => {
+  const params = new URLSearchParams(status);
+  if (token) params.set('token', token);
+  return `${redirectUri}${redirectUri.includes('?') ? '&' : '?'}${params.toString()}`;
+};
+
+const setOAuthMobileContext = (req, res) => {
+  const platform = String(req.query.platform || '').toLowerCase();
+  const redirectUri = String(req.query.redirect_uri || '').trim();
+  if (platform !== 'mobile') {
+    res.clearCookie(OAUTH_MOBILE_REDIRECT_COOKIE, buildCookieOptions());
+    return;
+  }
+
+  if (!isAllowedMobileRedirectUri(redirectUri)) {
+    throw badRequest('redirect_uri mobile inválida', 'VALIDATION_ERROR');
+  }
+
+  res.cookie(OAUTH_MOBILE_REDIRECT_COOKIE, redirectUri, buildCookieOptions());
 };
 
 const finishLogin = async (req, res, user, status = 200) => {
@@ -116,6 +150,7 @@ router.get('/oauth/providers', (_req, res) => {
 
 router.get('/google', async (_req, res, next) => {
   try {
+    setOAuthMobileContext(_req, res);
     if (!isGoogleConfigured()) {
       throw serviceUnavailable('Google OAuth no configurado', 'OAUTH_PROVIDER_DISABLED');
     }
@@ -132,13 +167,17 @@ router.get('/google/callback', async (req, res) => {
   const state = String(req.query.state || '');
   const code = String(req.query.code || '');
   const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
+  const mobileRedirectUri = getMobileRedirectCookieValue(req);
   res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
+  res.clearCookie(OAUTH_MOBILE_REDIRECT_COOKIE, buildCookieOptions());
 
   if (!isGoogleConfigured()) {
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'provider_disabled' }));
     return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
   }
 
   if (!state || !code || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'invalid_oauth_state' }));
     return res.redirect(302, oauthRedirect({ oauth_error: 'invalid_oauth_state' }));
   }
 
@@ -150,14 +189,17 @@ router.get('/google/callback', async (req, res) => {
     await storeSession(user.id, token);
     setAuthCookies(res, token);
 
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth: 'success', provider: 'google' }, token));
     return res.redirect(302, oauthRedirect({ oauth: 'success' }));
   } catch {
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'google_callback_failed' }));
     return res.redirect(302, oauthRedirect({ oauth_error: 'google_callback_failed' }));
   }
 });
 
 router.get('/apple', (_req, res, next) => {
   try {
+    setOAuthMobileContext(_req, res);
     if (!isAppleConfigured()) {
       throw serviceUnavailable('Apple OAuth no configurado', 'OAUTH_PROVIDER_DISABLED');
     }
@@ -174,13 +216,17 @@ const handleAppleCallback = async (req, res) => {
   const state = String(req.query.state || req.body?.state || '');
   const code = String(req.query.code || req.body?.code || '');
   const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
+  const mobileRedirectUri = getMobileRedirectCookieValue(req);
   res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
+  res.clearCookie(OAUTH_MOBILE_REDIRECT_COOKIE, buildCookieOptions());
 
   if (!isAppleConfigured()) {
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'provider_disabled' }));
     return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
   }
 
   if (!state || !code || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'invalid_oauth_state' }));
     return res.redirect(302, oauthRedirect({ oauth_error: 'invalid_oauth_state' }));
   }
 
@@ -192,11 +238,14 @@ const handleAppleCallback = async (req, res) => {
     await storeSession(user.id, token);
     setAuthCookies(res, token);
 
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth: 'success', provider: 'apple' }, token));
     return res.redirect(302, oauthRedirect({ oauth: 'success' }));
   } catch (error) {
     if (error?.code === 'OAUTH_EMAIL_REQUIRED') {
+      if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'oauth_email_required' }));
       return res.redirect(302, oauthRedirect({ oauth_error: 'oauth_email_required' }));
     }
+    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'apple_callback_failed' }));
     return res.redirect(302, oauthRedirect({ oauth_error: 'apple_callback_failed' }));
   }
 };

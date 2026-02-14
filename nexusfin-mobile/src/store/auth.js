@@ -44,6 +44,16 @@ export const loginWithEmail = async ({ email, password }) => {
   return { token: out.token, user: me };
 };
 
+export const loginWithToken = async (jwtToken) => {
+  const next = String(jwtToken || '').trim();
+  if (!next) throw new Error('Token OAuth mobile inválido');
+  setToken(next);
+  await SecureStore.setItemAsync(TOKEN_KEY, next);
+  const me = await api.me();
+  await syncPushSubscriptionId();
+  return { token: next, user: me };
+};
+
 export const logoutSession = async () => {
   try {
     const out = await api.getPushSubscriptions();
