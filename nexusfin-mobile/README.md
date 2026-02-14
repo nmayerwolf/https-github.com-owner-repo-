@@ -6,7 +6,7 @@ MVP mobile para Fase 3 con:
 - onboarding guiado de 4 pasos al primer login (riesgo, sectores, horizonte, push)
 - theme toggle claro/oscuro persistente
 - markets realtime multi-activo (acciones, ETF, bonos, metales, commodities, crypto, FX)
-- watchlist add/remove desde mobile (sync con backend)
+- watchlist add/remove desde mobile (sync con backend) + filtro `WATCHLIST` + gestión de símbolos externos al universo mobile
 - alertas con fetch inicial + refresh manual + stream en vivo por `WS /ws`
 - alertas mobile con tabs `En vivo / Historial / Performance` y filtros
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
