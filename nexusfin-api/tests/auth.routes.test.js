@@ -386,6 +386,62 @@ describe('auth routes', () => {
     expect(mockExchangeAppleCode).not.toHaveBeenCalled();
   });
 
+  it('completes google callback for mobile and redirects with token deep-link', async () => {
+    mockExchangeGoogleCode.mockResolvedValueOnce({
+      provider: 'google',
+      oauthId: 'google-uid-1',
+      email: 'user@mail.com',
+      displayName: 'User Name',
+      avatarUrl: 'https://avatar.test/u.png'
+    });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/google/callback')
+      .query({ state: 'valid-state', code: 'google-code-mobile' })
+      .set('Cookie', ['nxf_oauth_state=valid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location.startsWith('nexusfin://oauth?')).toBe(true);
+    expect(res.headers.location).toContain('oauth=success');
+    expect(res.headers.location).toContain('provider=google');
+    expect(res.headers.location).toContain('token=jwt-token');
+    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
+    expect(mockExchangeGoogleCode).toHaveBeenCalledWith('google-code-mobile');
+    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+  });
+
+  it('rejects google callback with invalid oauth state in mobile mode', async () => {
+    mockVerifyOAuthState.mockReturnValueOnce(false);
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/google/callback')
+      .query({ state: 'invalid-state', code: 'google-code' })
+      .set('Cookie', ['nxf_oauth_state=invalid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('nexusfin://oauth?oauth_error=invalid_oauth_state');
+    expect(mockExchangeGoogleCode).not.toHaveBeenCalled();
+  });
+
+  it('redirects with google callback failure in mobile mode when exchange fails', async () => {
+    mockExchangeGoogleCode.mockRejectedValueOnce(new Error('boom'));
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/google/callback')
+      .query({ state: 'valid-state', code: 'google-code' })
+      .set('Cookie', ['nxf_oauth_state=valid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('nexusfin://oauth?oauth_error=google_callback_failed');
+  });
+
   it('returns 422 when mobile oauth redirect_uri is invalid', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/auth/apple').query({ platform: 'mobile', redirect_uri: 'https://evil.test/callback' });
