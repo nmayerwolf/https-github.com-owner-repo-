@@ -2,7 +2,8 @@
 
 MVP mobile para Fase 3 con:
 - login email/password mobile (token bearer)
-- tabs básicas (Dashboard, Alerts, Settings)
+- tabs básicas (Dashboard, Markets, Alerts, Settings)
+- markets realtime multi-activo (acciones, ETF, bonos, metales, commodities, crypto, FX)
 - alertas con fetch inicial + refresh manual + stream en vivo por `WS /ws`
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
 - desuscripción automática al cerrar sesión (`DELETE /api/notifications/subscribe/:id`)

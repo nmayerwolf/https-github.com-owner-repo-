@@ -45,6 +45,7 @@ export const api = {
       body: JSON.stringify({ email, password })
     }),
   me: () => request('/auth/me'),
+  quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
   getAlerts: () => request('/alerts?page=1&limit=20'),
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
