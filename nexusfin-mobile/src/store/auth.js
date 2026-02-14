@@ -69,6 +69,12 @@ export const logoutSession = async () => {
     // keep logout flow even if unsubscribe fails
   }
 
+  try {
+    await api.logout();
+  } catch {
+    // keep logout flow even if backend revoke fails
+  }
+
   setToken(null);
   await SecureStore.deleteItemAsync(TOKEN_KEY);
   await SecureStore.deleteItemAsync(PUSH_SUBSCRIPTION_ID_KEY);

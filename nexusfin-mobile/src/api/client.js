@@ -45,6 +45,7 @@ export const api = {
       headers: { 'x-client-platform': 'mobile' },
       body: JSON.stringify({ email, password })
     }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
   getOAuthProviders: () => request('/auth/oauth/providers'),
   getMobileOAuthUrl: (provider) => {

@@ -11,6 +11,7 @@ MVP mobile para Fase 3 con:
 - alertas con fetch inicial + refresh manual + stream en vivo por `WS /ws`
 - alertas mobile con tabs `En vivo / Historial / Performance` y filtros
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
+- logout mobile revoca sesión backend (`POST /api/auth/logout`) además de limpiar token local/push
 - desuscripción automática al cerrar sesión (`DELETE /api/notifications/subscribe/:id`)
 - preferencias de notificaciones (stop-loss/oportunidades/grupo + quiet hours UTC)
 
