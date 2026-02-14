@@ -6,6 +6,7 @@ Plataforma de monitoreo financiero en tiempo real con análisis técnico, alerta
 
 - Frontend: React + Vite + React Router (`/Users/nmayerwolf/Documents/nexusfin`)
 - Backend: Node.js + Express + PostgreSQL (`/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`)
+- Mobile: Expo React Native (`/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile`)
 - Market data proxy: Finnhub + Alpha Vantage (keys solo en backend)
 - Auth: email/password + JWT bearer
 

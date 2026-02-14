@@ -60,6 +60,19 @@ describe('notifications routes', () => {
     expect(res.body.platform).toBe('web');
   });
 
+  it('creates mobile expo subscription', async () => {
+    query.mockResolvedValueOnce({ rows: [{ id: 's2', platform: 'ios', active: true }] });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/notifications/subscribe').send({
+      platform: 'ios',
+      expoPushToken: 'ExpoPushToken[token-123]'
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.platform).toBe('ios');
+  });
+
   it('rejects invalid quiet hours format', async () => {
     const app = makeApp();
     const res = await request(app).put('/api/notifications/preferences').send({ quietHoursStart: '25:99' });
