@@ -95,6 +95,64 @@ describe('ws price runtime', () => {
 
     runtime.stop();
   });
+
+  test('skips rebroadcast when price is unchanged before heartbeat', async () => {
+    const wsHub = {
+      getSubscribedSymbols: jest.fn(() => ['AAPL']),
+      broadcastPrice: jest.fn()
+    };
+    const finnhubSvc = {
+      quote: jest.fn(async () => ({ c: 100, dp: 0 }))
+    };
+
+    const runtime = startWsPriceRuntime({
+      wsHub,
+      finnhubSvc,
+      alphaSvc: { commodity: jest.fn() },
+      intervalSeconds: 1,
+      logger: { warn: jest.fn() }
+    });
+
+    await jest.advanceTimersByTimeAsync(5000);
+    await jest.advanceTimersByTimeAsync(5000);
+
+    expect(wsHub.broadcastPrice).toHaveBeenCalledTimes(1);
+    runtime.stop();
+  });
+
+  test('backs off after quote failure', async () => {
+    const wsHub = {
+      getSubscribedSymbols: jest.fn(() => ['AAPL']),
+      broadcastPrice: jest.fn()
+    };
+    const finnhubSvc = {
+      quote: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('upstream down'))
+        .mockResolvedValue({ c: 101, dp: 0.1 })
+    };
+
+    const runtime = startWsPriceRuntime({
+      wsHub,
+      finnhubSvc,
+      alphaSvc: { commodity: jest.fn() },
+      intervalSeconds: 1,
+      logger: { warn: jest.fn() }
+    });
+
+    await jest.advanceTimersByTimeAsync(5000);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(finnhubSvc.quote).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(20000);
+    expect(finnhubSvc.quote).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(finnhubSvc.quote).toHaveBeenCalledTimes(2);
+    expect(wsHub.broadcastPrice).toHaveBeenCalledTimes(1);
+
+    runtime.stop();
+  });
 });
 
 describe('realtime quote helpers', () => {
