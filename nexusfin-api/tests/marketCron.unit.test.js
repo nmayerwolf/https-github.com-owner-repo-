@@ -3,7 +3,7 @@ jest.mock('node-cron', () => ({
 }));
 
 const cron = require('node-cron');
-const { buildTasks, startMarketCron } = require('../src/workers/marketCron');
+const { buildTasks, startMarketCron, isUsMarketHoursEt, isWeekdayEt, scheduleIntervalMs, toStopLossChecked } = require('../src/workers/marketCron');
 
 describe('market cron scaffold', () => {
   beforeEach(() => {
@@ -21,10 +21,29 @@ describe('market cron scaffold', () => {
     expect(tasks.map((t) => t.schedule)).toEqual(['*/7 * * * *', '*/11 * * * *', '*/13 * * * *', '*/17 * * * *']);
   });
 
+  test('market hour helpers evaluate ET windows', () => {
+    expect(isWeekdayEt(new Date('2026-02-16T15:00:00Z'))).toBe(true);
+    expect(isUsMarketHoursEt(new Date('2026-02-16T15:00:00Z'))).toBe(true); // 10:00 ET
+    expect(isUsMarketHoursEt(new Date('2026-02-16T00:00:00Z'))).toBe(false); // after hours
+    expect(isWeekdayEt(new Date('2026-02-15T15:00:00Z'))).toBe(false); // sunday
+  });
+
+  test('scheduleIntervalMs parses minute cron expressions', () => {
+    expect(scheduleIntervalMs('*/5 * * * *')).toBe(300000);
+    expect(scheduleIntervalMs('0 * * * *')).toBeNull();
+  });
+
+  test('toStopLossChecked aggregates result positionsScanned', () => {
+    expect(toStopLossChecked({ stopLossChecked: 4 })).toBe(4);
+    expect(toStopLossChecked({ results: [{ positionsScanned: 2 }, { positionsScanned: 3 }] })).toBe(5);
+    expect(toStopLossChecked({})).toBe(0);
+  });
+
   test('startMarketCron disabled does not register jobs', () => {
     const runtime = startMarketCron({ enabled: false });
 
     expect(runtime.enabled).toBe(false);
+    expect(runtime.getStatus().enabled).toBe(false);
     expect(cron.schedule).not.toHaveBeenCalled();
   });
 
@@ -46,6 +65,7 @@ describe('market cron scaffold', () => {
     });
 
     expect(runtime.enabled).toBe(true);
+    expect(typeof runtime.getStatus).toBe('function');
     expect(cron.schedule).toHaveBeenCalledTimes(2);
 
     runtime.stop();

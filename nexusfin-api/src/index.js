@@ -55,6 +55,16 @@ app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.locals.getWsPriceStatus = () => ({ enabled: false, intervalMs: 0, metrics: {} });
+app.locals.getCronStatus = () => ({
+  enabled: false,
+  lastRun: null,
+  lastDuration: 0,
+  alertsGenerated: 0,
+  stopLossChecked: 0,
+  nextRun: null,
+  errors: [],
+  lastTask: null
+});
 app.locals.getMobileHealthStatus = () => ({
   ok: true,
   ws: {
@@ -120,6 +130,22 @@ app.get('/api/health/phase3', (_req, res) => {
     check,
     ts: new Date().toISOString()
   });
+});
+
+app.get('/api/health/cron', (_req, res) => {
+  const status = app.locals.getCronStatus?.();
+  return res.json(
+    status || {
+      enabled: false,
+      lastRun: null,
+      lastDuration: 0,
+      alertsGenerated: 0,
+      stopLossChecked: 0,
+      nextRun: null,
+      errors: [],
+      lastTask: null
+    }
+  );
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
@@ -288,12 +314,44 @@ const startHttpServer = ({ port = env.port } = {}) => {
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, logger: console });
   const cronTasks = buildTasks(env, {
-    us: () => alertEngine.runGlobalCycle(),
-    crypto: () => alertEngine.runGlobalCycle(),
-    forex: () => alertEngine.runGlobalCycle(),
-    commodity: () => alertEngine.runGlobalCycle()
+    us: () => alertEngine.runGlobalCycle({ categories: ['equity', 'etf', 'bond', 'metal', 'commodity'], includeStopLoss: true }),
+    crypto: () => alertEngine.runGlobalCycle({ categories: ['crypto'], includeStopLoss: false }),
+    forex: () => alertEngine.runGlobalCycle({ categories: ['fx'], includeStopLoss: false }),
+    commodity: () => alertEngine.runGlobalCycle({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false })
   });
-  const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console });
+  const logCronRun = async ({ event, runId, task, startedAt, finishedAt, durationMs, alertsGenerated, stopLossChecked, errors }) => {
+    try {
+      if (event === 'start') {
+        const inserted = await query(
+          `INSERT INTO cron_runs (started_at, alerts_generated, stop_losses_checked, errors)
+           VALUES ($1, 0, 0, '[]'::jsonb)
+           RETURNING id`,
+          [startedAt]
+        );
+        return inserted.rows?.[0]?.id || null;
+      }
+
+      if (!runId) return null;
+
+      await query(
+        `UPDATE cron_runs
+         SET finished_at = $2,
+             duration_ms = $3,
+             alerts_generated = $4,
+             stop_losses_checked = $5,
+             errors = $6::jsonb
+         WHERE id = $1`,
+        [runId, finishedAt, durationMs, alertsGenerated || 0, stopLossChecked || 0, JSON.stringify(errors || [])]
+      );
+      return runId;
+    } catch (error) {
+      // Keep cron runtime active even if cron_runs table is missing.
+      console.warn('[cron] run log skipped', error?.message || error);
+      return null;
+    }
+  };
+  const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console, logRun: logCronRun });
+  app.locals.getCronStatus = cronRuntime.getStatus;
   const wsPriceRuntime = startWsPriceRuntime({ wsHub, finnhubSvc: finnhub, logger: console });
   app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;
   app.locals.getMobileHealthStatus = () => ({
