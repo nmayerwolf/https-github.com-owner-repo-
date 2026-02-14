@@ -1,12 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api } from '../api/client';
 import { getThemePalette } from '../theme/palette';
+
+const formatPct = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '--';
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}%`;
+};
 
 const GroupsScreen = ({ theme = 'dark' }) => {
   const palette = getThemePalette(theme);
   const [groups, setGroups] = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [groupDetail, setGroupDetail] = useState(null);
   const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -14,23 +22,36 @@ const GroupsScreen = ({ theme = 'dark' }) => {
   const [error, setError] = useState('');
   const [createName, setCreateName] = useState('');
   const [joinCode, setJoinCode] = useState('');
+  const [renameInput, setRenameInput] = useState('');
 
-  const loadGroups = async (nextSelectedId = null) => {
+  const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedGroupId) || null, [groups, selectedGroupId]);
+  const isAdmin = selectedGroup?.role === 'admin';
+
+  const loadGroupContent = async (groupId) => {
+    if (!groupId) {
+      setGroupDetail(null);
+      setFeed([]);
+      return;
+    }
+
+    const [detailOut, feedOut] = await Promise.all([api.getGroupDetail(groupId), api.getGroupFeed(groupId, { page: 1, limit: 30 })]);
+    setGroupDetail(detailOut || null);
+    setRenameInput(detailOut?.name || '');
+    setFeed(feedOut?.events || []);
+  };
+
+  const loadGroups = async (nextSelectedId = '') => {
     setLoading(true);
     setError('');
     try {
       const out = await api.getGroups();
       const next = out?.groups || [];
       setGroups(next);
-      const preferredId = nextSelectedId || selectedGroup?.id || next[0]?.id || null;
-      const found = next.find((g) => g.id === preferredId) || null;
-      setSelectedGroup(found);
-      if (found) {
-        const feedOut = await api.getGroupFeed(found.id, { page: 1, limit: 30 });
-        setFeed(feedOut?.events || []);
-      } else {
-        setFeed([]);
-      }
+
+      const preferredId = nextSelectedId || selectedGroupId || next[0]?.id || '';
+      const resolvedId = next.some((g) => g.id === preferredId) ? preferredId : next[0]?.id || '';
+      setSelectedGroupId(resolvedId);
+      await loadGroupContent(resolvedId);
     } catch (e) {
       setError(e?.message || 'No se pudieron cargar los grupos.');
     } finally {
@@ -43,12 +64,13 @@ const GroupsScreen = ({ theme = 'dark' }) => {
   }, []);
 
   const createGroup = async () => {
-    if (!createName.trim()) return;
+    const name = createName.trim();
+    if (!name) return;
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const created = await api.createGroup({ name: createName.trim() });
+      const created = await api.createGroup({ name });
       setCreateName('');
       setMessage(`Grupo creado: ${created.name} (${created.code})`);
       await loadGroups(created.id);
@@ -98,6 +120,40 @@ const GroupsScreen = ({ theme = 'dark' }) => {
     }
   };
 
+  const renameGroup = async () => {
+    if (!selectedGroup?.id || !isAdmin) return;
+    const name = renameInput.trim();
+    if (!name) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.renameGroup(selectedGroup.id, { name });
+      setMessage('Nombre de grupo actualizado.');
+      await loadGroups(selectedGroup.id);
+    } catch (e) {
+      setError(e?.message || 'No se pudo renombrar el grupo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeMember = async (userId) => {
+    if (!selectedGroup?.id || !isAdmin || !userId) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.removeGroupMember(selectedGroup.id, userId);
+      setMessage('Miembro removido.');
+      await loadGroups(selectedGroup.id);
+    } catch (e) {
+      setError(e?.message || 'No se pudo remover miembro.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const react = async (eventId, reaction) => {
     if (!selectedGroup?.id || !eventId) return;
     try {
@@ -117,7 +173,7 @@ const GroupsScreen = ({ theme = 'dark' }) => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+    <ScrollView style={[styles.container, { backgroundColor: palette.bg }]} contentContainerStyle={{ paddingBottom: 24 }}>
       <Text style={[styles.title, { color: palette.text }]}>Groups</Text>
       <Text style={[styles.muted, { color: palette.muted }]}>Mis grupos: {groups.length}</Text>
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
@@ -156,17 +212,12 @@ const GroupsScreen = ({ theme = 'dark' }) => {
         keyExtractor={(item) => item.id}
         style={{ maxHeight: 62, marginBottom: 8 }}
         renderItem={({ item }) => {
-          const active = item.id === selectedGroup?.id;
+          const active = item.id === selectedGroupId;
           return (
             <Pressable
               onPress={async () => {
-                setSelectedGroup(item);
-                try {
-                  const out = await api.getGroupFeed(item.id, { page: 1, limit: 30 });
-                  setFeed(out?.events || []);
-                } catch {
-                  setFeed([]);
-                }
+                setSelectedGroupId(item.id);
+                await loadGroupContent(item.id);
               }}
               style={[styles.groupPill, { borderColor: palette.border, backgroundColor: palette.surface }, active ? { borderColor: palette.primary } : null]}
             >
@@ -180,15 +231,66 @@ const GroupsScreen = ({ theme = 'dark' }) => {
 
       {selectedGroup ? (
         <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          <Text style={[styles.section, { color: palette.text }]}>
-            {selectedGroup.name} · {selectedGroup.code}
-          </Text>
+          <View style={styles.spaceBetween}>
+            <Text style={[styles.section, { color: palette.text }]}>
+              {selectedGroup.name} · {selectedGroup.code}
+            </Text>
+            <Pressable style={[styles.refreshBtn, { backgroundColor: palette.secondaryButton }]} onPress={() => loadGroups(selectedGroup.id)} disabled={busy}>
+              <Text style={{ color: palette.text, fontWeight: '700' }}>Refrescar</Text>
+            </Pressable>
+          </View>
           <Text style={[styles.muted, { color: palette.muted }]}>
             Rol: {selectedGroup.role} · Miembros: {selectedGroup.members}
           </Text>
+
+          {isAdmin ? (
+            <View style={styles.row}>
+              <TextInput
+                value={renameInput}
+                onChangeText={setRenameInput}
+                placeholder="Nuevo nombre"
+                placeholderTextColor={palette.muted}
+                style={[styles.input, { backgroundColor: palette.surfaceAlt, borderColor: palette.border, color: palette.text }]}
+              />
+              <Pressable style={[styles.actionBtn, { backgroundColor: palette.secondaryButton }]} onPress={renameGroup} disabled={busy}>
+                <Text style={[styles.actionBtnLabel, { color: palette.text }]}>{busy ? '...' : 'Renombrar'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable style={[styles.leaveBtn, { backgroundColor: palette.secondaryButton }]} onPress={leaveOrDeleteGroup} disabled={busy}>
             <Text style={{ color: palette.text, fontWeight: '700' }}>{busy ? 'Procesando...' : selectedGroup.role === 'admin' ? 'Eliminar grupo' : 'Salir del grupo'}</Text>
           </Pressable>
+        </View>
+      ) : null}
+
+      {groupDetail ? (
+        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <Text style={[styles.section, { color: palette.text }]}>Miembros</Text>
+          {(groupDetail.members || []).map((member) => (
+            <View key={member.userId} style={[styles.memberRow, { borderColor: palette.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: palette.text, fontWeight: '700' }}>
+                  {member.displayName} ({member.role})
+                </Text>
+                <Text style={{ color: palette.muted, marginTop: 2 }}>Posiciones activas: {(member.positions || []).length}</Text>
+                {(member.positions || []).slice(0, 2).map((pos) => (
+                  <Text key={`${member.userId}-${pos.symbol}`} style={{ color: palette.muted, marginTop: 2 }}>
+                    {pos.symbol} · {formatPct(pos.plPercent)}
+                  </Text>
+                ))}
+              </View>
+              {isAdmin && member.role !== 'admin' ? (
+                <Pressable
+                  style={[styles.removeBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
+                  onPress={() => removeMember(member.userId)}
+                  disabled={busy}
+                >
+                  <Text style={{ color: palette.text, fontWeight: '700' }}>Remover</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -196,6 +298,7 @@ const GroupsScreen = ({ theme = 'dark' }) => {
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}
+        scrollEnabled={false}
         renderItem={({ item }) => (
           <View style={[styles.feedRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
             <Text style={{ color: palette.text, fontWeight: '700' }}>{item.displayName}</Text>
@@ -219,7 +322,7 @@ const GroupsScreen = ({ theme = 'dark' }) => {
         )}
         ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin eventos en feed.</Text>}
       />
-    </View>
+    </ScrollView>
   );
 };
 
@@ -258,6 +361,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6
+  },
+  memberRow: {
+    borderTopWidth: 1,
+    paddingTop: 8,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  removeBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  refreshBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  spaceBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
   }
 });
 

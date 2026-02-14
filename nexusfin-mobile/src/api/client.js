@@ -78,6 +78,13 @@ export const api = {
     }),
   leaveGroup: (groupId) => request(`/groups/${encodeURIComponent(groupId)}/leave`, { method: 'DELETE' }),
   deleteGroup: (groupId) => request(`/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' }),
+  renameGroup: (groupId, { name }) =>
+    request(`/groups/${encodeURIComponent(groupId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name })
+    }),
+  getGroupDetail: (groupId) => request(`/groups/${encodeURIComponent(groupId)}`),
+  removeGroupMember: (groupId, userId) => request(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
   getGroupFeed: (groupId, { page = 1, limit = 30 } = {}) =>
     request(`/groups/${encodeURIComponent(groupId)}/feed?page=${encodeURIComponent(String(page))}&limit=${encodeURIComponent(String(limit))}`),
   reactGroupEvent: (groupId, eventId, reaction) =>
