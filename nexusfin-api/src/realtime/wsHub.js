@@ -125,10 +125,19 @@ const startWSHub = (server) => {
     }
   };
 
+  const getSubscribedSymbols = () => {
+    const out = new Set();
+    for (const set of subscriptions.values()) {
+      for (const symbol of set) out.add(symbol);
+    }
+    return Array.from(out);
+  };
+
   return {
     wss,
     broadcastPrice,
     broadcastAlert,
+    getSubscribedSymbols,
     close: () => new Promise((resolve) => wss.close(resolve))
   };
 };

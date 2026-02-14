@@ -45,6 +45,7 @@ CRON_MARKET_INTERVAL=5
 CRON_CRYPTO_INTERVAL=15
 CRON_FOREX_INTERVAL=15
 CRON_COMMODITY_INTERVAL=60
+WS_PRICE_INTERVAL=20
 ```
 
 ## Endpoints principales
@@ -113,6 +114,7 @@ Health:
 
 Realtime scaffold (Fase 3):
 - `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)
+- price relay backend por símbolos suscriptos (`type: "price"`) usando `WS_PRICE_INTERVAL`
 - cron worker configurable por `CRON_*` vars
 - alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
 
