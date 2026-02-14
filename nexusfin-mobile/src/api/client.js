@@ -65,6 +65,26 @@ export const api = {
     if (type) params.set('type', type);
     return request(`/alerts?${params.toString()}`);
   },
+  getGroups: () => request('/groups'),
+  createGroup: ({ name }) =>
+    request('/groups', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    }),
+  joinGroup: ({ code }) =>
+    request('/groups/join', {
+      method: 'POST',
+      body: JSON.stringify({ code })
+    }),
+  leaveGroup: (groupId) => request(`/groups/${encodeURIComponent(groupId)}/leave`, { method: 'DELETE' }),
+  deleteGroup: (groupId) => request(`/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' }),
+  getGroupFeed: (groupId, { page = 1, limit = 30 } = {}) =>
+    request(`/groups/${encodeURIComponent(groupId)}/feed?page=${encodeURIComponent(String(page))}&limit=${encodeURIComponent(String(limit))}`),
+  reactGroupEvent: (groupId, eventId, reaction) =>
+    request(`/groups/${encodeURIComponent(groupId)}/feed/${encodeURIComponent(eventId)}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reaction })
+    }),
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
     request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),

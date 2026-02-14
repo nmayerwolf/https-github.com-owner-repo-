@@ -3,7 +3,8 @@
 MVP mobile para Fase 3 con:
 - login email/password mobile (token bearer)
 - OAuth mobile (Google/Apple) con deep-link `nexusfin://oauth` y token session bootstrap
-- tabs básicas (Dashboard, Markets, Alerts, Settings)
+- tabs básicas (Dashboard, Markets, Alerts, Groups, Settings)
+- tab Groups social (crear/unirse/listar, feed de eventos y reacciones agree/disagree)
 - onboarding guiado de 4 pasos al primer login (riesgo, sectores, horizonte, push)
 - theme toggle claro/oscuro persistente
 - markets realtime multi-activo expandido (acciones, ETF, bonos, metales, commodities, crypto, FX; 40+ símbolos)
