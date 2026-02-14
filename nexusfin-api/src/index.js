@@ -11,6 +11,7 @@ const { authLimiter, marketLimiter } = require('./middleware/rateLimiter');
 const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
+const av = require('./services/alphavantage');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createPushNotifier } = require('./services/push');
 
