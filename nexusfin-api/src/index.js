@@ -60,6 +60,47 @@ app.use('/api/migrate', authRequired, requireCsrf, migrateRoutes);
 
 app.use(errorHandler);
 
+const startWsPriceRuntime = ({ wsHub, finnhubSvc, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
+  const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
+  let inFlight = false;
+
+  const runCycle = async () => {
+    if (inFlight) return;
+    inFlight = true;
+
+    try {
+      const symbols = wsHub.getSubscribedSymbols();
+      if (!symbols.length) return;
+
+      for (const symbol of symbols) {
+        try {
+          const quote = await finnhubSvc.quote(symbol);
+          const price = Number(quote?.c);
+          if (!Number.isFinite(price) || price <= 0) continue;
+          wsHub.broadcastPrice({
+            symbol,
+            price,
+            change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
+            timestamp: Date.now()
+          });
+        } catch (error) {
+          logger.warn?.(`[ws-price] quote failed (${symbol})`, error?.message || error);
+        }
+      }
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  const timer = setInterval(runCycle, intervalMs);
+
+  return {
+    enabled: true,
+    intervalMs,
+    stop: () => clearInterval(timer)
+  };
+};
+
 const startHttpServer = ({ port = env.port } = {}) => {
   const server = http.createServer(app);
   const wsHub = startWSHub(server);
@@ -73,16 +114,19 @@ const startHttpServer = ({ port = env.port } = {}) => {
     commodity: () => alertEngine.runGlobalCycle()
   });
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console });
+  const wsPriceRuntime = startWsPriceRuntime({ wsHub, finnhubSvc: finnhub, logger: console });
 
   server.listen(port, () => {
     console.log(`nexusfin-api listening on :${port}`);
     console.log(`ws hub ready on :${port}/ws`);
+    console.log(`ws prices enabled (${wsPriceRuntime.intervalMs}ms)`);
     console.log(`cron ${cronRuntime.enabled ? 'enabled' : 'disabled'}`);
     console.log(`push ${pushNotifier.hasVapidConfig ? 'enabled' : 'disabled'}`);
   });
 
   const shutdown = () => {
     cronRuntime.stop();
+    wsPriceRuntime.stop();
     wsHub.close().catch(() => {});
     server.close(() => process.exit(0));
   };
@@ -90,11 +134,11 @@ const startHttpServer = ({ port = env.port } = {}) => {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  return { server, wsHub, cronRuntime, alertEngine, pushNotifier };
+  return { server, wsHub, cronRuntime, wsPriceRuntime, alertEngine, pushNotifier };
 };
 
 if (require.main === module) {
   startHttpServer();
 }
 
-module.exports = { app, startHttpServer };
+module.exports = { app, startHttpServer, startWsPriceRuntime };
