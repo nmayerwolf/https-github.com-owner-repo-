@@ -35,6 +35,47 @@ const mergeConfig = (row = {}) => ({
 });
 
 const toNumberArray = (input) => (Array.isArray(input) ? input.map((x) => Number(x)).filter((x) => Number.isFinite(x)) : []);
+const toFinite = (value) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : null;
+};
+
+const resolveRealtimeQuoteSymbol = (symbol) => {
+  const normalized = String(symbol || '').trim().toUpperCase();
+  if (!normalized) return { quoteSymbol: null, market: null };
+  if (normalized.includes('_')) return { quoteSymbol: `OANDA:${normalized}`, market: 'fx' };
+  if (normalized.endsWith('USDT')) return { quoteSymbol: `BINANCE:${normalized}`, market: 'crypto' };
+  return { quoteSymbol: normalized, market: 'equity' };
+};
+
+const evaluateOutcome = ({ type, priceAtAlert, stopLoss, takeProfit, currentPrice }) => {
+  const price = toFinite(currentPrice);
+  const base = toFinite(priceAtAlert);
+  if (!price || !base || base <= 0) return { outcome: 'open', shouldUpdate: false };
+
+  const sl = toFinite(stopLoss);
+  const tp = toFinite(takeProfit);
+  const movePct = ((price - base) / base) * 100;
+  const normalizedType = String(type || '').toLowerCase();
+
+  if (normalizedType === 'opportunity') {
+    if (tp != null && price >= tp) return { outcome: 'win', shouldUpdate: true };
+    if (sl != null && price <= sl) return { outcome: 'loss', shouldUpdate: true };
+    if (movePct >= 5) return { outcome: 'win', shouldUpdate: true };
+    if (movePct <= -5) return { outcome: 'loss', shouldUpdate: true };
+    return { outcome: 'open', shouldUpdate: false };
+  }
+
+  if (normalizedType === 'bearish') {
+    if (tp != null && price <= tp) return { outcome: 'win', shouldUpdate: true };
+    if (sl != null && price >= sl) return { outcome: 'loss', shouldUpdate: true };
+    if (movePct <= -5) return { outcome: 'win', shouldUpdate: true };
+    if (movePct >= 5) return { outcome: 'loss', shouldUpdate: true };
+    return { outcome: 'open', shouldUpdate: false };
+  }
+
+  return { outcome: 'open', shouldUpdate: false };
+};
 
 const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger = console }) => {
   const hasRecentDuplicate = async ({ userId, symbol, type, recommendation }) => {
@@ -232,6 +273,13 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
     return buildAssetFromMarketData(symbol, quoteData, candlesData);
   };
 
+  const fetchCurrentPrice = async (symbol) => {
+    const { quoteSymbol } = resolveRealtimeQuoteSymbol(symbol);
+    if (!quoteSymbol) return null;
+    const out = await finnhub.quote(quoteSymbol);
+    return toFinite(out?.c);
+  };
+
   const runUserCycle = async (userId, options = {}) => {
     const configRow =
       options.configOverride ||
@@ -353,16 +401,87 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
     };
   };
 
+  const runOutcomeEvaluationCycle = async () => {
+    const openAlerts = await query(
+      `SELECT id, symbol, type, price_at_alert, stop_loss, take_profit
+       FROM alerts
+       WHERE (outcome IS NULL OR outcome = 'open')
+         AND type IN ('opportunity', 'bearish')
+       ORDER BY created_at DESC
+       LIMIT 500`
+    );
+
+    const bySymbolPrice = new Map();
+    let wins = 0;
+    let losses = 0;
+    let updated = 0;
+    let errors = 0;
+
+    for (const alert of openAlerts.rows) {
+      try {
+        const symbol = String(alert.symbol || '').toUpperCase();
+        if (!bySymbolPrice.has(symbol)) {
+          const live = await fetchCurrentPrice(symbol);
+          bySymbolPrice.set(symbol, live);
+        }
+        const livePrice = bySymbolPrice.get(symbol);
+        const verdict = evaluateOutcome({
+          type: alert.type,
+          priceAtAlert: alert.price_at_alert,
+          stopLoss: alert.stop_loss,
+          takeProfit: alert.take_profit,
+          currentPrice: livePrice
+        });
+
+        if (!verdict.shouldUpdate) continue;
+
+        await query(
+          `UPDATE alerts
+           SET outcome = $2, outcome_price = $3, outcome_date = NOW()
+           WHERE id = $1`,
+          [alert.id, verdict.outcome, livePrice]
+        );
+
+        updated += 1;
+        if (verdict.outcome === 'win') wins += 1;
+        if (verdict.outcome === 'loss') losses += 1;
+      } catch (error) {
+        errors += 1;
+        logger.warn?.(`[alertEngine] outcome eval failed (${alert.id})`, error?.message || error);
+      }
+    }
+
+    return {
+      scanned: openAlerts.rows.length,
+      updated,
+      wins,
+      losses,
+      open: Math.max(0, openAlerts.rows.length - updated),
+      errors
+    };
+  };
+
   return {
     runUserCycle,
     runGlobalCycle,
+    runOutcomeEvaluationCycle,
     buildSignalAlertPayload,
     buildStopLossPayload,
     buildAssetFromMarketData,
+    fetchCurrentPrice,
+    evaluateOutcome,
+    resolveRealtimeQuoteSymbol,
     mapRecommendationToType,
     computeAdaptiveStops,
     mergeConfig
   };
 };
 
-module.exports = { createAlertEngine, mapRecommendationToType, computeAdaptiveStops, mergeConfig };
+module.exports = {
+  createAlertEngine,
+  mapRecommendationToType,
+  computeAdaptiveStops,
+  mergeConfig,
+  evaluateOutcome,
+  resolveRealtimeQuoteSymbol
+};

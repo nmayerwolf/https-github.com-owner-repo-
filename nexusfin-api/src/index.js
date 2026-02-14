@@ -313,11 +313,21 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const pushNotifier = createPushNotifier({ query, logger: console });
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, logger: console });
+  const runMarketCycleWithOutcome = async (options) => {
+    const cycle = await alertEngine.runGlobalCycle(options);
+    const outcomes = await alertEngine.runOutcomeEvaluationCycle();
+    return {
+      ...cycle,
+      outcomesUpdated: outcomes.updated,
+      outcomeWins: outcomes.wins,
+      outcomeLosses: outcomes.losses
+    };
+  };
   const cronTasks = buildTasks(env, {
-    us: () => alertEngine.runGlobalCycle({ categories: ['equity', 'etf', 'bond', 'metal', 'commodity'], includeStopLoss: true }),
-    crypto: () => alertEngine.runGlobalCycle({ categories: ['crypto'], includeStopLoss: false }),
-    forex: () => alertEngine.runGlobalCycle({ categories: ['fx'], includeStopLoss: false }),
-    commodity: () => alertEngine.runGlobalCycle({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false })
+    us: () => runMarketCycleWithOutcome({ categories: ['equity', 'etf', 'bond', 'metal', 'commodity'], includeStopLoss: true }),
+    crypto: () => runMarketCycleWithOutcome({ categories: ['crypto'], includeStopLoss: false }),
+    forex: () => runMarketCycleWithOutcome({ categories: ['fx'], includeStopLoss: false }),
+    commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false })
   });
   const logCronRun = async ({ event, runId, task, startedAt, finishedAt, durationMs, alertsGenerated, stopLossChecked, errors }) => {
     try {
