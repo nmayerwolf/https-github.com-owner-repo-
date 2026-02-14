@@ -2,7 +2,9 @@ const {
   createAlertEngine,
   mapRecommendationToType,
   computeAdaptiveStops,
-  mergeConfig
+  mergeConfig,
+  evaluateOutcome,
+  resolveRealtimeQuoteSymbol
 } = require('../src/services/alertEngine');
 
 describe('alertEngine helpers', () => {
@@ -30,6 +32,29 @@ describe('alertEngine helpers', () => {
     expect(merged.rsiOS).toBe(30);
     expect(merged.rsiOB).toBe(70);
     expect(merged.minConfluence).toBe(2);
+  });
+
+  test('resolveRealtimeQuoteSymbol infers provider symbol', () => {
+    expect(resolveRealtimeQuoteSymbol('AAPL')).toEqual({ quoteSymbol: 'AAPL', market: 'equity' });
+    expect(resolveRealtimeQuoteSymbol('BTCUSDT')).toEqual({ quoteSymbol: 'BINANCE:BTCUSDT', market: 'crypto' });
+    expect(resolveRealtimeQuoteSymbol('EUR_USD')).toEqual({ quoteSymbol: 'OANDA:EUR_USD', market: 'fx' });
+  });
+
+  test('evaluateOutcome evaluates opportunity and bearish thresholds', () => {
+    expect(evaluateOutcome({ type: 'opportunity', priceAtAlert: 100, currentPrice: 106 })).toEqual({ outcome: 'win', shouldUpdate: true });
+    expect(evaluateOutcome({ type: 'opportunity', priceAtAlert: 100, currentPrice: 94 })).toEqual({ outcome: 'loss', shouldUpdate: true });
+    expect(evaluateOutcome({ type: 'opportunity', priceAtAlert: 100, takeProfit: 110, currentPrice: 111 })).toEqual({
+      outcome: 'win',
+      shouldUpdate: true
+    });
+    expect(evaluateOutcome({ type: 'opportunity', priceAtAlert: 100, stopLoss: 95, currentPrice: 94.5 })).toEqual({
+      outcome: 'loss',
+      shouldUpdate: true
+    });
+    expect(evaluateOutcome({ type: 'opportunity', priceAtAlert: 100, currentPrice: 101 })).toEqual({ outcome: 'open', shouldUpdate: false });
+
+    expect(evaluateOutcome({ type: 'bearish', priceAtAlert: 100, currentPrice: 94 })).toEqual({ outcome: 'win', shouldUpdate: true });
+    expect(evaluateOutcome({ type: 'bearish', priceAtAlert: 100, currentPrice: 106 })).toEqual({ outcome: 'loss', shouldUpdate: true });
   });
 });
 
@@ -136,5 +161,50 @@ describe('alertEngine cycle', () => {
     expect(finnhub.quote).toHaveBeenCalledWith('BINANCE:BTCUSDT');
     expect(finnhub.cryptoCandles).toHaveBeenCalledWith('BTCUSDT', 'D', expect.any(Number), expect.any(Number));
     expect(finnhub.candles).not.toHaveBeenCalled();
+  });
+
+  test('runOutcomeEvaluationCycle updates win/loss alerts from live price', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          { id: 'a1', symbol: 'AAPL', type: 'opportunity', price_at_alert: 100, stop_loss: 95, take_profit: 112 },
+          { id: 'a2', symbol: 'NVDA', type: 'bearish', price_at_alert: 100, stop_loss: 107, take_profit: 90 },
+          { id: 'a3', symbol: 'MSFT', type: 'opportunity', price_at_alert: 100, stop_loss: 95, take_profit: 110 }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const finnhub = {
+      quote: jest
+        .fn()
+        .mockResolvedValueOnce({ c: 113 }) // a1 -> win by TP
+        .mockResolvedValueOnce({ c: 108 }) // a2 -> loss by SL
+        .mockResolvedValueOnce({ c: 101 }), // a3 -> open
+      candles: jest.fn(),
+      cryptoCandles: jest.fn(),
+      forexCandles: jest.fn()
+    };
+
+    const engine = createAlertEngine({ query, finnhub, wsHub: { broadcastAlert: jest.fn() }, logger: { warn: jest.fn(), error: jest.fn() } });
+
+    const out = await engine.runOutcomeEvaluationCycle();
+
+    expect(out.scanned).toBe(3);
+    expect(out.updated).toBe(2);
+    expect(out.wins).toBe(1);
+    expect(out.losses).toBe(1);
+    expect(out.open).toBe(1);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('UPDATE alerts'),
+      ['a1', 'win', 113]
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('UPDATE alerts'),
+      ['a2', 'loss', 108]
+    );
   });
 });
