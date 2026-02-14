@@ -5,6 +5,15 @@ Branch objetivo: `codex/nexusfin-phase3-final`
 
 ## 1) Gate automático previo
 
+Script rápido (recomendado):
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+./scripts/phase3_gate.sh
+```
+
+Manual:
+
 Web:
 
 ```bash
