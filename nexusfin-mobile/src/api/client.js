@@ -65,6 +65,11 @@ export const api = {
     if (type) params.set('type', type);
     return request(`/alerts?${params.toString()}`);
   },
+  shareAlertToGroup: (alertId, { groupId, message = '' }) =>
+    request(`/alerts/${encodeURIComponent(alertId)}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ groupId, message })
+    }),
   getGroups: () => request('/groups'),
   createGroup: ({ name }) =>
     request('/groups', {

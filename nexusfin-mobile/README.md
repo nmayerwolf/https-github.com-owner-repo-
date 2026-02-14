@@ -11,6 +11,7 @@ MVP mobile para Fase 3 con:
 - watchlist add/remove desde mobile (sync con backend) + filtro `WATCHLIST` + gestión de símbolos externos al universo mobile
 - alertas con fetch inicial + refresh manual + stream en vivo por `WS /ws`
 - alertas mobile con tabs `En vivo / Historial / Performance` y filtros
+- compartir alertas a grupos desde mobile (`POST /api/alerts/:id/share`)
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
 - logout mobile revoca sesión backend (`POST /api/auth/logout`) además de limpiar token local/push
 - botón en Settings para enviar push de prueba (`POST /api/notifications/test`)
