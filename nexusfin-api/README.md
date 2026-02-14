@@ -99,6 +99,7 @@ Alerts (Fase 3 foundation):
 Notifications (Fase 3 foundation):
 - `GET /api/notifications/vapid-public-key`
 - `POST /api/notifications/subscribe`
+- `GET /api/notifications/subscriptions`
 - `GET /api/notifications/preferences`
 - `PUT /api/notifications/preferences`
 - `DELETE /api/notifications/subscribe/:id`
@@ -141,6 +142,7 @@ Realtime scaffold (Fase 3):
 
 - `001_initial.sql`: base de Fase 2.
 - `002_phase3_foundation.sql`: tablas base de Fase 3 (alerts, notifications, social feed, shared alerts, campos OAuth).
+- `003_push_subscription_dedupe.sql`: dedupe + índices únicos para suscripciones push activas (web/mobile).
 
 ## Tests
 

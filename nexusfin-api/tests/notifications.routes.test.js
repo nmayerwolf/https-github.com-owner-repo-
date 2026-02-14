@@ -47,6 +47,19 @@ describe('notifications routes', () => {
     expect(res.body.opportunities).toBe(true);
   });
 
+  it('lists active subscriptions for authenticated user', async () => {
+    query.mockResolvedValueOnce({
+      rows: [{ id: 's1', platform: 'ios', active: true, created_at: '2026-02-14T00:00:00.000Z' }]
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/notifications/subscriptions');
+
+    expect(res.status).toBe(200);
+    expect(res.body.subscriptions).toHaveLength(1);
+    expect(res.body.subscriptions[0].platform).toBe('ios');
+  });
+
   it('creates web push subscription', async () => {
     query
       .mockResolvedValueOnce({ rows: [] })
