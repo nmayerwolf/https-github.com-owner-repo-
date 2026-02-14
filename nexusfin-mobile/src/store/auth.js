@@ -4,12 +4,28 @@ import { api, setToken } from '../api/client';
 const TOKEN_KEY = 'nexusfin_mobile_token';
 const PUSH_SUBSCRIPTION_ID_KEY = 'nexusfin_mobile_push_subscription_id';
 
+const syncPushSubscriptionId = async () => {
+  try {
+    const out = await api.getPushSubscriptions();
+    const mobile = (out?.subscriptions || []).find((s) => s.platform === 'ios' || s.platform === 'android');
+    if (mobile?.id) {
+      await SecureStore.setItemAsync(PUSH_SUBSCRIPTION_ID_KEY, String(mobile.id));
+      return;
+    }
+  } catch {
+    // keep session even if subscriptions endpoint fails
+  }
+
+  await SecureStore.deleteItemAsync(PUSH_SUBSCRIPTION_ID_KEY);
+};
+
 export const hydrateSession = async () => {
   const stored = await SecureStore.getItemAsync(TOKEN_KEY);
   if (!stored) return null;
   setToken(stored);
   try {
     const me = await api.me();
+    await syncPushSubscriptionId();
     return { token: stored, user: me };
   } catch {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
@@ -24,14 +40,20 @@ export const loginWithEmail = async ({ email, password }) => {
   setToken(out.token);
   await SecureStore.setItemAsync(TOKEN_KEY, out.token);
   const me = await api.me();
+  await syncPushSubscriptionId();
   return { token: out.token, user: me };
 };
 
 export const logoutSession = async () => {
   try {
-    const subId = await SecureStore.getItemAsync(PUSH_SUBSCRIPTION_ID_KEY);
-    if (subId) {
-      await api.deletePushSubscription(subId);
+    const out = await api.getPushSubscriptions();
+    const mobileSubs = (out?.subscriptions || []).filter((s) => s.platform === 'ios' || s.platform === 'android');
+    for (const sub of mobileSubs) {
+      try {
+        await api.deletePushSubscription(sub.id);
+      } catch {
+        // continue attempting cleanup
+      }
     }
   } catch {
     // keep logout flow even if unsubscribe fails
@@ -45,4 +67,12 @@ export const logoutSession = async () => {
 export const savePushSubscriptionId = async (id) => {
   if (!id) return;
   await SecureStore.setItemAsync(PUSH_SUBSCRIPTION_ID_KEY, String(id));
+};
+
+export const clearPushSubscriptionId = async () => {
+  await SecureStore.deleteItemAsync(PUSH_SUBSCRIPTION_ID_KEY);
+};
+
+export const getPushSubscriptionId = async () => {
+  return SecureStore.getItemAsync(PUSH_SUBSCRIPTION_ID_KEY);
 };
