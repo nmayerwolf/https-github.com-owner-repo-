@@ -56,6 +56,7 @@ export const api = {
   updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
   getConfig: () => request('/config'),
   updateConfig: (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
+  healthPhase3: () => request('/health/phase3'),
   quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
   getMarketUniverse: () => request('/market/universe'),
   getWatchlist: () => request('/watchlist'),

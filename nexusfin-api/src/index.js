@@ -24,6 +24,7 @@ const migrateRoutes = require('./routes/migrate');
 const alertsRoutes = require('./routes/alerts');
 const notificationsRoutes = require('./routes/notifications');
 const exportRoutes = require('./routes/export');
+const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
   'AV:GOLD': { fn: 'GOLD' },
   'AV:SILVER': { fn: 'SILVER' },
@@ -96,6 +97,28 @@ app.get('/api/health/mobile', (_req, res) => {
       ts: new Date().toISOString()
     }
   );
+});
+
+app.get('/api/health/phase3', (_req, res) => {
+  const wsIntervalMs = Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000);
+  const check = {
+    mobileOAuth: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey),
+    expoPush: Boolean(env.expoAccessToken),
+    realtimeWs: wsIntervalMs >= 5000,
+    marketUniverse: Array.isArray(MARKET_UNIVERSE) && MARKET_UNIVERSE.length >= 30,
+    exportPdf: true,
+    groupsSocial: true
+  };
+  const score = Object.values(check).filter(Boolean).length;
+  const total = Object.keys(check).length;
+
+  return res.json({
+    ok: score === total,
+    score,
+    total,
+    check,
+    ts: new Date().toISOString()
+  });
 });
 
 app.use('/api/auth', authLimiter, authRoutes);

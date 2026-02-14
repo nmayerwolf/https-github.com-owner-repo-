@@ -120,6 +120,8 @@ Migration:
 Health:
 - `GET /api/health`
 - `GET /api/health/realtime` (autenticado)
+- `GET /api/health/mobile`
+- `GET /api/health/phase3`
 
 Realtime scaffold (Fase 3):
 - `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)
