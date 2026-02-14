@@ -24,6 +24,12 @@ const migrateRoutes = require('./routes/migrate');
 const alertsRoutes = require('./routes/alerts');
 const notificationsRoutes = require('./routes/notifications');
 const exportRoutes = require('./routes/export');
+const MACRO_SYMBOL_TO_REQUEST = {
+  'AV:GOLD': { fn: 'GOLD' },
+  'AV:SILVER': { fn: 'SILVER' },
+  'AV:WTI': { fn: 'WTI' },
+  'AV:TREASURY_YIELD:10YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '10year' } }
+};
 
 const app = express();
 
@@ -60,7 +66,39 @@ app.use('/api/migrate', authRequired, requireCsrf, migrateRoutes);
 
 app.use(errorHandler);
 
-const startWsPriceRuntime = ({ wsHub, finnhubSvc, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
+const extractLatestAVValue = (payload) => {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  for (const row of rows) {
+    const value = Number(row?.value);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+};
+
+const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+
+  const macroRequest = MACRO_SYMBOL_TO_REQUEST[upper];
+  if (macroRequest) {
+    const raw = await alphaSvc.commodity(macroRequest.fn, macroRequest.params || {});
+    const price = extractLatestAVValue(raw);
+    if (!Number.isFinite(price)) return null;
+    return { symbol: upper, price, change: null, provider: 'alphavantage' };
+  }
+
+  const quote = await finnhubSvc.quote(upper);
+  const price = Number(quote?.c);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  return {
+    symbol: upper,
+    price,
+    change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
+    provider: 'finnhub'
+  };
+};
+
+const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
   const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
   let inFlight = false;
 
@@ -74,13 +112,12 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, logger = console, intervalSeco
 
       for (const symbol of symbols) {
         try {
-          const quote = await finnhubSvc.quote(symbol);
-          const price = Number(quote?.c);
-          if (!Number.isFinite(price) || price <= 0) continue;
+          const out = await resolveRealtimeQuote(symbol, { finnhubSvc, alphaSvc });
+          if (!out) continue;
           wsHub.broadcastPrice({
-            symbol,
-            price,
-            change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
+            symbol: out.symbol,
+            price: out.price,
+            change: out.change,
             timestamp: Date.now()
           });
         } catch (error) {
@@ -141,4 +178,4 @@ if (require.main === module) {
   startHttpServer();
 }
 
-module.exports = { app, startHttpServer, startWsPriceRuntime };
+module.exports = { app, startHttpServer, startWsPriceRuntime, resolveRealtimeQuote, extractLatestAVValue };

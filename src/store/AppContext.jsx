@@ -99,6 +99,13 @@ const toWsMarketSymbol = (asset) => {
   if (asset.source === 'finnhub_stock') return String(asset.symbol).toUpperCase();
   if (asset.source === 'finnhub_crypto') return `BINANCE:${String(asset.symbol).toUpperCase()}`;
   if (asset.source === 'finnhub_fx') return `OANDA:${String(asset.symbol).toUpperCase()}`;
+  if (asset.source === 'alphavantage_macro') {
+    const key = String(asset.symbol).toUpperCase();
+    if (key === 'XAU') return 'AV:GOLD';
+    if (key === 'XAG') return 'AV:SILVER';
+    if (key === 'CL') return 'AV:WTI';
+    if (key === 'US10Y') return 'AV:TREASURY_YIELD:10YEAR';
+  }
   return null;
 };
 
@@ -326,7 +333,12 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (state.loading || !state.assets.length) return undefined;
-    const wsSymbols = wsSymbolKey ? wsSymbolKey.split(',').filter(Boolean) : [];
+    const wsSymbols = wsSymbolKey
+      ? wsSymbolKey
+          .split(',')
+          .filter(Boolean)
+          .filter((symbol) => (isAuthenticated ? true : !symbol.startsWith('AV:')))
+      : [];
     if (!wsSymbols.length) return undefined;
 
     const socketFactory = isAuthenticated ? createBackendSocket : createFinnhubSocket;
