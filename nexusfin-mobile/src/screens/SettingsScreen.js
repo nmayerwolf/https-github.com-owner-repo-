@@ -13,6 +13,7 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
   const [pushSubIds, setPushSubIds] = useState([]);
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
+  const [testPushLoading, setTestPushLoading] = useState(false);
   const [prefs, setPrefs] = useState({
     stopLoss: true,
     opportunities: true,
@@ -136,6 +137,27 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
     }
   };
 
+  const sendTestPush = async () => {
+    setTestPushLoading(true);
+    setMessage('');
+    try {
+      const out = await api.sendTestNotification({
+        title: 'NexusFin test',
+        body: 'Push de prueba desde mobile settings.',
+        respectQuietHours: true
+      });
+      if (Number(out?.sent || 0) > 0) {
+        setMessage(`Push de prueba enviado (${out.sent}).`);
+      } else {
+        setMessage(`Push de prueba no enviado (${out?.skipped || 'SKIPPED'}).`);
+      }
+    } catch (error) {
+      setMessage(error?.message || 'No se pudo enviar push de prueba.');
+    } finally {
+      setTestPushLoading(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Settings</Text>
@@ -146,6 +168,14 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
 
       <Pressable style={[styles.button, styles.secondary, { backgroundColor: palette.secondaryButton }]} disabled={loading || !pushEnabled} onPress={disablePush}>
         <Text style={[styles.secondaryLabel, { color: palette.text }]}>{loading ? 'Procesando...' : 'Desactivar push nativo'}</Text>
+      </Pressable>
+
+      <Pressable
+        style={[styles.button, styles.secondary, { backgroundColor: palette.secondaryButton }]}
+        disabled={testPushLoading || !pushEnabled}
+        onPress={sendTestPush}
+      >
+        <Text style={[styles.secondaryLabel, { color: palette.text }]}>{testPushLoading ? 'Enviando...' : 'Enviar push de prueba'}</Text>
       </Pressable>
 
       <Pressable style={[styles.button, styles.secondary, { backgroundColor: palette.secondaryButton }]} onPress={onLogout}>

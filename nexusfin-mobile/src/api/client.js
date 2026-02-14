@@ -45,6 +45,7 @@ export const api = {
       headers: { 'x-client-platform': 'mobile' },
       body: JSON.stringify({ email, password })
     }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
   getOAuthProviders: () => request('/auth/oauth/providers'),
   getMobileOAuthUrl: (provider) => {
@@ -67,6 +68,11 @@ export const api = {
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
     request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),
+  sendTestNotification: (data = {}) =>
+    request('/notifications/test', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
   subscribePush: ({ platform, expoPushToken }) =>
     request('/notifications/subscribe', {
       method: 'POST',

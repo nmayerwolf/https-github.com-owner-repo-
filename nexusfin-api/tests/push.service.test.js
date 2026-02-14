@@ -124,6 +124,51 @@ describe('createPushNotifier', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  test('sends system test notification to mobile subscription', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'sub1', platform: 'ios', subscription: { expoPushToken: 'ExpoPushToken[token123]' } }]
+      });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ status: 'ok' }] })
+    });
+
+    const notifier = createPushNotifier({ query, logger: { warn: jest.fn() } });
+    const result = await notifier.notifySystem({
+      userId: 'u1',
+      title: 'NexusFin test',
+      body: 'Push de prueba'
+    });
+
+    expect(result.sent).toBe(1);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://exp.host/--/api/v2/push/send',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
+  test('skips system test notification during quiet hours when enabled', async () => {
+    const query = jest.fn().mockResolvedValueOnce({
+      rows: [{ quiet_hours_start: '00:00', quiet_hours_end: '00:00' }]
+    });
+
+    const notifier = createPushNotifier({ query, logger: { warn: jest.fn() } });
+    const result = await notifier.notifySystem({
+      userId: 'u1',
+      title: 'NexusFin test',
+      body: 'Push de prueba',
+      respectQuietHours: true
+    });
+
+    expect(result).toEqual({ sent: 0, skipped: 'QUIET_HOURS' });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test('notifies group activity to members respecting groupActivity preference', async () => {
     const query = jest
       .fn()
