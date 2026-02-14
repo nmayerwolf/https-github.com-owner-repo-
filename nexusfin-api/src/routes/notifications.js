@@ -74,6 +74,22 @@ router.post('/subscribe', async (req, res, next) => {
   }
 });
 
+router.get('/subscriptions', async (req, res, next) => {
+  try {
+    const out = await query(
+      `SELECT id, platform, active, created_at
+       FROM push_subscriptions
+       WHERE user_id = $1 AND active = true
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+
+    return res.json({ subscriptions: out.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/preferences', async (req, res, next) => {
   try {
     const out = await query(

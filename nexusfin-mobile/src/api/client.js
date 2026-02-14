@@ -50,5 +50,7 @@ export const api = {
     request('/notifications/subscribe', {
       method: 'POST',
       body: JSON.stringify({ platform, expoPushToken })
-    })
+    }),
+  getPushSubscriptions: () => request('/notifications/subscriptions'),
+  deletePushSubscription: (id) => request(`/notifications/subscribe/${id}`, { method: 'DELETE' })
 };

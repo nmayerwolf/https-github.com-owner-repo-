@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { api, setToken } from '../api/client';
 
 const TOKEN_KEY = 'nexusfin_mobile_token';
+const PUSH_SUBSCRIPTION_ID_KEY = 'nexusfin_mobile_push_subscription_id';
 
 export const hydrateSession = async () => {
   const stored = await SecureStore.getItemAsync(TOKEN_KEY);
@@ -27,6 +28,21 @@ export const loginWithEmail = async ({ email, password }) => {
 };
 
 export const logoutSession = async () => {
+  try {
+    const subId = await SecureStore.getItemAsync(PUSH_SUBSCRIPTION_ID_KEY);
+    if (subId) {
+      await api.deletePushSubscription(subId);
+    }
+  } catch {
+    // keep logout flow even if unsubscribe fails
+  }
+
   setToken(null);
   await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(PUSH_SUBSCRIPTION_ID_KEY);
+};
+
+export const savePushSubscriptionId = async (id) => {
+  if (!id) return;
+  await SecureStore.setItemAsync(PUSH_SUBSCRIPTION_ID_KEY, String(id));
 };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api } from '../api/client';
 import { registerNativePush } from '../lib/push';
+import { savePushSubscriptionId } from '../store/auth';
 
 const SettingsScreen = ({ onLogout }) => {
   const [message, setMessage] = useState('');
@@ -12,7 +13,8 @@ const SettingsScreen = ({ onLogout }) => {
     setMessage('');
     try {
       const out = await registerNativePush();
-      await api.subscribePush(out);
+      const sub = await api.subscribePush(out);
+      await savePushSubscriptionId(sub?.id);
       setMessage('Push nativo activado.');
     } catch (error) {
       setMessage(error?.message || 'No se pudo activar push nativo.');
