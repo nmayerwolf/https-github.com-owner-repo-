@@ -60,6 +60,8 @@ const Alerts = () => {
   const [shareGroupByAlert, setShareGroupByAlert] = useState({});
   const [shareLoadingId, setShareLoadingId] = useState('');
   const [shareMessage, setShareMessage] = useState('');
+  const [exportLoadingId, setExportLoadingId] = useState('');
+  const [exportMessage, setExportMessage] = useState('');
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
 
@@ -161,6 +163,31 @@ const Alerts = () => {
     }
   };
 
+  const exportAlertReport = async (alertId, symbol) => {
+    if (typeof api.exportAlertPdf !== 'function') return;
+
+    setExportLoadingId(alertId);
+    setExportMessage('');
+
+    try {
+      const buffer = await api.exportAlertPdf(alertId);
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nexusfin-alert-${symbol || alertId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setExportMessage('PDF exportado correctamente.');
+    } catch (err) {
+      setExportMessage(err?.message || 'No se pudo exportar PDF.');
+    } finally {
+      setExportLoadingId('');
+    }
+  };
+
   const renderShareControls = (alertId) => {
     if (!groups.length) {
       if (groupsLoading) return <div className="muted">Cargando grupos...</div>;
@@ -244,6 +271,7 @@ const Alerts = () => {
       {historyLoading && <div className="card muted">Cargando historial...</div>}
       {!!historyError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{historyError}</div>}
       {!!shareMessage && <div className="card" style={{ borderColor: '#60A5FA88' }}>{shareMessage}</div>}
+      {!!exportMessage && <div className="card" style={{ borderColor: '#60A5FA88' }}>{exportMessage}</div>}
 
       {!historyLoading && !historyError && (
         <>
@@ -262,6 +290,11 @@ const Alerts = () => {
                 <span className="muted">Confianza: {a.confidence}</span>
               </div>
               {renderShareControls(a.id)}
+              <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start' }}>
+                <button type="button" onClick={() => exportAlertReport(a.id, a.symbol)} disabled={exportLoadingId === a.id}>
+                  {exportLoadingId === a.id ? 'Exportando...' : 'Exportar PDF'}
+                </button>
+              </div>
             </article>
           ))}
 

@@ -103,6 +103,7 @@ Notifications (Fase 3 foundation):
 
 Export:
 - `GET /api/export/portfolio?format=csv&filter=all|active|sold`
+- `GET /api/export/alert/:id?format=pdf`
 
 Migration:
 - `POST /api/migrate`

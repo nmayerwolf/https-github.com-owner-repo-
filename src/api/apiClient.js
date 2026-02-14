@@ -136,6 +136,27 @@ export const api = {
   subscribeNotifications: (subscription) =>
     request('/notifications/subscribe', { method: 'POST', body: JSON.stringify({ platform: 'web', subscription }) }),
 
+  exportAlertPdf: async (alertId) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/export/alert/${encodeURIComponent(alertId)}?format=pdf`, {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    });
+
+    const maybeRefresh = res.headers.get('X-Refresh-Token');
+    if (maybeRefresh) token = maybeRefresh;
+
+    if (!res.ok) {
+      const err = await parseError(res);
+      throw { status: res.status, ...(err || {}) };
+    }
+
+    return res.arrayBuffer();
+  },
+
   exportPortfolioCsv: async (filter = 'all') => {
     const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
