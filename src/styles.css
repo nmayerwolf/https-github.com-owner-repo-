@@ -8,6 +8,16 @@
   --info: #60a5fa;
   --text: #e0e7f0;
   --muted: #6b7b8d;
+  --body-grad-1: #122545;
+}
+
+:root[data-theme='light'] {
+  --bg: #eef4ff;
+  --surface: rgba(255, 255, 255, 0.92);
+  --border: rgba(15, 23, 42, 0.14);
+  --text: #102039;
+  --muted: #4a5d75;
+  --body-grad-1: #d4e7ff;
 }
 
 * {
@@ -16,9 +26,10 @@
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 20% -20%, #122545 0%, var(--bg) 60%);
+  background: radial-gradient(1200px 600px at 20% -20%, var(--body-grad-1) 0%, var(--bg) 60%);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
+  transition: background 180ms ease, color 180ms ease;
 }
 
 h1,
@@ -161,6 +172,10 @@ pre {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
+}
+
+:root[data-theme='light'] .modal-card {
+  background: #ffffff;
 }
 
 button,

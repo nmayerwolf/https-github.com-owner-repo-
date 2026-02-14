@@ -3,7 +3,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiMock, appCtxMock, subscribeBrowserPushMock } = vi.hoisted(() => ({
+const { apiMock, appCtxMock, subscribeBrowserPushMock, themeCtxMock } = vi.hoisted(() => ({
   apiMock: {
     resetPassword: vi.fn(),
     getNotificationPreferences: vi.fn(),
@@ -24,7 +24,11 @@ const { apiMock, appCtxMock, subscribeBrowserPushMock } = vi.hoisted(() => ({
       setConfig: vi.fn()
     }
   },
-  subscribeBrowserPushMock: vi.fn()
+  subscribeBrowserPushMock: vi.fn(),
+  themeCtxMock: {
+    theme: 'dark',
+    setTheme: vi.fn()
+  }
 }));
 
 vi.mock('../../api/apiClient', () => ({
@@ -37,6 +41,10 @@ vi.mock('../../lib/notifications', () => ({
 
 vi.mock('../../store/AppContext', () => ({
   useApp: () => appCtxMock
+}));
+
+vi.mock('../../store/ThemeContext', () => ({
+  useTheme: () => themeCtxMock
 }));
 
 import Settings from '../Settings';
@@ -52,6 +60,7 @@ describe('Settings', () => {
     apiMock.updateNotificationPreferences.mockReset();
     appCtxMock.actions.setConfig.mockReset();
     subscribeBrowserPushMock.mockReset();
+    themeCtxMock.setTheme.mockReset();
 
     apiMock.getNotificationPreferences.mockResolvedValue({
       stopLoss: true,
@@ -60,6 +69,14 @@ describe('Settings', () => {
       quietHoursStart: null,
       quietHoursEnd: null
     });
+  });
+
+  it('switches theme to light', async () => {
+    render(<Settings />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claro' }));
+
+    expect(themeCtxMock.setTheme).toHaveBeenCalledWith('light');
   });
 
   it('updates password successfully', async () => {

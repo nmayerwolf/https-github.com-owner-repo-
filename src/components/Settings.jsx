@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/apiClient';
 import { subscribeBrowserPush } from '../lib/notifications';
 import { useApp } from '../store/AppContext';
+import { useTheme } from '../store/ThemeContext';
 
 const hasStrongPasswordShape = (value) => value.length >= 8 && /[a-zA-Z]/.test(value) && /[0-9]/.test(value);
 
 const Settings = () => {
   const { state, actions } = useApp();
+  const { theme, setTheme } = useTheme();
   const [local, setLocal] = useState(state.config);
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -149,6 +151,21 @@ const Settings = () => {
 
   return (
     <div className="grid" style={{ gap: 12 }}>
+      <div className="card">
+        <h2>Tema</h2>
+        <p className="muted" style={{ marginTop: 6 }}>
+          Elegí entre tema oscuro o claro.
+        </p>
+        <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
+          <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>
+            Oscuro
+          </button>
+          <button type="button" onClick={() => setTheme('light')} style={{ borderColor: theme === 'light' ? '#00E08E' : undefined }}>
+            Claro
+          </button>
+        </div>
+      </div>
+
       <div className="card">
         <h2>Configuración</h2>
         <div className="grid grid-2" style={{ marginTop: 8 }}>

@@ -124,4 +124,23 @@ describe('apiClient', () => {
     );
   });
 
+
+  it('calls patch me endpoint', async () => {
+    setToken('jwt-token');
+
+    global.fetch.mockResolvedValueOnce(makeResponse({ ok: true, status: 200, body: { id: 'u1', onboardingCompleted: true } }));
+
+    const out = await api.updateMe({ onboardingCompleted: true });
+
+    expect(out.onboardingCompleted).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/api/auth/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
+        body: JSON.stringify({ onboardingCompleted: true })
+      })
+    );
+  });
+
 });
