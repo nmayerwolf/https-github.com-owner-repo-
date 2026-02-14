@@ -5,6 +5,7 @@ MVP mobile para Fase 3 con:
 - tabs básicas (Dashboard, Alerts, Settings)
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
 - desuscripción automática al cerrar sesión (`DELETE /api/notifications/subscribe/:id`)
+- preferencias de notificaciones (stop-loss/oportunidades/grupo + quiet hours UTC)
 
 ## Setup
 
