@@ -14,6 +14,8 @@ const { errorHandler } = require('../src/middleware/errorHandler');
 
 const makeApp = (userId = 'u1') => {
   const app = express();
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
   app.use((req, _res, next) => {
     req.user = { id: userId, email: 'user@mail.com' };
     next();
@@ -120,6 +122,38 @@ describe('export routes', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/pdf');
     expect(res.headers['content-disposition']).toContain('attachment; filename="nexusfin-alert-NVDA-');
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+    expect(res.body.toString('utf8', 0, 4)).toBe('%PDF');
+  });
+
+  it('exports alert report as PDF via POST', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'a1',
+          symbol: 'NVDA',
+          name: 'NVIDIA Corp',
+          type: 'opportunity',
+          recommendation: 'STRONG BUY',
+          confidence: 'high',
+          confluence_bull: 5,
+          confluence_bear: 1,
+          signals: [],
+          price_at_alert: '118.2',
+          stop_loss: '108.5',
+          take_profit: '142.3',
+          ai_thesis: { summary: 'Momentum favorable con catalizadores cercanos.' },
+          snapshot: { rsi: 28.3, atr: 4.2 },
+          created_at: '2026-02-10T14:30:00.000Z'
+        }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/export/alert/a1?format=pdf').send({ reason: 'manual-export' });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
     expect(Buffer.isBuffer(res.body)).toBe(true);
     expect(res.body.toString('utf8', 0, 4)).toBe('%PDF');
   });

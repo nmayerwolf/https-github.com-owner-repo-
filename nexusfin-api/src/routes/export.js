@@ -152,7 +152,7 @@ router.get('/portfolio', async (req, res, next) => {
   }
 });
 
-router.get('/alert/:id', async (req, res, next) => {
+const handleAlertPdfExport = async (req, res, next) => {
   try {
     const format = String(req.query.format || '').toLowerCase();
     if (format !== 'pdf') {
@@ -205,6 +205,9 @@ router.get('/alert/:id', async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
-});
+};
+
+router.get('/alert/:id', handleAlertPdfExport);
+router.post('/alert/:id', handleAlertPdfExport);
 
 module.exports = router;
