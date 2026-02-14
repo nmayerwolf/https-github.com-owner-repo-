@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../config/db');
 const { env } = require('../config/env');
 const { tokenHash } = require('../middleware/auth');
+const AUTH_COOKIE_NAME = 'nxf_token';
 
 const parseTokenFromUrl = (url = '') => {
   try {
@@ -11,6 +12,26 @@ const parseTokenFromUrl = (url = '') => {
   } catch {
     return null;
   }
+};
+
+const parseCookieHeader = (header = '') => {
+  if (!header || typeof header !== 'string') return {};
+
+  return header.split(';').reduce((acc, part) => {
+    const [rawKey, ...rest] = String(part || '').split('=');
+    const key = String(rawKey || '').trim();
+    if (!key) return acc;
+    acc[key] = decodeURIComponent(rest.join('=').trim() || '');
+    return acc;
+  }, {});
+};
+
+const parseTokenFromRequest = (req = {}) => {
+  const fromQuery = parseTokenFromUrl(req.url);
+  if (fromQuery) return fromQuery;
+
+  const cookies = parseCookieHeader(req.headers?.cookie || '');
+  return cookies[AUTH_COOKIE_NAME] || null;
 };
 
 const normalizeSymbols = (symbols = []) => {
@@ -35,7 +56,7 @@ const startWSHub = (server) => {
   };
 
   wss.on('connection', async (ws, req) => {
-    const token = parseTokenFromUrl(req.url);
+    const token = parseTokenFromRequest(req);
     if (!token) return closeWithCode(ws, 1008, 'TOKEN_REQUIRED');
 
     try {
@@ -112,4 +133,4 @@ const startWSHub = (server) => {
   };
 };
 
-module.exports = { startWSHub, parseTokenFromUrl, normalizeSymbols };
+module.exports = { startWSHub, parseTokenFromUrl, parseCookieHeader, parseTokenFromRequest, normalizeSymbols };

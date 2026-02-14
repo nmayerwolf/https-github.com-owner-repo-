@@ -3,6 +3,7 @@ import { fetchMacroAssets, getAlphaHealth } from '../api/alphavantage';
 import { api } from '../api/apiClient';
 import { getClaudeHealth } from '../api/claude';
 import { createFinnhubSocket, fetchAssetSnapshot, getFinnhubHealth } from '../api/finnhub';
+import { createBackendSocket } from '../api/realtime';
 import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
 import { calculateConfluence } from '../engine/confluence';
@@ -31,6 +32,7 @@ const initialState = {
     claude: getClaudeHealth()
   },
   uiErrors: [],
+  realtimeAlerts: [],
   sourceMode: 'local'
 };
 
@@ -60,6 +62,15 @@ export const appReducer = (state, action) => {
       return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
     case 'DISMISS_UI_ERROR':
       return { ...state, uiErrors: state.uiErrors.filter((e) => e.id !== action.payload) };
+    case 'PUSH_REALTIME_ALERT': {
+      const incoming = action.payload;
+      if (!incoming?.id) return state;
+      const already = state.realtimeAlerts.some((a) => a.id === incoming.id);
+      if (already) return state;
+      return { ...state, realtimeAlerts: [incoming, ...state.realtimeAlerts].slice(0, 30) };
+    }
+    case 'CLEAR_REALTIME_ALERTS':
+      return { ...state, realtimeAlerts: [] };
     case 'SET_SOURCE_MODE':
       return { ...state, sourceMode: action.payload };
     default:
@@ -91,6 +102,26 @@ const withIndicators = (asset) => {
     volumes: asset.candles.v
   });
   return { ...asset, indicators, signal: null };
+};
+
+const mapServerAlertToLive = (alert) => {
+  const normalizedType =
+    alert?.type === 'opportunity' ? 'compra' : alert?.type === 'bearish' ? 'venta' : alert?.type === 'stop_loss' ? 'stoploss' : 'all';
+  const symbol = String(alert?.symbol || '').toUpperCase();
+
+  const stopLoss = alert?.stopLoss ?? alert?.stop_loss ?? null;
+  const takeProfit = alert?.takeProfit ?? alert?.take_profit ?? null;
+
+  return {
+    id: `srv-${alert?.id || `${symbol}-${Date.now()}`}`,
+    type: normalizedType,
+    symbol,
+    priority: 3,
+    confidence: alert?.confidence || 'high',
+    title: alert?.recommendation ? `${alert.recommendation} en ${symbol}` : `Nueva señal en ${symbol}`,
+    stopLoss: stopLoss != null ? Number(stopLoss) : null,
+    takeProfit: takeProfit != null ? Number(takeProfit) : null
+  };
 };
 
 const resolveWatchlistAssets = (watchlistSymbols) => {
@@ -157,6 +188,12 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     dispatch({ type: 'SET_SOURCE_MODE', payload: isAuthenticated ? 'remote' : 'local' });
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
+    }
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -263,11 +300,23 @@ export const AppProvider = ({ children }) => {
       });
   }, [state.loading, state.assets.length]);
 
-  useEffect(() => {
-    if (state.loading || !state.assets.length || isAuthenticated) return undefined;
+  const wsSymbolKey = useMemo(
+    () =>
+      state.assets
+        .filter((a) => a.source === 'finnhub_stock')
+        .map((a) => String(a.symbol || '').toUpperCase())
+        .sort()
+        .join(','),
+    [state.assets]
+  );
 
-    const wsSymbols = state.assets.filter((a) => a.source === 'finnhub_stock').map((a) => a.symbol);
-    const socket = createFinnhubSocket({
+  useEffect(() => {
+    if (state.loading || !state.assets.length) return undefined;
+    const wsSymbols = wsSymbolKey ? wsSymbolKey.split(',').filter(Boolean) : [];
+    if (!wsSymbols.length) return undefined;
+
+    const socketFactory = isAuthenticated ? createBackendSocket : createFinnhubSocket;
+    const socket = socketFactory({
       symbols: wsSymbols,
       onStatus: (status) => {
         dispatch({ type: 'SET_WS_STATUS', payload: status });
@@ -309,19 +358,22 @@ export const AppProvider = ({ children }) => {
         const nextAssets = [...current];
         nextAssets[idx] = updated;
         dispatch({ type: 'SET_ASSETS', payload: nextAssets });
+      },
+      onAlert: (alert) => {
+        dispatch({ type: 'PUSH_REALTIME_ALERT', payload: mapServerAlertToLive(alert) });
       }
     });
 
     return () => socket.close();
-  }, [state.loading, isAuthenticated]);
+  }, [state.loading, isAuthenticated, wsSymbolKey, state.assets.length]);
 
   useEffect(() => {
     const enriched = state.assets.map((asset) => ({ ...asset, signal: calculateConfluence(asset, state.config) }));
     const base = buildAlerts(enriched, state.config);
     const bySymbol = Object.fromEntries(enriched.map((a) => [a.symbol, a]));
     const sl = stopLossAlerts(state.positions, bySymbol);
-    dispatch({ type: 'SET_ALERTS', payload: [...sl, ...base] });
-  }, [state.assets, state.positions, state.config]);
+    dispatch({ type: 'SET_ALERTS', payload: [...state.realtimeAlerts, ...sl, ...base] });
+  }, [state.assets, state.positions, state.config, state.realtimeAlerts]);
 
   const actions = useMemo(
     () => ({

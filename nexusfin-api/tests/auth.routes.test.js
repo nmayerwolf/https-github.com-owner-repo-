@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const request = require('supertest');
 
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://test:test@localhost:5432/test';
@@ -26,6 +27,14 @@ const mockAuthRequired = jest.fn((req, _res, next) => {
 });
 const mockRequireCsrf = jest.fn((_req, _res, next) => next());
 const mockTokenHash = jest.fn(() => 'hashed-old-token');
+const mockBuildCookieOptions = jest.fn(() => ({ path: '/api/auth' }));
+const mockVerifyOAuthState = jest.fn(() => true);
+const mockIsGoogleConfigured = jest.fn(() => true);
+const mockIsAppleConfigured = jest.fn(() => true);
+const mockBuildGoogleAuthUrl = jest.fn((state) => `https://accounts.google.com/o/oauth2/v2/auth?state=${state}`);
+const mockExchangeGoogleCode = jest.fn();
+const mockBuildAppleAuthUrl = jest.fn((state) => `https://appleid.apple.com/auth/authorize?state=${state}`);
+const mockExchangeAppleCode = jest.fn();
 
 jest.mock('../src/middleware/auth', () => ({
   authRequired: (...args) => mockAuthRequired(...args),
@@ -38,6 +47,19 @@ jest.mock('../src/middleware/auth', () => ({
   clearAuthCookies: (...args) => mockClearAuthCookies(...args)
 }));
 
+jest.mock('../src/services/oauth', () => ({
+  OAUTH_STATE_COOKIE: 'nxf_oauth_state',
+  buildCookieOptions: (...args) => mockBuildCookieOptions(...args),
+  makeOAuthState: jest.fn(() => 'oauth-state'),
+  verifyOAuthState: (...args) => mockVerifyOAuthState(...args),
+  isGoogleConfigured: (...args) => mockIsGoogleConfigured(...args),
+  isAppleConfigured: (...args) => mockIsAppleConfigured(...args),
+  buildGoogleAuthUrl: (...args) => mockBuildGoogleAuthUrl(...args),
+  exchangeGoogleCode: (...args) => mockExchangeGoogleCode(...args),
+  buildAppleAuthUrl: (...args) => mockBuildAppleAuthUrl(...args),
+  exchangeAppleCode: (...args) => mockExchangeAppleCode(...args)
+}));
+
 const { query } = require('../src/config/db');
 const bcrypt = require('bcryptjs');
 const authRoutes = require('../src/routes/auth');
@@ -46,6 +68,7 @@ const { errorHandler } = require('../src/middleware/errorHandler');
 const makeApp = () => {
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
   app.use('/api/auth', authRoutes);
   app.use(errorHandler);
   return app;
@@ -64,6 +87,14 @@ describe('auth routes', () => {
     mockAuthRequired.mockClear();
     mockRequireCsrf.mockClear();
     mockTokenHash.mockClear();
+    mockBuildCookieOptions.mockClear();
+    mockVerifyOAuthState.mockClear();
+    mockIsGoogleConfigured.mockClear();
+    mockIsAppleConfigured.mockClear();
+    mockBuildGoogleAuthUrl.mockClear();
+    mockExchangeGoogleCode.mockClear();
+    mockBuildAppleAuthUrl.mockClear();
+    mockExchangeAppleCode.mockClear();
   });
 
   it('registers a new user and sets auth cookie', async () => {
@@ -283,6 +314,60 @@ describe('auth routes', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('completes apple callback and redirects with oauth success', async () => {
+    mockExchangeAppleCode.mockResolvedValueOnce({
+      provider: 'apple',
+      oauthId: 'apple-uid-1',
+      email: 'user@mail.com',
+      displayName: null,
+      avatarUrl: null
+    });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/apple/callback')
+      .query({ state: 'valid-state', code: 'apple-code' })
+      .set('Cookie', ['nxf_oauth_state=valid-state']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:5173/?oauth=success');
+    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
+    expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code');
+    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+    expect(mockSetAuthCookies).toHaveBeenCalled();
+  });
+
+  it('rejects apple callback with invalid oauth state', async () => {
+    mockVerifyOAuthState.mockReturnValueOnce(false);
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/apple/callback')
+      .query({ state: 'invalid-state', code: 'apple-code' })
+      .set('Cookie', ['nxf_oauth_state=invalid-state']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:5173/?oauth_error=invalid_oauth_state');
+    expect(mockExchangeAppleCode).not.toHaveBeenCalled();
+  });
+
+  it('redirects with apple callback failure when provider exchange fails', async () => {
+    mockExchangeAppleCode.mockRejectedValueOnce(new Error('boom'));
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/apple/callback')
+      .query({ state: 'valid-state', code: 'apple-code' })
+      .set('Cookie', ['nxf_oauth_state=valid-state']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:5173/?oauth_error=apple_callback_failed');
   });
 
 });
