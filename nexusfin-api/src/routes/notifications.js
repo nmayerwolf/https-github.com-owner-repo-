@@ -35,14 +35,40 @@ router.post('/subscribe', async (req, res, next) => {
       payload = { expoPushToken: token };
     }
 
-    const out = await query(
+    const dedupeKey = platform === 'web' ? String(payload.endpoint || '').trim() : String(payload.expoPushToken || '').trim();
+    const dedupeExpr = platform === 'web' ? "subscription->>'endpoint'" : "subscription->>'expoPushToken'";
+
+    const existing = await query(
+      `SELECT id
+       FROM push_subscriptions
+       WHERE user_id = $1
+         AND platform = $2
+         AND ${dedupeExpr} = $3
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.user.id, platform, dedupeKey]
+    );
+
+    if (existing.rows.length) {
+      const updated = await query(
+        `UPDATE push_subscriptions
+         SET subscription = $1::jsonb,
+             active = true
+         WHERE id = $2
+         RETURNING id, platform, active`,
+        [JSON.stringify(payload), existing.rows[0].id]
+      );
+      return res.json(updated.rows[0]);
+    }
+
+    const inserted = await query(
       `INSERT INTO push_subscriptions (user_id, platform, subscription, active)
        VALUES ($1, $2, $3::jsonb, true)
        RETURNING id, platform, active`,
       [req.user.id, platform, JSON.stringify(payload)]
     );
 
-    return res.status(201).json(out.rows[0]);
+    return res.status(201).json(inserted.rows[0]);
   } catch (error) {
     return next(error);
   }
