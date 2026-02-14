@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Linking } from 'react-native';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -6,7 +7,8 @@ import MarketsScreen from './src/screens/MarketsScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import { hydrateSession, loginWithEmail, logoutSession } from './src/store/auth';
+import { api } from './src/api/client';
+import { hydrateSession, loginWithEmail, loginWithToken, logoutSession } from './src/store/auth';
 import { hydrateTheme, saveTheme } from './src/store/theme';
 import { getThemePalette } from './src/theme/palette';
 
@@ -19,6 +21,8 @@ const App = () => {
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState('dashboard');
   const [theme, setTheme] = useState('dark');
+  const [oauthProviders, setOauthProviders] = useState({ google: false, apple: false });
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   const palette = getThemePalette(theme);
 
@@ -41,6 +45,64 @@ const App = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    api
+      .getOAuthProviders()
+      .then((out) => {
+        if (!active) return;
+        setOauthProviders({ google: !!out?.google, apple: !!out?.apple });
+      })
+      .catch(() => {
+        if (!active) return;
+        setOauthProviders({ google: false, apple: false });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const handleOAuthUrl = async (url) => {
+      if (!url || !active) return;
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'nexusfin:' || parsed.hostname !== 'oauth') return;
+
+        const oauthError = parsed.searchParams.get('oauth_error');
+        if (oauthError) {
+          setAuthError(`OAuth falló: ${oauthError}`);
+          return;
+        }
+
+        const token = parsed.searchParams.get('token');
+        if (!token) return;
+        setOauthLoading(true);
+        setAuthError('');
+        const out = await loginWithToken(token);
+        if (!active) return;
+        setSession(out);
+      } catch {
+        if (!active) return;
+        setAuthError('No se pudo completar login OAuth.');
+      } finally {
+        if (active) setOauthLoading(false);
+      }
+    };
+
+    Linking.getInitialURL().then((url) => handleOAuthUrl(url)).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      handleOAuthUrl(url);
+    });
+
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, []);
+
   const login = async ({ email, password }) => {
     setAuthLoading(true);
     setAuthError('');
@@ -51,6 +113,21 @@ const App = () => {
       setAuthError(error?.message || 'No se pudo iniciar sesión');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const loginWithOAuth = async (provider) => {
+    setOauthLoading(true);
+    setAuthError('');
+    try {
+      const url = api.getMobileOAuthUrl(provider);
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) throw new Error('No se pudo abrir OAuth');
+      await Linking.openURL(url);
+    } catch (error) {
+      setAuthError(error?.message || 'No se pudo iniciar OAuth.');
+    } finally {
+      setOauthLoading(false);
     }
   };
 
@@ -78,7 +155,15 @@ const App = () => {
   if (!session) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: palette.bg }]}>
-        <LoginScreen onSubmit={login} loading={authLoading} error={authError} theme={theme} />
+        <LoginScreen
+          onSubmit={login}
+          onOAuth={loginWithOAuth}
+          loading={authLoading}
+          oauthLoading={oauthLoading}
+          oauthProviders={oauthProviders}
+          error={authError}
+          theme={theme}
+        />
       </SafeAreaView>
     );
   }

@@ -65,6 +65,7 @@ Auth:
 - `GET /api/auth/google/callback`
 - `GET /api/auth/apple`
 - `GET /api/auth/apple/callback`
+- OAuth mobile: iniciar con `?platform=mobile&redirect_uri=nexusfin://oauth` y callback devuelve deep-link con `token`/`oauth_error`
 
 Datos de usuario:
 - `GET|POST|PATCH|DELETE /api/portfolio`

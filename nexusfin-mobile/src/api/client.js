@@ -13,6 +13,7 @@ export const setToken = (next) => {
 
 export const getToken = () => token;
 export const getApiBase = () => API_BASE;
+export const getAuthBase = () => API_BASE.replace(/\/api\/?$/, '');
 
 const request = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -45,6 +46,12 @@ export const api = {
       body: JSON.stringify({ email, password })
     }),
   me: () => request('/auth/me'),
+  getOAuthProviders: () => request('/auth/oauth/providers'),
+  getMobileOAuthUrl: (provider) => {
+    const authBase = getAuthBase();
+    const redirectUri = encodeURIComponent('nexusfin://oauth');
+    return `${authBase}/api/auth/${encodeURIComponent(String(provider || '').toLowerCase())}?platform=mobile&redirect_uri=${redirectUri}`;
+  },
   updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
   getConfig: () => request('/config'),
   updateConfig: (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
