@@ -170,9 +170,9 @@ router.get('/apple', (_req, res, next) => {
   }
 });
 
-router.get('/apple/callback', async (req, res) => {
-  const state = String(req.query.state || '');
-  const code = String(req.query.code || '');
+const handleAppleCallback = async (req, res) => {
+  const state = String(req.query.state || req.body?.state || '');
+  const code = String(req.query.code || req.body?.code || '');
   const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
   res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
 
@@ -199,7 +199,10 @@ router.get('/apple/callback', async (req, res) => {
     }
     return res.redirect(302, oauthRedirect({ oauth_error: 'apple_callback_failed' }));
   }
-});
+};
+
+router.get('/apple/callback', handleAppleCallback);
+router.post('/apple/callback', handleAppleCallback);
 
 router.post('/register', async (req, res, next) => {
   try {
