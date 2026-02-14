@@ -78,13 +78,16 @@ describe('appReducer', () => {
     expect(cleared.realtimeAlerts).toEqual([]);
   });
 
-  it('builds realtime symbol map for stock, crypto and fx', () => {
+  it('builds realtime symbol map for stock, crypto, fx and macro assets', () => {
     const out = buildRealtimeSymbolMap([
       { symbol: 'aapl', source: 'finnhub_stock' },
       { symbol: 'btcusdt', source: 'finnhub_crypto' },
       { symbol: 'eur_usd', source: 'finnhub_fx' },
       { symbol: 'XAU', source: 'alphavantage_macro' },
-      { symbol: 'US10Y', source: 'alphavantage_macro' }
+      { symbol: 'BRN', source: 'alphavantage_macro' },
+      { symbol: 'US2Y', source: 'alphavantage_macro' },
+      { symbol: 'US10Y', source: 'alphavantage_macro' },
+      { symbol: 'US30Y', source: 'alphavantage_macro' }
     ]);
 
     expect(out).toEqual({
@@ -92,7 +95,10 @@ describe('appReducer', () => {
       'BINANCE:BTCUSDT': 'BTCUSDT',
       'OANDA:EUR_USD': 'EUR_USD',
       'AV:GOLD': 'XAU',
-      'AV:TREASURY_YIELD:10YEAR': 'US10Y'
+      'AV:BRENT': 'BRN',
+      'AV:TREASURY_YIELD:2YEAR': 'US2Y',
+      'AV:TREASURY_YIELD:10YEAR': 'US10Y',
+      'AV:TREASURY_YIELD:30YEAR': 'US30Y'
     });
   });
 });

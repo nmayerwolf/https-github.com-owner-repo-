@@ -103,8 +103,15 @@ const toWsMarketSymbol = (asset) => {
     const key = String(asset.symbol).toUpperCase();
     if (key === 'XAU') return 'AV:GOLD';
     if (key === 'XAG') return 'AV:SILVER';
+    if (key === 'XPT') return 'AV:PLATINUM';
+    if (key === 'XCU') return 'AV:COPPER';
     if (key === 'CL') return 'AV:WTI';
+    if (key === 'BRN') return 'AV:BRENT';
+    if (key === 'NG') return 'AV:NATURAL_GAS';
+    if (key === 'US2Y') return 'AV:TREASURY_YIELD:2YEAR';
+    if (key === 'US5Y') return 'AV:TREASURY_YIELD:5YEAR';
     if (key === 'US10Y') return 'AV:TREASURY_YIELD:10YEAR';
+    if (key === 'US30Y') return 'AV:TREASURY_YIELD:30YEAR';
   }
   return null;
 };

@@ -17,9 +17,24 @@ const stats = {
 const MACRO_SERIES = [
   { symbol: 'XAU', name: 'Gold Spot', category: 'metal', sector: 'metals', fn: 'GOLD', params: { interval: 'daily' } },
   { symbol: 'XAG', name: 'Silver Spot', category: 'metal', sector: 'metals', fn: 'SILVER', params: { interval: 'daily' } },
+  { symbol: 'XPT', name: 'Platinum Spot', category: 'metal', sector: 'metals', fn: 'PLATINUM', params: { interval: 'daily' } },
+  { symbol: 'XCU', name: 'Copper Spot', category: 'commodity', sector: 'energy', fn: 'COPPER', params: { interval: 'daily' } },
   { symbol: 'CL', name: 'Crude Oil WTI', category: 'commodity', sector: 'energy', fn: 'WTI', params: { interval: 'daily' } },
-  { symbol: 'US10Y', name: 'US 10Y Treasury', category: 'bond', sector: 'bonds', fn: 'TREASURY_YIELD', params: { interval: 'daily', maturity: '10year' } }
+  { symbol: 'BRN', name: 'Crude Oil Brent', category: 'commodity', sector: 'energy', fn: 'BRENT', params: { interval: 'daily' } },
+  { symbol: 'NG', name: 'Natural Gas', category: 'commodity', sector: 'energy', fn: 'NATURAL_GAS', params: { interval: 'daily' } },
+  { symbol: 'US2Y', name: 'US 2Y Treasury', category: 'bond', sector: 'bonds', fn: 'TREASURY_YIELD', params: { interval: 'daily', maturity: '2year' } },
+  { symbol: 'US5Y', name: 'US 5Y Treasury', category: 'bond', sector: 'bonds', fn: 'TREASURY_YIELD', params: { interval: 'daily', maturity: '5year' } },
+  { symbol: 'US10Y', name: 'US 10Y Treasury', category: 'bond', sector: 'bonds', fn: 'TREASURY_YIELD', params: { interval: 'daily', maturity: '10year' } },
+  { symbol: 'US30Y', name: 'US 30Y Treasury', category: 'bond', sector: 'bonds', fn: 'TREASURY_YIELD', params: { interval: 'daily', maturity: '30year' } }
 ];
+
+const macroCacheId = (entry) => {
+  const suffix = Object.entries(entry.params || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}_${String(v).toLowerCase()}`)
+    .join('_');
+  return suffix ? `macro_${entry.fn}_${suffix}` : `macro_${entry.fn}`;
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -120,7 +135,7 @@ export const fetchMacroAssets = async () => {
 
   for (const entry of MACRO_SERIES) {
     try {
-      const payload = await getCachedOrFetch(`macro_${entry.fn}`, { function: entry.fn, ...entry.params });
+      const payload = await getCachedOrFetch(macroCacheId(entry), { function: entry.fn, ...entry.params });
       const parsed = parseMacroSeries(payload);
       if (!parsed) continue;
 
