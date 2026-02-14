@@ -1,8 +1,10 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
+const { createPushNotifier } = require('../services/push');
 
 const router = express.Router();
+const pushNotifier = createPushNotifier({ query, logger: console });
 
 const allowedTypes = new Set(['opportunity', 'bearish', 'stop_loss']);
 
@@ -164,6 +166,24 @@ router.post('/:id/share', async (req, res, next) => {
         })
       ]
     );
+
+    try {
+      await pushNotifier.notifyGroupActivity({
+        groupId,
+        actorUserId: req.user.id,
+        event: {
+          type: 'signal_shared',
+          title: `Nueva señal en grupo: ${alert.rows[0].symbol}`,
+          body: `${alert.rows[0].recommendation} compartida por un miembro`,
+          data: {
+            alertId: req.params.id,
+            symbol: alert.rows[0].symbol
+          }
+        }
+      });
+    } catch {
+      // keep share action successful even if push fails
+    }
 
     return res.json({ shared: true, sharedAt: inserted.rows[0].shared_at });
   } catch (error) {
