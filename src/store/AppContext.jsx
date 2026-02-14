@@ -104,7 +104,7 @@ const withIndicators = (asset) => {
   return { ...asset, indicators, signal: null };
 };
 
-const mapServerAlertToLive = (alert) => {
+export const mapServerAlertToLive = (alert) => {
   const normalizedType =
     alert?.type === 'opportunity' ? 'compra' : alert?.type === 'bearish' ? 'venta' : alert?.type === 'stop_loss' ? 'stoploss' : 'all';
   const symbol = String(alert?.symbol || '').toUpperCase();
