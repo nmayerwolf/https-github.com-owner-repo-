@@ -94,6 +94,22 @@ const updateCandlesWithLivePrice = (candles, price) => {
   return next;
 };
 
+const toWsMarketSymbol = (asset) => {
+  if (!asset?.symbol) return null;
+  if (asset.source === 'finnhub_stock') return String(asset.symbol).toUpperCase();
+  if (asset.source === 'finnhub_crypto') return `BINANCE:${String(asset.symbol).toUpperCase()}`;
+  if (asset.source === 'finnhub_fx') return `OANDA:${String(asset.symbol).toUpperCase()}`;
+  return null;
+};
+
+export const buildRealtimeSymbolMap = (assets = []) =>
+  assets.reduce((acc, asset) => {
+    const wsSymbol = toWsMarketSymbol(asset);
+    if (!wsSymbol) return acc;
+    acc[wsSymbol] = String(asset.symbol || '').toUpperCase();
+    return acc;
+  }, {});
+
 const withIndicators = (asset) => {
   const indicators = calculateIndicators({
     closes: asset.candles.c,
@@ -179,6 +195,7 @@ export const AppProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const assetsRef = useRef([]);
   const macroLoadedRef = useRef(false);
+  const realtimeMapRef = useRef({});
   const auth = useAuth();
   const isAuthenticated = !!auth?.isAuthenticated;
 
@@ -300,15 +317,12 @@ export const AppProvider = ({ children }) => {
       });
   }, [state.loading, state.assets.length]);
 
-  const wsSymbolKey = useMemo(
-    () =>
-      state.assets
-        .filter((a) => a.source === 'finnhub_stock')
-        .map((a) => String(a.symbol || '').toUpperCase())
-        .sort()
-        .join(','),
-    [state.assets]
-  );
+  const realtimeSymbolMap = useMemo(() => buildRealtimeSymbolMap(state.assets), [state.assets]);
+  const wsSymbolKey = useMemo(() => Object.keys(realtimeSymbolMap).sort().join(','), [realtimeSymbolMap]);
+
+  useEffect(() => {
+    realtimeMapRef.current = realtimeSymbolMap;
+  }, [realtimeSymbolMap]);
 
   useEffect(() => {
     if (state.loading || !state.assets.length) return undefined;
@@ -324,7 +338,9 @@ export const AppProvider = ({ children }) => {
       },
       onTrade: ({ symbol, price }) => {
         const current = assetsRef.current;
-        const idx = current.findIndex((a) => a.symbol === symbol);
+        const incoming = String(symbol || '').toUpperCase();
+        const internalSymbol = realtimeMapRef.current[incoming] || incoming;
+        const idx = current.findIndex((a) => String(a.symbol || '').toUpperCase() === internalSymbol);
         if (idx < 0) return;
 
         const prevAsset = current[idx];

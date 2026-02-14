@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appReducer, makeUiError, mapServerAlertToLive } from '../AppContext';
+import { appReducer, buildRealtimeSymbolMap, makeUiError, mapServerAlertToLive } from '../AppContext';
 
 const baseState = {
   assets: [],
@@ -76,5 +76,20 @@ describe('appReducer', () => {
 
     const cleared = appReducer(deduped, { type: 'CLEAR_REALTIME_ALERTS' });
     expect(cleared.realtimeAlerts).toEqual([]);
+  });
+
+  it('builds realtime symbol map for stock, crypto and fx', () => {
+    const out = buildRealtimeSymbolMap([
+      { symbol: 'aapl', source: 'finnhub_stock' },
+      { symbol: 'btcusdt', source: 'finnhub_crypto' },
+      { symbol: 'eur_usd', source: 'finnhub_fx' },
+      { symbol: 'XAU', source: 'alphavantage' }
+    ]);
+
+    expect(out).toEqual({
+      AAPL: 'AAPL',
+      'BINANCE:BTCUSDT': 'BTCUSDT',
+      'OANDA:EUR_USD': 'EUR_USD'
+    });
   });
 });
