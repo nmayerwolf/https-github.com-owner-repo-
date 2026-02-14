@@ -88,7 +88,8 @@ Abrí siempre los PR contra `main` para que corra CI:
 - `base: main`
 - `compare: codex/<tu-rama>`
 
-## Release checklists
+## Release
 
-- Phase 2: `/Users/nmayerwolf/Documents/nexusfin/RELEASE_CHECKLIST.md`
-- Phase 3: `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
+- Notas de cierre de fase 2: `/Users/nmayerwolf/Documents/nexusfin/PHASE2_RELEASE_NOTES.md`
+- Checklist fase 2: `/Users/nmayerwolf/Documents/nexusfin/RELEASE_CHECKLIST.md`
+- Checklist fase 3: `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
