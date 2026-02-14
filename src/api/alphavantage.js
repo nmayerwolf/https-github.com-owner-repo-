@@ -1,6 +1,4 @@
-const BASE = 'https://www.alphavantage.co/query';
-const KEY = import.meta.env.VITE_ALPHA_VANTAGE_KEY || 'UFZ6W2F1RUPUGVWF';
-let lastCallAt = 0;
+import { api } from './apiClient';
 
 const CACHE_KEY = 'nexusfin_av_cache_v1';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
@@ -56,21 +54,19 @@ const writeCache = (cache) => {
 };
 
 const limitedGet = async (params) => {
-  const wait = 12500 - (Date.now() - lastCallAt);
-  if (wait > 0) await sleep(wait);
-  lastCallAt = Date.now();
+  // Keep a small jitter to avoid burst requests from the browser.
+  await sleep(120);
   stats.calls += 1;
   stats.lastCallAt = Date.now();
-
-  const qs = new URLSearchParams({ ...params, apikey: KEY });
-  const res = await fetch(`${BASE}?${qs}`);
-  if (res.status === 429) stats.rateLimited += 1;
-  if (!res.ok) {
-    stats.errors += 1;
-    stats.lastError = `HTTP ${res.status} for ${params.function}`;
-    throw new Error(`Alpha Vantage ${res.status}`);
+  const fn = params?.function;
+  if (!fn) throw new Error('Alpha function requerida');
+  const { function: _ignored, ...rest } = params || {};
+  try {
+    return await api.commodity(fn, rest);
+  } catch (error) {
+    if (error?.status === 429) stats.rateLimited += 1;
+    throw error;
   }
-  return res.json();
 };
 
 const getCachedOrFetch = async (cacheId, params) => {
@@ -93,11 +89,10 @@ const toNumber = (v) => {
 };
 
 const parseMacroSeries = (payload) => {
-  const data = payload?.data;
-  if (!Array.isArray(data)) return null;
-
-  const values = data
-    .map((x) => toNumber(x.value))
+  const prices = Array.isArray(payload?.prices) ? payload.prices : [];
+  if (!prices.length) return null;
+  const values = prices
+    .map((x) => toNumber(x))
     .filter((x) => Number.isFinite(x))
     .slice(0, 120)
     .reverse();
@@ -122,7 +117,7 @@ const parseMacroSeries = (payload) => {
 
 export const fetchCompanyOverview = async (symbol) => {
   try {
-    return await getCachedOrFetch(`overview_${symbol}`, { function: 'OVERVIEW', symbol });
+    return await api.profile(symbol);
   } catch (error) {
     stats.errors += 1;
     stats.lastError = `overview ${symbol}: ${error.message}`;

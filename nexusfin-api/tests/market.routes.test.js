@@ -9,7 +9,8 @@ jest.mock('../src/services/finnhub', () => ({
   candles: jest.fn(),
   cryptoCandles: jest.fn(),
   forexCandles: jest.fn(),
-  profile: jest.fn()
+  profile: jest.fn(),
+  companyNews: jest.fn()
 }));
 
 jest.mock('../src/services/alphavantage', () => ({
@@ -100,5 +101,16 @@ describe('market routes', () => {
     expect(res.body.categories).toContain('metal');
     expect(res.body.categories).toContain('crypto');
     expect(res.body.categories).toContain('fx');
+  });
+
+  it('returns proxied company news list', async () => {
+    finnhub.companyNews.mockResolvedValueOnce([{ id: 1, headline: 'NVIDIA launches product', url: 'https://example.com/nvda' }]);
+    const app = makeApp();
+    const res = await request(app).get('/api/market/news?symbol=NVDA&from=2026-02-01&to=2026-02-14');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(1);
+    expect(finnhub.companyNews).toHaveBeenCalledWith('NVDA', '2026-02-01', '2026-02-14');
   });
 });

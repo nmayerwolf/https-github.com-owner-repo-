@@ -65,9 +65,32 @@ router.get('/commodity', async (req, res, next) => {
   try {
     const fn = req.query.function;
     if (!fn) throw badRequest('function requerido');
-    const raw = await getOrSet(`commodity:${fn}`, 300, () => av.commodity(fn));
+    const extraParams = Object.fromEntries(
+      Object.entries(req.query || {}).filter(([k]) => !['function'].includes(String(k || '').toLowerCase()))
+    );
+    const keySuffix = Object.entries(extraParams)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join('|');
+    const cacheKey = keySuffix ? `commodity:${fn}:${keySuffix}` : `commodity:${fn}`;
+    const raw = await getOrSet(cacheKey, 300, () => av.commodity(fn, extraParams));
     const prices = Array.isArray(raw.data) ? raw.data.map((x) => Number(x.value)).filter((x) => Number.isFinite(x)) : [];
     return res.json({ prices, timestamps: raw.data?.map((x) => x.date) || [], current: prices[0] || null, raw });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/news', async (req, res, next) => {
+  try {
+    const symbol = String(req.query.symbol || '').trim().toUpperCase();
+    if (!symbol) throw badRequest('symbol requerido');
+
+    const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+    const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
+    const key = `news:${symbol}:${from}:${to}`;
+    const data = await getOrSet(key, 300, () => finnhub.companyNews(symbol, from, to));
+    return res.json(Array.isArray(data) ? data : []);
   } catch (error) {
     return next(error);
   }
