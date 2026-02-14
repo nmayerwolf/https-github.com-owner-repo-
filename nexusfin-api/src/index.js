@@ -30,6 +30,7 @@ const MACRO_SYMBOL_TO_REQUEST = {
   'AV:WTI': { fn: 'WTI' },
   'AV:TREASURY_YIELD:10YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '10year' } }
 };
+const AV_SYMBOL_PREFIX = 'AV:';
 
 const app = express();
 
@@ -75,6 +76,13 @@ const extractLatestAVValue = (payload) => {
   return null;
 };
 
+const providerForRealtimeSymbol = (symbol) =>
+  String(symbol || '')
+    .toUpperCase()
+    .startsWith(AV_SYMBOL_PREFIX)
+    ? 'alphavantage'
+    : 'finnhub';
+
 const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
@@ -100,7 +108,18 @@ const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
 
 const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
   const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
+  const avMinPollMs = 65 * 1000;
+  const errorCooldownMs = 30 * 1000;
+  const heartbeatMs = 60 * 1000;
   let inFlight = false;
+  const stateBySymbol = new Map();
+
+  const shouldBroadcast = (state, price, now) => {
+    if (!state || !Number.isFinite(state.lastBroadcastPrice)) return true;
+    const changed = Math.abs(Number(price) - Number(state.lastBroadcastPrice)) > 1e-9;
+    if (changed) return true;
+    return now - Number(state.lastBroadcastAt || 0) >= heartbeatMs;
+  };
 
   const runCycle = async () => {
     if (inFlight) return;
@@ -110,18 +129,47 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
       const symbols = wsHub.getSubscribedSymbols();
       if (!symbols.length) return;
 
+      const now = Date.now();
       for (const symbol of symbols) {
+        const upper = String(symbol || '').toUpperCase();
+        const provider = providerForRealtimeSymbol(upper);
+        const symbolState = stateBySymbol.get(upper) || {};
+        const minPollMs = provider === 'alphavantage' ? Math.max(intervalMs, avMinPollMs) : intervalMs;
+        const nextAllowedAt = Number(symbolState.nextAllowedAt || 0);
+        if (now < nextAllowedAt) continue;
+
         try {
-          const out = await resolveRealtimeQuote(symbol, { finnhubSvc, alphaSvc });
+          const out = await resolveRealtimeQuote(upper, { finnhubSvc, alphaSvc });
           if (!out) continue;
-          wsHub.broadcastPrice({
-            symbol: out.symbol,
-            price: out.price,
-            change: out.change,
-            timestamp: Date.now()
-          });
+
+          const nextState = {
+            ...symbolState,
+            provider,
+            errorCount: 0,
+            nextAllowedAt: Date.now() + minPollMs
+          };
+
+          if (shouldBroadcast(symbolState, out.price, now)) {
+            wsHub.broadcastPrice({
+              symbol: out.symbol,
+              price: out.price,
+              change: out.change,
+              timestamp: now
+            });
+            nextState.lastBroadcastPrice = out.price;
+            nextState.lastBroadcastAt = now;
+          }
+
+          stateBySymbol.set(upper, nextState);
         } catch (error) {
-          logger.warn?.(`[ws-price] quote failed (${symbol})`, error?.message || error);
+          const errorCount = Number(symbolState.errorCount || 0) + 1;
+          stateBySymbol.set(upper, {
+            ...symbolState,
+            provider,
+            errorCount,
+            nextAllowedAt: now + errorCooldownMs
+          });
+          logger.warn?.(`[ws-price] quote failed (${upper})`, error?.message || error);
         }
       }
     } finally {

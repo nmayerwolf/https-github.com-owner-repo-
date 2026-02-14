@@ -117,6 +117,7 @@ Realtime scaffold (Fase 3):
 - price relay backend por símbolos suscriptos (`type: "price"`) usando `WS_PRICE_INTERVAL`
   - Finnhub: `AAPL`, `BINANCE:BTCUSDT`, `OANDA:EUR_USD`
   - Alpha Vantage macro: `AV:GOLD`, `AV:SILVER`, `AV:WTI`, `AV:TREASURY_YIELD:10YEAR`
+  - relay con backoff ante errores y heartbeat para evitar ruido cuando el precio no cambia
 - cron worker configurable por `CRON_*` vars
 - alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
 
