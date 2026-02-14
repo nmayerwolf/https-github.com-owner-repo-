@@ -1,26 +1,98 @@
-import React, { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, getApiBase, getToken } from '../api/client';
 import { getThemePalette } from '../theme/palette';
 
+const MAIN_TABS = ['live', 'history', 'performance'];
+const HISTORY_TYPES = ['all', 'opportunity', 'bearish', 'stop_loss'];
+const OUTCOME_TYPES = ['all', 'win', 'loss', 'open'];
+
+const MAIN_LABEL = { live: 'En vivo', history: 'Historial', performance: 'Performance' };
+const HISTORY_LABEL = { all: 'Todos', opportunity: 'Compra', bearish: 'Venta', stop_loss: 'Stop Loss' };
+const OUTCOME_LABEL = { all: 'Todos', win: 'Win', loss: 'Loss', open: 'Open' };
+
+const formatPct = (n, { signed = false } = {}) => {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return '--';
+  const sign = signed && value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+};
+
+const toLiveAlert = (incoming) => ({
+  id: incoming.id || `ws-${Date.now()}`,
+  symbol: incoming.symbol || '',
+  recommendation: incoming.recommendation || 'ALERTA',
+  type: incoming.type || 'unknown',
+  confidence: incoming.confidence || 'high'
+});
+
+const AlertRow = ({ item, palette }) => (
+  <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+    <View>
+      <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
+      <Text style={[styles.meta, { color: palette.muted }]}>Confianza: {item.confidence || 'high'}</Text>
+    </View>
+    <View style={styles.right}>
+      <Text style={[styles.recommendation, { color: palette.text }]}>{item.recommendation || 'SEÑAL'}</Text>
+      <Text style={[styles.badge, { color: palette.info }]}>{item.type || 'unknown'}</Text>
+    </View>
+  </View>
+);
+
 const AlertsScreen = ({ theme = 'dark' }) => {
   const palette = getThemePalette(theme);
-  const [alerts, setAlerts] = useState([]);
+
+  const [tab, setTab] = useState('live');
+  const [historyType, setHistoryType] = useState('all');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [outcomeFilter, setOutcomeFilter] = useState('all');
+
+  const [liveAlerts, setLiveAlerts] = useState([]);
+  const [historyData, setHistoryData] = useState({
+    alerts: [],
+    pagination: { page: 1, pages: 1, total: 0, limit: 20 },
+    stats: { total: 0, opportunities: 0, bearish: 0, stopLoss: 0, hitRate: 0, avgReturn: 0 }
+  });
+
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [wsStatus, setWsStatus] = useState('disconnected');
 
-  const loadAlerts = async () => {
-    const out = await api.getAlerts();
+  const performanceAlerts = useMemo(
+    () => (historyData.alerts || []).filter((a) => outcomeFilter === 'all' || (a.outcome || 'open') === outcomeFilter),
+    [historyData.alerts, outcomeFilter]
+  );
+
+  const loadLive = async () => {
+    const out = await api.getAlerts({ page: 1, limit: 20 });
     return out?.alerts || [];
   };
 
-  const refreshAlerts = async () => {
+  const loadHistory = async ({ page = historyPage, type = historyType } = {}) => {
+    setHistoryLoading(true);
+    try {
+      const out = await api.getAlerts({ page, limit: 20, type: type === 'all' ? null : type });
+      setHistoryData({
+        alerts: out?.alerts || [],
+        pagination: out?.pagination || { page: 1, pages: 1, total: 0, limit: 20 },
+        stats: out?.stats || { total: 0, opportunities: 0, bearish: 0, stopLoss: 0, hitRate: 0, avgReturn: 0 }
+      });
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
     setRefreshing(true);
     setError('');
     try {
-      const next = await loadAlerts();
-      setAlerts(next);
+      if (tab === 'live') {
+        const next = await loadLive();
+        setLiveAlerts(next.map(toLiveAlert));
+      } else {
+        await loadHistory({ page: historyPage, type: historyType });
+      }
     } catch {
       setError('No se pudieron cargar alertas.');
     } finally {
@@ -58,19 +130,11 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         try {
           const payload = JSON.parse(String(event.data || '{}'));
           if (payload.type !== 'alert' || !payload.alert) return;
-
-          const incoming = payload.alert;
-          const mapped = {
-            id: incoming.id || `ws-${Date.now()}`,
-            symbol: incoming.symbol || '',
-            recommendation: incoming.recommendation || 'ALERTA',
-            type: incoming.type || 'unknown'
-          };
-
-          setAlerts((prev) => {
+          const mapped = toLiveAlert(payload.alert);
+          setLiveAlerts((prev) => {
             const exists = prev.some((a) => a.id === mapped.id);
             if (exists) return prev;
-            return [mapped, ...prev];
+            return [mapped, ...prev].slice(0, 40);
           });
         } catch {
           // ignore malformed ws payload
@@ -79,10 +143,10 @@ const AlertsScreen = ({ theme = 'dark' }) => {
     };
 
     api
-      .getAlerts()
+      .getAlerts({ page: 1, limit: 20 })
       .then((out) => {
         if (!active) return;
-        setAlerts(out?.alerts || []);
+        setLiveAlerts((out?.alerts || []).map(toLiveAlert));
         connectWs();
       })
       .catch(() => {
@@ -103,44 +167,183 @@ const AlertsScreen = ({ theme = 'dark' }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (tab === 'live') return;
+    setError('');
+    loadHistory({ page: historyPage, type: historyType }).catch(() => setError('No se pudieron cargar alertas.'));
+  }, [tab, historyPage, historyType]);
+
+  const renderLive = () => (
+    <FlatList
+      data={liveAlerts}
+      keyExtractor={(item) => item.id}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin alertas en vivo.</Text>}
+      renderItem={({ item }) => <AlertRow item={item} palette={palette} />}
+    />
+  );
+
+  const renderHistory = () => (
+    <>
+      <View style={styles.rowWrap}>
+        {HISTORY_TYPES.map((item) => (
+          <Pressable
+            key={item}
+            onPress={() => {
+              setHistoryType(item);
+              setHistoryPage(1);
+            }}
+            style={[styles.chip, { borderColor: palette.border, backgroundColor: palette.surface }, historyType === item ? [styles.chipActive, { borderColor: palette.primary }] : null]}
+          >
+            <Text style={[styles.chipLabel, { color: palette.muted }, historyType === item ? { color: palette.primary } : null]}>{HISTORY_LABEL[item]}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <FlatList
+        data={historyData.alerts || []}
+        keyExtractor={(item) => item.id}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        ListEmptyComponent={!historyLoading ? <Text style={[styles.muted, { color: palette.muted }]}>Sin alertas en historial.</Text> : null}
+        renderItem={({ item }) => <AlertRow item={item} palette={palette} />}
+      />
+
+      <View style={styles.pagination}>
+        <Pressable
+          style={[styles.pageBtn, { backgroundColor: palette.secondaryButton }]}
+          disabled={historyData.pagination.page <= 1 || historyLoading}
+          onPress={() => setHistoryPage((p) => Math.max(1, p - 1))}
+        >
+          <Text style={{ color: palette.text }}>Anterior</Text>
+        </Pressable>
+        <Text style={{ color: palette.muted }}>
+          {historyData.pagination.page}/{historyData.pagination.pages}
+        </Text>
+        <Pressable
+          style={[styles.pageBtn, { backgroundColor: palette.secondaryButton }]}
+          disabled={historyData.pagination.page >= historyData.pagination.pages || historyLoading}
+          onPress={() => setHistoryPage((p) => p + 1)}
+        >
+          <Text style={{ color: palette.text }}>Siguiente</Text>
+        </Pressable>
+      </View>
+    </>
+  );
+
+  const renderPerformance = () => (
+    <>
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <Text style={[styles.statLabel, { color: palette.muted }]}>Hit Rate</Text>
+          <Text style={[styles.statValue, { color: palette.text }]}>{formatPct((historyData.stats.hitRate || 0) * 100, { signed: true })}</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <Text style={[styles.statLabel, { color: palette.muted }]}>Avg Return</Text>
+          <Text style={[styles.statValue, { color: palette.text }]}>{formatPct(historyData.stats.avgReturn || 0, { signed: true })}</Text>
+        </View>
+      </View>
+
+      <View style={styles.rowWrap}>
+        {OUTCOME_TYPES.map((item) => (
+          <Pressable
+            key={item}
+            onPress={() => setOutcomeFilter(item)}
+            style={[styles.chip, { borderColor: palette.border, backgroundColor: palette.surface }, outcomeFilter === item ? [styles.chipActive, { borderColor: palette.primary }] : null]}
+          >
+            <Text style={[styles.chipLabel, { color: palette.muted }, outcomeFilter === item ? { color: palette.primary } : null]}>{OUTCOME_LABEL[item]}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <FlatList
+        data={performanceAlerts}
+        keyExtractor={(item) => item.id}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin alertas para este filtro.</Text>}
+        renderItem={({ item }) => <AlertRow item={item} palette={palette} />}
+      />
+    </>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Alertas</Text>
       <Text style={[styles.muted, { color: palette.muted }]}>WS: {wsStatus}</Text>
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
-      <FlatList
-        data={alerts}
-        keyExtractor={(item) => item.id}
-        refreshing={refreshing}
-        onRefresh={refreshAlerts}
-        ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin alertas disponibles.</Text>}
-        renderItem={({ item }) => (
-          <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-            <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
-            <Text style={[styles.meta, { color: palette.muted }]}>
-              {item.recommendation} • {item.type}
-            </Text>
-          </View>
-        )}
-      />
+      <View style={styles.rowWrap}>
+        {MAIN_TABS.map((item) => (
+          <Pressable
+            key={item}
+            onPress={() => {
+              setTab(item);
+              if (item === 'history') setHistoryPage(1);
+            }}
+            style={[styles.chip, { borderColor: palette.border, backgroundColor: palette.surface }, tab === item ? [styles.chipActive, { borderColor: palette.primary }] : null]}
+          >
+            <Text style={[styles.chipLabel, { color: palette.muted }, tab === item ? { color: palette.primary } : null]}>{MAIN_LABEL[item]}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {tab === 'live' ? renderLive() : null}
+      {tab === 'history' ? renderHistory() : null}
+      {tab === 'performance' ? renderPerformance() : null}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 4 },
+  muted: { marginBottom: 8 },
+  error: { marginBottom: 10 },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  chip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  chipActive: {},
+  chipLabel: { fontSize: 12, fontWeight: '700' },
   row: {
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
-    marginBottom: 8
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
   symbol: { fontWeight: '700' },
+  recommendation: { fontWeight: '700' },
   meta: { marginTop: 2 },
-  muted: {},
-  error: { marginBottom: 10 }
+  badge: { marginTop: 3, fontSize: 12, fontWeight: '700' },
+  right: { alignItems: 'flex-end' },
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  statCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10
+  },
+  statLabel: { fontSize: 12, fontWeight: '600' },
+  statValue: { fontSize: 20, fontWeight: '700', marginTop: 4 },
+  pagination: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8
+  },
+  pageBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  }
 });
 
 export default AlertsScreen;

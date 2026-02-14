@@ -52,7 +52,11 @@ export const api = {
   getWatchlist: () => request('/watchlist'),
   addToWatchlist: (data) => request('/watchlist', { method: 'POST', body: JSON.stringify(data) }),
   removeFromWatchlist: (symbol) => request(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
-  getAlerts: () => request('/alerts?page=1&limit=20'),
+  getAlerts: ({ page = 1, limit = 20, type = null } = {}) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (type) params.set('type', type);
+    return request(`/alerts?${params.toString()}`);
+  },
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
     request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),

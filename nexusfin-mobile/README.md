@@ -8,6 +8,7 @@ MVP mobile para Fase 3 con:
 - markets realtime multi-activo (acciones, ETF, bonos, metales, commodities, crypto, FX)
 - watchlist add/remove desde mobile (sync con backend)
 - alertas con fetch inicial + refresh manual + stream en vivo por `WS /ws`
+- alertas mobile con tabs `En vivo / Historial / Performance` y filtros
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
 - desuscripción automática al cerrar sesión (`DELETE /api/notifications/subscribe/:id`)
 - preferencias de notificaciones (stop-loss/oportunidades/grupo + quiet hours UTC)
