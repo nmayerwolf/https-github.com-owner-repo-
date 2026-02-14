@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { askClaude } from '../api/claude';
 import { useApp } from '../store/AppContext';
+import { CATEGORY_OPTIONS } from '../utils/constants';
 
 const quick = ['Acciones 10% bajo promedio', 'Cryptos con momentum', 'Mejores dividendos', 'RSI más bajo'];
 
@@ -56,7 +57,7 @@ const Screener = () => {
     <div className="grid">
       <section className="card">
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          {['all', 'equity', 'crypto', 'fx'].map((x) => (
+          {CATEGORY_OPTIONS.map((x) => (
             <button key={x} type="button" onClick={() => setCategory(x)} style={{ borderColor: category === x ? '#00E08E' : undefined }}>
               {x}
             </button>

@@ -215,4 +215,23 @@ describe('realtime quote helpers', () => {
     );
     expect(alphaSvc.commodity).toHaveBeenCalledWith('TREASURY_YIELD', { maturity: '10year' });
   });
+
+  test('resolveRealtimeQuote supports short-term treasury symbols', async () => {
+    const finnhubSvc = {
+      quote: jest.fn(async () => ({ c: 100.2, dp: 1.2 }))
+    };
+    const alphaSvc = {
+      commodity: jest.fn(async () => ({ data: [{ value: '4.12' }] }))
+    };
+
+    const treasury = await resolveRealtimeQuote('AV:TREASURY_YIELD:2YEAR', { finnhubSvc, alphaSvc });
+    expect(treasury).toEqual(
+      expect.objectContaining({
+        symbol: 'AV:TREASURY_YIELD:2YEAR',
+        price: 4.12,
+        provider: 'alphavantage'
+      })
+    );
+    expect(alphaSvc.commodity).toHaveBeenCalledWith('TREASURY_YIELD', { maturity: '2year' });
+  });
 });

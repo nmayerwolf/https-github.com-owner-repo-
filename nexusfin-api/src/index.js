@@ -27,8 +27,15 @@ const exportRoutes = require('./routes/export');
 const MACRO_SYMBOL_TO_REQUEST = {
   'AV:GOLD': { fn: 'GOLD' },
   'AV:SILVER': { fn: 'SILVER' },
+  'AV:PLATINUM': { fn: 'PLATINUM' },
+  'AV:COPPER': { fn: 'COPPER' },
   'AV:WTI': { fn: 'WTI' },
-  'AV:TREASURY_YIELD:10YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '10year' } }
+  'AV:BRENT': { fn: 'BRENT' },
+  'AV:NATURAL_GAS': { fn: 'NATURAL_GAS' },
+  'AV:TREASURY_YIELD:2YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '2year' } },
+  'AV:TREASURY_YIELD:5YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '5year' } },
+  'AV:TREASURY_YIELD:10YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '10year' } },
+  'AV:TREASURY_YIELD:30YEAR': { fn: 'TREASURY_YIELD', params: { maturity: '30year' } }
 };
 const AV_SYMBOL_PREFIX = 'AV:';
 

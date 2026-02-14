@@ -1,4 +1,4 @@
-# NexusFin (Phase 2)
+# NexusFin (Phase 3)
 
 Plataforma de monitoreo financiero en tiempo real con análisis técnico, alertas, portfolio multi-usuario y grupos.
 
@@ -10,7 +10,7 @@ Plataforma de monitoreo financiero en tiempo real con análisis técnico, alerta
 - Market data proxy: Finnhub + Alpha Vantage (keys solo en backend)
 - Auth: email/password + JWT bearer
 
-## Estado actual (Phase 2)
+## Estado actual (Phase 3)
 
 - Auth (`register/login/refresh/logout/reset-password`) con lockout y `Retry-After` en 429
 - Portfolio / Config / Watchlist persistidos en PostgreSQL
@@ -74,7 +74,7 @@ DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm
 2. Deploy backend con variables de `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.example`.
 3. Ejecutar migraciones en backend: `npm run migrate`.
 4. Deploy frontend con `VITE_API_URL=https://<tu-backend>/api`.
-5. Ejecutar smoke test del release usando `/Users/nmayerwolf/Documents/nexusfin/RELEASE_CHECKLIST.md`.
+5. Ejecutar smoke test del release usando `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`.
 
 ## CI
 
@@ -90,8 +90,6 @@ Abrí siempre los PR contra `main` para que corra CI:
 
 ## Release
 
-- Notas de cierre de fase: 
-
-## Release
-
-- Notas de cierre de fase: /Users/nmayerwolf/Documents/nexusfin/PHASE2_RELEASE_NOTES.md
+- Notas de cierre de fase 2: `/Users/nmayerwolf/Documents/nexusfin/PHASE2_RELEASE_NOTES.md`
+- Checklist fase 2: `/Users/nmayerwolf/Documents/nexusfin/RELEASE_CHECKLIST.md`
+- Checklist fase 3: `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
