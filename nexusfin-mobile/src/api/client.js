@@ -11,6 +11,9 @@ export const setToken = (next) => {
   token = next || null;
 };
 
+export const getToken = () => token;
+export const getApiBase = () => API_BASE;
+
 const request = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
