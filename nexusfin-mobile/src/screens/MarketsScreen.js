@@ -23,7 +23,10 @@ const MarketsScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [wsStatus, setWsStatus] = useState('disconnected');
+  const [watchlistSymbols, setWatchlistSymbols] = useState([]);
+  const [watchlistLoadingId, setWatchlistLoadingId] = useState('');
   const [rows, setRows] = useState(() =>
     MOBILE_MARKET_UNIVERSE.map((asset) => ({ ...asset, price: null, changePercent: null, updatedAt: null }))
   );
@@ -67,8 +70,50 @@ const MarketsScreen = () => {
     }
   };
 
+  const loadWatchlist = async () => {
+    try {
+      const out = await api.getWatchlist();
+      const symbols = (out?.symbols || []).map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean);
+      setWatchlistSymbols(symbols);
+    } catch {
+      setWatchlistSymbols([]);
+    }
+  };
+
+  const toggleWatchlist = async (asset) => {
+    const symbol = String(asset?.symbol || '').toUpperCase();
+    if (!symbol) return;
+
+    setWatchlistLoadingId(asset.id);
+    setMessage('');
+    setError('');
+
+    try {
+      const exists = watchlistSymbols.includes(symbol);
+      if (exists) {
+        await api.removeFromWatchlist(symbol);
+        setWatchlistSymbols((prev) => prev.filter((item) => item !== symbol));
+        setMessage(`${symbol} removido de watchlist.`);
+      } else {
+        await api.addToWatchlist({
+          symbol,
+          name: asset.name,
+          type: asset.category,
+          category: asset.category
+        });
+        setWatchlistSymbols((prev) => [symbol, ...prev.filter((item) => item !== symbol)]);
+        setMessage(`${symbol} agregado a watchlist.`);
+      }
+    } catch (err) {
+      setError(err?.message || 'No se pudo actualizar watchlist.');
+    } finally {
+      setWatchlistLoadingId('');
+    }
+  };
+
   useEffect(() => {
     refreshQuotes();
+    loadWatchlist();
   }, []);
 
   useEffect(() => {
@@ -156,6 +201,8 @@ const MarketsScreen = () => {
     <View style={styles.container}>
       <Text style={styles.title}>Markets</Text>
       <Text style={styles.muted}>WS: {wsStatus}</Text>
+      <Text style={styles.muted}>Watchlist: {watchlistSymbols.length} símbolos</Text>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <View style={styles.chips}>
@@ -174,15 +221,25 @@ const MarketsScreen = () => {
         ListEmptyComponent={!loading ? <Text style={styles.muted}>Sin activos para este filtro.</Text> : null}
         renderItem={({ item }) => {
           const isUp = Number(item.changePercent) >= 0;
+          const inWatchlist = watchlistSymbols.includes(String(item.symbol || '').toUpperCase());
           return (
             <View style={styles.row}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.symbol}>{item.symbol}</Text>
                 <Text style={styles.meta}>{item.name}</Text>
               </View>
               <View style={styles.right}>
                 <Text style={styles.price}>{formatUsd(item.price)}</Text>
                 <Text style={[styles.change, isUp ? styles.positive : styles.negative]}>{formatPct(item.changePercent)}</Text>
+                <Pressable
+                  onPress={() => toggleWatchlist(item)}
+                  disabled={watchlistLoadingId === item.id}
+                  style={[styles.watchButton, inWatchlist ? styles.watchButtonOn : styles.watchButtonOff]}
+                >
+                  <Text style={styles.watchButtonLabel}>
+                    {watchlistLoadingId === item.id ? '...' : inWatchlist ? 'Quitar' : 'Agregar'}
+                  </Text>
+                </Pressable>
               </View>
             </View>
           );
@@ -197,6 +254,7 @@ const styles = StyleSheet.create({
   title: { color: '#E0E7F0', fontSize: 22, fontWeight: '700', marginBottom: 6 },
   muted: { color: '#6B7B8D', marginBottom: 8 },
   error: { color: '#FF6B6B', marginBottom: 8 },
+  message: { color: '#60A5FA', marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   chip: {
     borderRadius: 999,
@@ -226,7 +284,27 @@ const styles = StyleSheet.create({
   price: { color: '#E0E7F0', fontWeight: '700' },
   change: { marginTop: 2, fontWeight: '700' },
   positive: { color: '#00E08E' },
-  negative: { color: '#FF6B6B' }
+  negative: { color: '#FF6B6B' },
+  watchButton: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 8,
+    borderWidth: 1
+  },
+  watchButtonOn: {
+    backgroundColor: '#112D24',
+    borderColor: '#00E08E'
+  },
+  watchButtonOff: {
+    backgroundColor: '#182740',
+    borderColor: '#25324B'
+  },
+  watchButtonLabel: {
+    color: '#E0E7F0',
+    fontWeight: '700',
+    fontSize: 12
+  }
 });
 
 export default MarketsScreen;

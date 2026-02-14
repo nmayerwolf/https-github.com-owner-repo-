@@ -46,6 +46,9 @@ export const api = {
     }),
   me: () => request('/auth/me'),
   quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
+  getWatchlist: () => request('/watchlist'),
+  addToWatchlist: (data) => request('/watchlist', { method: 'POST', body: JSON.stringify(data) }),
+  removeFromWatchlist: (symbol) => request(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
   getAlerts: () => request('/alerts?page=1&limit=20'),
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
