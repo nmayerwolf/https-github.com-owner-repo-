@@ -112,7 +112,7 @@ Health:
 - `GET /api/health`
 
 Realtime scaffold (Fase 3):
-- `WS /ws?token=<jwt>`
+- `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)
 - cron worker configurable por `CRON_*` vars
 - alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
 
@@ -121,7 +121,7 @@ Realtime scaffold (Fase 3):
 - Todas las rutas excepto `/api/health` y `/api/auth/*` requieren auth (Bearer o cookie `nxf_token`).
 - En modo web con cookie, mutaciones requieren header `X-CSRF-Token` obtenido desde `GET /api/auth/csrf`.
 - Google OAuth está funcional vía callback HTTP.
-- Apple OAuth queda scaffolded: inicia flujo y valida state, callback final aún pendiente de exchange token en backend.
+- Apple OAuth funcional: inicia flujo, valida state, hace exchange de código y crea/vincula sesión.
 - API keys viven solo en backend.
 - Lockout de login devuelve `429` con body `retryAfter` y header `Retry-After`.
 - Migración localStorage se bloquea con `409 ALREADY_MIGRATED` si el usuario ya tiene datos.

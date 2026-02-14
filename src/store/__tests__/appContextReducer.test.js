@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appReducer, makeUiError } from '../AppContext';
+import { appReducer, makeUiError, mapServerAlertToLive } from '../AppContext';
 
 const baseState = {
   assets: [],
@@ -13,7 +13,8 @@ const baseState = {
   wsStatus: 'disconnected',
   macroStatus: 'idle',
   apiHealth: { finnhub: {}, alphavantage: {}, claude: {} },
-  uiErrors: []
+  uiErrors: [],
+  realtimeAlerts: []
 };
 
 describe('appReducer', () => {
@@ -52,5 +53,28 @@ describe('appReducer', () => {
       state = appReducer(state, { type: 'PUSH_UI_ERROR', payload: makeUiError('M', `Err ${i}`) });
     }
     expect(state.uiErrors.length).toBe(6);
+  });
+
+  it('pushes and clears realtime alerts', () => {
+    const mapped = mapServerAlertToLive({
+      id: 'a1',
+      symbol: 'nvda',
+      type: 'opportunity',
+      recommendation: 'BUY',
+      confidence: 'high',
+      stop_loss: 100,
+      take_profit: 130
+    });
+
+    const withRealtime = appReducer(baseState, { type: 'PUSH_REALTIME_ALERT', payload: mapped });
+    expect(withRealtime.realtimeAlerts.length).toBe(1);
+    expect(withRealtime.realtimeAlerts[0].type).toBe('compra');
+    expect(withRealtime.realtimeAlerts[0].symbol).toBe('NVDA');
+
+    const deduped = appReducer(withRealtime, { type: 'PUSH_REALTIME_ALERT', payload: mapped });
+    expect(deduped.realtimeAlerts.length).toBe(1);
+
+    const cleared = appReducer(deduped, { type: 'CLEAR_REALTIME_ALERTS' });
+    expect(cleared.realtimeAlerts).toEqual([]);
   });
 });

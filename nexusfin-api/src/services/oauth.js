@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { env } = require('../config/env');
 
 const OAUTH_STATE_COOKIE = 'nxf_oauth_state';
@@ -40,7 +41,8 @@ const verifyOAuthState = (state) => {
 };
 
 const isGoogleConfigured = () => Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl);
-const isAppleConfigured = () => Boolean(env.appleClientId && env.appleCallbackUrl);
+const isAppleConfigured = () =>
+  Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey);
 
 const buildGoogleAuthUrl = (state) => {
   const params = new URLSearchParams({
@@ -112,6 +114,110 @@ const buildAppleAuthUrl = (state) => {
   return `https://appleid.apple.com/auth/authorize?${params.toString()}`;
 };
 
+const normalizeApplePrivateKey = () => {
+  return env.applePrivateKey.includes('\\n') ? env.applePrivateKey.replace(/\\n/g, '\n') : env.applePrivateKey;
+};
+
+const buildAppleClientSecret = () => {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign({}, normalizeApplePrivateKey(), {
+    algorithm: 'ES256',
+    issuer: env.appleTeamId,
+    subject: env.appleClientId,
+    audience: 'https://appleid.apple.com',
+    keyid: env.appleKeyId,
+    expiresIn: '5m',
+    notBefore: 0
+  });
+};
+
+let appleJwksCache = { exp: 0, keys: [] };
+
+const getAppleJwks = async () => {
+  if (appleJwksCache.exp > Date.now() && appleJwksCache.keys.length) {
+    return appleJwksCache.keys;
+  }
+
+  const res = await fetch('https://appleid.apple.com/auth/keys');
+  if (!res.ok) {
+    throw new Error(`APPLE_JWKS_HTTP_${res.status}`);
+  }
+
+  const json = await res.json();
+  const keys = Array.isArray(json.keys) ? json.keys : [];
+  if (!keys.length) {
+    throw new Error('APPLE_JWKS_EMPTY');
+  }
+
+  appleJwksCache = {
+    keys,
+    exp: Date.now() + 60 * 60 * 1000
+  };
+
+  return keys;
+};
+
+const verifyAppleIdToken = async (idToken) => {
+  const decoded = jwt.decode(idToken, { complete: true });
+  if (!decoded || typeof decoded !== 'object') {
+    throw new Error('APPLE_ID_TOKEN_INVALID');
+  }
+
+  const kid = decoded.header?.kid;
+  if (!kid) {
+    throw new Error('APPLE_ID_TOKEN_KID_MISSING');
+  }
+
+  const keys = await getAppleJwks();
+  const jwk = keys.find((key) => key.kid === kid && key.kty === 'RSA');
+  if (!jwk) {
+    throw new Error('APPLE_JWK_NOT_FOUND');
+  }
+
+  const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+  return jwt.verify(idToken, publicKey, {
+    algorithms: ['RS256'],
+    audience: env.appleClientId,
+    issuer: 'https://appleid.apple.com'
+  });
+};
+
+const exchangeAppleCode = async (code) => {
+  const tokenRes = await fetch('https://appleid.apple.com/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: env.appleClientId,
+      client_secret: buildAppleClientSecret(),
+      redirect_uri: env.appleCallbackUrl
+    })
+  });
+
+  if (!tokenRes.ok) {
+    throw new Error(`APPLE_TOKEN_HTTP_${tokenRes.status}`);
+  }
+
+  const tokenJson = await tokenRes.json();
+  if (!tokenJson.id_token) {
+    throw new Error('APPLE_ID_TOKEN_MISSING');
+  }
+
+  const claims = await verifyAppleIdToken(tokenJson.id_token);
+  if (!claims?.sub) {
+    throw new Error('APPLE_CLAIMS_INCOMPLETE');
+  }
+
+  return {
+    provider: 'apple',
+    oauthId: String(claims.sub),
+    email: claims.email ? String(claims.email).toLowerCase() : null,
+    displayName: null,
+    avatarUrl: null
+  };
+};
+
 module.exports = {
   OAUTH_STATE_COOKIE,
   buildCookieOptions,
@@ -121,5 +227,6 @@ module.exports = {
   isAppleConfigured,
   buildGoogleAuthUrl,
   exchangeGoogleCode,
-  buildAppleAuthUrl
+  buildAppleAuthUrl,
+  exchangeAppleCode
 };

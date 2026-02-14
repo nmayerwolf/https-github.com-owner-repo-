@@ -20,7 +20,9 @@ const AuthScreen = () => {
       provider_disabled: 'Proveedor OAuth no configurado.',
       invalid_oauth_state: 'Sesión OAuth inválida, intentá nuevamente.',
       google_callback_failed: 'No se pudo completar login con Google.',
-      apple_not_implemented: 'Sign in with Apple aún no está habilitado en esta build.'
+      apple_callback_failed: 'No se pudo completar login con Apple.',
+      oauth_email_required: 'Apple no entregó email. Reintentá compartiendo tu email con la app.',
+      apple_not_implemented: 'Sign in with Apple no disponible en esta build.'
     };
 
     setError(map[oauthError] || 'Error de autenticación social.');

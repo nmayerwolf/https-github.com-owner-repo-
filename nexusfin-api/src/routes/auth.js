@@ -21,7 +21,8 @@ const {
   isAppleConfigured,
   buildGoogleAuthUrl,
   exchangeGoogleCode,
-  buildAppleAuthUrl
+  buildAppleAuthUrl,
+  exchangeAppleCode
 } = require('../services/oauth');
 const { badRequest, conflict, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
@@ -77,20 +78,24 @@ const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarU
     return updated.rows[0];
   }
 
-  const byEmail = await query('SELECT id, email FROM users WHERE email = $1', [email]);
-  if (byEmail.rows.length) {
-    const merged = await query(
-      `UPDATE users
-       SET auth_provider = $1,
-           oauth_id = $2,
-           display_name = COALESCE($3, display_name),
-           avatar_url = COALESCE($4, avatar_url),
-           updated_at = NOW()
-       WHERE id = $5
-       RETURNING id, email`,
-      [provider, oauthId, displayName || null, avatarUrl || null, byEmail.rows[0].id]
-    );
-    return merged.rows[0];
+  if (email) {
+    const byEmail = await query('SELECT id, email FROM users WHERE email = $1', [email]);
+    if (byEmail.rows.length) {
+      const merged = await query(
+        `UPDATE users
+         SET auth_provider = $1,
+             oauth_id = $2,
+             display_name = COALESCE($3, display_name),
+             avatar_url = COALESCE($4, avatar_url),
+             updated_at = NOW()
+         WHERE id = $5
+         RETURNING id, email`,
+        [provider, oauthId, displayName || null, avatarUrl || null, byEmail.rows[0].id]
+      );
+      return merged.rows[0];
+    }
+  } else {
+    throw unauthorized('Apple no entregó email para vincular cuenta', 'OAUTH_EMAIL_REQUIRED');
   }
 
   const created = await query(
@@ -165,8 +170,9 @@ router.get('/apple', (_req, res, next) => {
   }
 });
 
-router.get('/apple/callback', (req, res) => {
+router.get('/apple/callback', async (req, res) => {
   const state = String(req.query.state || '');
+  const code = String(req.query.code || '');
   const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
   res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
 
@@ -174,11 +180,25 @@ router.get('/apple/callback', (req, res) => {
     return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
   }
 
-  if (!state || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
+  if (!state || !code || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
     return res.redirect(302, oauthRedirect({ oauth_error: 'invalid_oauth_state' }));
   }
 
-  return res.redirect(302, oauthRedirect({ oauth_error: 'apple_not_implemented' }));
+  try {
+    const profile = await exchangeAppleCode(code);
+    const user = await resolveOAuthUser(profile);
+
+    const token = issueToken(user);
+    await storeSession(user.id, token);
+    setAuthCookies(res, token);
+
+    return res.redirect(302, oauthRedirect({ oauth: 'success' }));
+  } catch (error) {
+    if (error?.code === 'OAUTH_EMAIL_REQUIRED') {
+      return res.redirect(302, oauthRedirect({ oauth_error: 'oauth_email_required' }));
+    }
+    return res.redirect(302, oauthRedirect({ oauth_error: 'apple_callback_failed' }));
+  }
 });
 
 router.post('/register', async (req, res, next) => {
