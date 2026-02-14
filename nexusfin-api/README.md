@@ -115,6 +115,8 @@ Health:
 Realtime scaffold (Fase 3):
 - `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)
 - price relay backend por símbolos suscriptos (`type: "price"`) usando `WS_PRICE_INTERVAL`
+  - Finnhub: `AAPL`, `BINANCE:BTCUSDT`, `OANDA:EUR_USD`
+  - Alpha Vantage macro: `AV:GOLD`, `AV:SILVER`, `AV:WTI`, `AV:TREASURY_YIELD:10YEAR`
 - cron worker configurable por `CRON_*` vars
 - alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
 

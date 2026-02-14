@@ -83,13 +83,16 @@ describe('appReducer', () => {
       { symbol: 'aapl', source: 'finnhub_stock' },
       { symbol: 'btcusdt', source: 'finnhub_crypto' },
       { symbol: 'eur_usd', source: 'finnhub_fx' },
-      { symbol: 'XAU', source: 'alphavantage' }
+      { symbol: 'XAU', source: 'alphavantage_macro' },
+      { symbol: 'US10Y', source: 'alphavantage_macro' }
     ]);
 
     expect(out).toEqual({
       AAPL: 'AAPL',
       'BINANCE:BTCUSDT': 'BTCUSDT',
-      'OANDA:EUR_USD': 'EUR_USD'
+      'OANDA:EUR_USD': 'EUR_USD',
+      'AV:GOLD': 'XAU',
+      'AV:TREASURY_YIELD:10YEAR': 'US10Y'
     });
   });
 });

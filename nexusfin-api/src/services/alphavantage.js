@@ -9,7 +9,7 @@ const fetchAV = async (params = {}) => {
   return res.json();
 };
 
-const commodity = (fn) => fetchAV({ function: fn, interval: 'daily' });
+const commodity = (fn, params = {}) => fetchAV({ function: fn, interval: 'daily', ...params });
 const overview = (symbol) => fetchAV({ function: 'OVERVIEW', symbol });
 
 module.exports = { commodity, overview };
