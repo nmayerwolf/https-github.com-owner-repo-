@@ -3,8 +3,10 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-nati
 import { api } from '../api/client';
 import { registerNativePush } from '../lib/push';
 import { clearPushSubscriptionId, savePushSubscriptionId } from '../store/auth';
+import { getThemePalette } from '../theme/palette';
 
-const SettingsScreen = ({ onLogout }) => {
+const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
+  const palette = getThemePalette(theme);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -135,102 +137,117 @@ const SettingsScreen = ({ onLogout }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
-      <Text style={styles.status}>Push: {pushEnabled ? 'activo' : 'inactivo'}</Text>
-      <Pressable style={styles.button} disabled={loading} onPress={enablePush}>
-        <Text style={styles.buttonLabel}>{loading ? 'Activando...' : 'Activar push nativo'}</Text>
+    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+      <Text style={[styles.title, { color: palette.text }]}>Settings</Text>
+      <Text style={[styles.status, { color: palette.muted }]}>Push: {pushEnabled ? 'activo' : 'inactivo'}</Text>
+      <Pressable style={[styles.button, { backgroundColor: palette.primary }]} disabled={loading} onPress={enablePush}>
+        <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{loading ? 'Activando...' : 'Activar push nativo'}</Text>
       </Pressable>
 
-      <Pressable style={[styles.button, styles.secondary]} disabled={loading || !pushEnabled} onPress={disablePush}>
-        <Text style={styles.secondaryLabel}>{loading ? 'Procesando...' : 'Desactivar push nativo'}</Text>
+      <Pressable style={[styles.button, styles.secondary, { backgroundColor: palette.secondaryButton }]} disabled={loading || !pushEnabled} onPress={disablePush}>
+        <Text style={[styles.secondaryLabel, { color: palette.text }]}>{loading ? 'Procesando...' : 'Desactivar push nativo'}</Text>
       </Pressable>
 
-      <Pressable style={[styles.button, styles.secondary]} onPress={onLogout}>
-        <Text style={styles.secondaryLabel}>Cerrar sesión</Text>
+      <Pressable style={[styles.button, styles.secondary, { backgroundColor: palette.secondaryButton }]} onPress={onLogout}>
+        <Text style={[styles.secondaryLabel, { color: palette.text }]}>Cerrar sesión</Text>
       </Pressable>
 
-      <Text style={styles.section}>Preferencias de notificaciones</Text>
+      <Text style={[styles.section, { color: palette.text }]}>Tema</Text>
+      <View style={styles.rowTwo}>
+        <Pressable
+          style={[styles.button, styles.themeButton, { backgroundColor: theme === 'dark' ? palette.primary : palette.secondaryButton }]}
+          onPress={() => onThemeChange?.('dark')}
+        >
+          <Text style={[styles.buttonLabel, { color: theme === 'dark' ? palette.primaryText : palette.text }]}>Oscuro</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.button, styles.themeButton, { backgroundColor: theme === 'light' ? palette.primary : palette.secondaryButton }]}
+          onPress={() => onThemeChange?.('light')}
+        >
+          <Text style={[styles.buttonLabel, { color: theme === 'light' ? palette.primaryText : palette.text }]}>Claro</Text>
+        </Pressable>
+      </View>
+
+      <Text style={[styles.section, { color: palette.text }]}>Preferencias de notificaciones</Text>
       {prefsLoading ? (
-        <Text style={styles.status}>Cargando preferencias...</Text>
+        <Text style={[styles.status, { color: palette.muted }]}>Cargando preferencias...</Text>
       ) : (
         <>
-          <View style={styles.prefRow}>
-            <Text style={styles.prefLabel}>Stop loss</Text>
+          <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <Text style={[styles.prefLabel, { color: palette.text }]}>Stop loss</Text>
             <Switch
               value={prefs.stopLoss}
               onValueChange={(value) => setPrefs((prev) => ({ ...prev, stopLoss: value }))}
-              thumbColor={prefs.stopLoss ? '#00E08E' : '#6B7B8D'}
+              thumbColor={prefs.stopLoss ? palette.primary : palette.muted}
             />
           </View>
 
-          <View style={styles.prefRow}>
-            <Text style={styles.prefLabel}>Oportunidades</Text>
+          <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <Text style={[styles.prefLabel, { color: palette.text }]}>Oportunidades</Text>
             <Switch
               value={prefs.opportunities}
               onValueChange={(value) => setPrefs((prev) => ({ ...prev, opportunities: value }))}
-              thumbColor={prefs.opportunities ? '#00E08E' : '#6B7B8D'}
+              thumbColor={prefs.opportunities ? palette.primary : palette.muted}
             />
           </View>
 
-          <View style={styles.prefRow}>
-            <Text style={styles.prefLabel}>Actividad de grupo</Text>
+          <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <Text style={[styles.prefLabel, { color: palette.text }]}>Actividad de grupo</Text>
             <Switch
               value={prefs.groupActivity}
               onValueChange={(value) => setPrefs((prev) => ({ ...prev, groupActivity: value }))}
-              thumbColor={prefs.groupActivity ? '#00E08E' : '#6B7B8D'}
+              thumbColor={prefs.groupActivity ? palette.primary : palette.muted}
             />
           </View>
 
-          <Text style={styles.prefHint}>Quiet hours (UTC, HH:MM)</Text>
+          <Text style={[styles.prefHint, { color: palette.muted }]}>Quiet hours (UTC, HH:MM)</Text>
           <View style={styles.timeRow}>
             <TextInput
               placeholder="22:00"
-              placeholderTextColor="#6B7B8D"
+              placeholderTextColor={palette.muted}
               value={prefs.quietHoursStart}
               onChangeText={(value) => setPrefs((prev) => ({ ...prev, quietHoursStart: value }))}
-              style={styles.timeInput}
+              style={[styles.timeInput, { backgroundColor: palette.surface, borderColor: palette.border, color: palette.text }]}
             />
-            <Text style={styles.prefLabel}>a</Text>
+            <Text style={[styles.prefLabel, { color: palette.text }]}>a</Text>
             <TextInput
               placeholder="07:00"
-              placeholderTextColor="#6B7B8D"
+              placeholderTextColor={palette.muted}
               value={prefs.quietHoursEnd}
               onChangeText={(value) => setPrefs((prev) => ({ ...prev, quietHoursEnd: value }))}
-              style={styles.timeInput}
+              style={[styles.timeInput, { backgroundColor: palette.surface, borderColor: palette.border, color: palette.text }]}
             />
           </View>
 
-          <Pressable style={[styles.button, styles.saveButton]} disabled={prefsSaving} onPress={savePreferences}>
-            <Text style={styles.buttonLabel}>{prefsSaving ? 'Guardando...' : 'Guardar preferencias'}</Text>
+          <Pressable style={[styles.button, styles.saveButton, { backgroundColor: palette.primary }]} disabled={prefsSaving} onPress={savePreferences}>
+            <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{prefsSaving ? 'Guardando...' : 'Guardar preferencias'}</Text>
           </Pressable>
         </>
       )}
 
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {message ? <Text style={[styles.message, { color: palette.muted }]}>{message}</Text> : null}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080F1E', padding: 16 },
-  title: { color: '#E0E7F0', fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  status: { color: '#6B7B8D', marginBottom: 8 },
-  section: { color: '#E0E7F0', fontSize: 16, fontWeight: '700', marginTop: 14, marginBottom: 8 },
+  container: { flex: 1, padding: 16 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  status: { marginBottom: 8 },
+  section: { fontSize: 16, fontWeight: '700', marginTop: 14, marginBottom: 8 },
+  rowTwo: { flexDirection: 'row', gap: 8 },
   button: {
-    backgroundColor: '#00E08E',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
     marginBottom: 10
   },
-  buttonLabel: { color: '#02130D', fontWeight: '700' },
-  secondary: { backgroundColor: '#182740' },
-  secondaryLabel: { color: '#E0E7F0', fontWeight: '600' },
+  buttonLabel: { fontWeight: '700' },
+  secondary: {},
+  secondaryLabel: { fontWeight: '600' },
+  themeButton: { flex: 1 },
   saveButton: { marginTop: 8 },
   prefRow: {
-    backgroundColor: '#0F1A2E',
-    borderColor: '#25324B',
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -240,20 +257,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between'
   },
-  prefLabel: { color: '#E0E7F0' },
-  prefHint: { color: '#6B7B8D', marginTop: 6, marginBottom: 6 },
+  prefLabel: {},
+  prefHint: { marginTop: 6, marginBottom: 6 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timeInput: {
     flex: 1,
-    backgroundColor: '#0F1A2E',
-    borderColor: '#25324B',
     borderWidth: 1,
     borderRadius: 10,
-    color: '#E0E7F0',
     paddingHorizontal: 12,
     paddingVertical: 10
   },
-  message: { color: '#6B7B8D', marginTop: 8 }
+  message: { marginTop: 8 }
 });
 
 export default SettingsScreen;

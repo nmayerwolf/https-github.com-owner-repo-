@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { api, getApiBase, getToken } from '../api/client';
+import { getThemePalette } from '../theme/palette';
 
-const AlertsScreen = () => {
+const AlertsScreen = ({ theme = 'dark' }) => {
+  const palette = getThemePalette(theme);
   const [alerts, setAlerts] = useState([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -102,21 +104,21 @@ const AlertsScreen = () => {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Alertas</Text>
-      <Text style={styles.muted}>WS: {wsStatus}</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+      <Text style={[styles.title, { color: palette.text }]}>Alertas</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>WS: {wsStatus}</Text>
+      {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
       <FlatList
         data={alerts}
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={refreshAlerts}
-        ListEmptyComponent={<Text style={styles.muted}>Sin alertas disponibles.</Text>}
+        ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin alertas disponibles.</Text>}
         renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Text style={styles.symbol}>{item.symbol}</Text>
-            <Text style={styles.meta}>
+          <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
+            <Text style={[styles.meta, { color: palette.muted }]}>
               {item.recommendation} • {item.type}
             </Text>
           </View>
@@ -127,20 +129,18 @@ const AlertsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080F1E', padding: 16 },
-  title: { color: '#E0E7F0', fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  container: { flex: 1, padding: 16 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
   row: {
-    backgroundColor: '#0F1A2E',
-    borderColor: '#25324B',
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
     marginBottom: 8
   },
-  symbol: { color: '#E0E7F0', fontWeight: '700' },
-  meta: { color: '#6B7B8D', marginTop: 2 },
-  muted: { color: '#6B7B8D' },
-  error: { color: '#FF6B6B', marginBottom: 10 }
+  symbol: { fontWeight: '700' },
+  meta: { marginTop: 2 },
+  muted: {},
+  error: { marginBottom: 10 }
 });
 
 export default AlertsScreen;

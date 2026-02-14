@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, getApiBase, getToken } from '../api/client';
 import { MARKET_CATEGORIES, MOBILE_MARKET_UNIVERSE } from '../constants/markets';
+import { getThemePalette } from '../theme/palette';
 
 const toQuoteSymbol = (asset) => asset.wsSymbol;
 
@@ -18,7 +19,8 @@ const formatPct = (value) => {
   return `${sign}${n.toFixed(2)}%`;
 };
 
-const MarketsScreen = () => {
+const MarketsScreen = ({ theme = 'dark' }) => {
+  const palette = getThemePalette(theme);
   const [category, setCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -198,17 +200,23 @@ const MarketsScreen = () => {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Markets</Text>
-      <Text style={styles.muted}>WS: {wsStatus}</Text>
-      <Text style={styles.muted}>Watchlist: {watchlistSymbols.length} símbolos</Text>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+      <Text style={[styles.title, { color: palette.text }]}>Markets</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>WS: {wsStatus}</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>Watchlist: {watchlistSymbols.length} símbolos</Text>
+      {message ? <Text style={[styles.message, { color: palette.info }]}>{message}</Text> : null}
+      {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
       <View style={styles.chips}>
         {MARKET_CATEGORIES.map((item) => (
-          <Pressable key={item} onPress={() => setCategory(item)} style={[styles.chip, category === item ? styles.chipActive : null]}>
-            <Text style={[styles.chipLabel, category === item ? styles.chipLabelActive : null]}>{item.toUpperCase()}</Text>
+          <Pressable
+            key={item}
+            onPress={() => setCategory(item)}
+            style={[styles.chip, { borderColor: palette.border, backgroundColor: palette.surface }, category === item ? [styles.chipActive, { borderColor: palette.primary }] : null]}
+          >
+            <Text style={[styles.chipLabel, { color: palette.muted }, category === item ? [styles.chipLabelActive, { color: palette.primary }] : null]}>
+              {item.toUpperCase()}
+            </Text>
           </Pressable>
         ))}
       </View>
@@ -218,25 +226,30 @@ const MarketsScreen = () => {
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={() => refreshQuotes()}
-        ListEmptyComponent={!loading ? <Text style={styles.muted}>Sin activos para este filtro.</Text> : null}
+        ListEmptyComponent={!loading ? <Text style={[styles.muted, { color: palette.muted }]}>Sin activos para este filtro.</Text> : null}
         renderItem={({ item }) => {
           const isUp = Number(item.changePercent) >= 0;
           const inWatchlist = watchlistSymbols.includes(String(item.symbol || '').toUpperCase());
           return (
-            <View style={styles.row}>
+            <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.symbol}>{item.symbol}</Text>
-                <Text style={styles.meta}>{item.name}</Text>
+                <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
+                <Text style={[styles.meta, { color: palette.muted }]}>{item.name}</Text>
               </View>
               <View style={styles.right}>
-                <Text style={styles.price}>{formatUsd(item.price)}</Text>
-                <Text style={[styles.change, isUp ? styles.positive : styles.negative]}>{formatPct(item.changePercent)}</Text>
+                <Text style={[styles.price, { color: palette.text }]}>{formatUsd(item.price)}</Text>
+                <Text style={[styles.change, { color: isUp ? palette.positive : palette.negative }]}>{formatPct(item.changePercent)}</Text>
                 <Pressable
                   onPress={() => toggleWatchlist(item)}
                   disabled={watchlistLoadingId === item.id}
-                  style={[styles.watchButton, inWatchlist ? styles.watchButtonOn : styles.watchButtonOff]}
+                  style={[
+                    styles.watchButton,
+                    inWatchlist
+                      ? [styles.watchButtonOn, { backgroundColor: palette.surfaceAlt, borderColor: palette.primary }]
+                      : [styles.watchButtonOff, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]
+                  ]}
                 >
-                  <Text style={styles.watchButtonLabel}>
+                  <Text style={[styles.watchButtonLabel, { color: palette.text }]}>
                     {watchlistLoadingId === item.id ? '...' : inWatchlist ? 'Quitar' : 'Agregar'}
                   </Text>
                 </Pressable>
@@ -250,26 +263,23 @@ const MarketsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080F1E', padding: 16 },
-  title: { color: '#E0E7F0', fontSize: 22, fontWeight: '700', marginBottom: 6 },
-  muted: { color: '#6B7B8D', marginBottom: 8 },
-  error: { color: '#FF6B6B', marginBottom: 8 },
-  message: { color: '#60A5FA', marginBottom: 8 },
+  container: { flex: 1, padding: 16 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 6 },
+  muted: { marginBottom: 8 },
+  error: { marginBottom: 8 },
+  message: { marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   chip: {
     borderRadius: 999,
-    borderColor: '#25324B',
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: '#0F1A2E'
+    backgroundColor: 'transparent'
   },
-  chipActive: { borderColor: '#00E08E', backgroundColor: '#0B2A21' },
-  chipLabel: { color: '#6B7B8D', fontSize: 11, fontWeight: '700' },
-  chipLabelActive: { color: '#00E08E' },
+  chipActive: {},
+  chipLabel: { fontSize: 11, fontWeight: '700' },
+  chipLabelActive: {},
   row: {
-    backgroundColor: '#0F1A2E',
-    borderColor: '#25324B',
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
@@ -278,13 +288,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
-  symbol: { color: '#E0E7F0', fontWeight: '700' },
-  meta: { color: '#6B7B8D', marginTop: 2 },
+  symbol: { fontWeight: '700' },
+  meta: { marginTop: 2 },
   right: { alignItems: 'flex-end' },
-  price: { color: '#E0E7F0', fontWeight: '700' },
+  price: { fontWeight: '700' },
   change: { marginTop: 2, fontWeight: '700' },
-  positive: { color: '#00E08E' },
-  negative: { color: '#FF6B6B' },
+  positive: {},
+  negative: {},
   watchButton: {
     borderRadius: 8,
     paddingHorizontal: 10,
@@ -292,16 +302,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderWidth: 1
   },
-  watchButtonOn: {
-    backgroundColor: '#112D24',
-    borderColor: '#00E08E'
-  },
-  watchButtonOff: {
-    backgroundColor: '#182740',
-    borderColor: '#25324B'
-  },
+  watchButtonOn: {},
+  watchButtonOff: {},
   watchButtonLabel: {
-    color: '#E0E7F0',
     fontWeight: '700',
     fontSize: 12
   }
