@@ -53,6 +53,21 @@ app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.locals.getWsPriceStatus = () => ({ enabled: false, intervalMs: 0, metrics: {} });
+app.locals.getMobileHealthStatus = () => ({
+  ok: true,
+  ws: {
+    enabled: true,
+    intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000)
+  },
+  push: {
+    web: false,
+    expo: Boolean(env.expoAccessToken)
+  },
+  auth: {
+    appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+  },
+  ts: new Date().toISOString()
+});
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -66,6 +81,21 @@ app.get('/api/health', async (_req, res) => {
 app.get('/api/health/realtime', authRequired, (req, res) => {
   const status = app.locals.getWsPriceStatus?.();
   return res.json(status || { enabled: false, intervalMs: 0, metrics: {} });
+});
+
+app.get('/api/health/mobile', (_req, res) => {
+  const status = app.locals.getMobileHealthStatus?.();
+  return res.json(
+    status || {
+      ok: true,
+      ws: { enabled: true, intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000) },
+      push: { web: false, expo: Boolean(env.expoAccessToken) },
+      auth: {
+        appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+      },
+      ts: new Date().toISOString()
+    }
+  );
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
@@ -242,6 +272,22 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console });
   const wsPriceRuntime = startWsPriceRuntime({ wsHub, finnhubSvc: finnhub, logger: console });
   app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;
+  app.locals.getMobileHealthStatus = () => ({
+    ok: true,
+    ws: {
+      enabled: true,
+      intervalMs: wsPriceRuntime.intervalMs,
+      activeSymbols: wsHub.getSubscribedSymbols?.() || []
+    },
+    push: {
+      web: pushNotifier.hasVapidConfig,
+      expo: Boolean(env.expoAccessToken)
+    },
+    auth: {
+      appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+    },
+    ts: new Date().toISOString()
+  });
 
   server.listen(port, () => {
     console.log(`nexusfin-api listening on :${port}`);
