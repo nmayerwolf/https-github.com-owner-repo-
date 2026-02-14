@@ -5,6 +5,7 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import { hydrateSession, loginWithEmail, logoutSession } from './src/store/auth';
 
 const TABS = ['dashboard', 'markets', 'alerts', 'settings'];
@@ -15,6 +16,8 @@ const App = () => {
   const [authError, setAuthError] = useState('');
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState('dashboard');
+
+  const onboardingPending = session?.user?.onboardingCompleted === false;
 
   useEffect(() => {
     let mounted = true;
@@ -72,19 +75,29 @@ const App = () => {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.content}>
-        {tab === 'dashboard' ? <DashboardScreen user={session.user} /> : null}
-        {tab === 'markets' ? <MarketsScreen /> : null}
-        {tab === 'alerts' ? <AlertsScreen /> : null}
-        {tab === 'settings' ? <SettingsScreen onLogout={logout} /> : null}
+        {onboardingPending ? (
+          <OnboardingScreen
+            onDone={(user) => {
+              setSession((prev) => (prev ? { ...prev, user: { ...prev.user, ...(user || {}), onboardingCompleted: true } } : prev));
+              setTab('dashboard');
+            }}
+          />
+        ) : null}
+        {!onboardingPending && tab === 'dashboard' ? <DashboardScreen user={session.user} /> : null}
+        {!onboardingPending && tab === 'markets' ? <MarketsScreen /> : null}
+        {!onboardingPending && tab === 'alerts' ? <AlertsScreen /> : null}
+        {!onboardingPending && tab === 'settings' ? <SettingsScreen onLogout={logout} /> : null}
       </View>
 
-      <View style={styles.tabs}>
-        {TABS.map((item) => (
-          <Pressable key={item} onPress={() => setTab(item)} style={[styles.tab, tab === item ? styles.tabActive : null]}>
-            <Text style={[styles.tabLabel, tab === item ? styles.tabLabelActive : null]}>{item.toUpperCase()}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {!onboardingPending ? (
+        <View style={styles.tabs}>
+          {TABS.map((item) => (
+            <Pressable key={item} onPress={() => setTab(item)} style={[styles.tab, tab === item ? styles.tabActive : null]}>
+              <Text style={[styles.tabLabel, tab === item ? styles.tabLabelActive : null]}>{item.toUpperCase()}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 };

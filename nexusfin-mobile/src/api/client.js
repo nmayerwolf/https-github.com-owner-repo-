@@ -45,6 +45,9 @@ export const api = {
       body: JSON.stringify({ email, password })
     }),
   me: () => request('/auth/me'),
+  updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
+  getConfig: () => request('/config'),
+  updateConfig: (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
   quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
   getWatchlist: () => request('/watchlist'),
   addToWatchlist: (data) => request('/watchlist', { method: 'POST', body: JSON.stringify(data) }),
