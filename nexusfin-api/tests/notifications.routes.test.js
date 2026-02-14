@@ -48,7 +48,9 @@ describe('notifications routes', () => {
   });
 
   it('creates web push subscription', async () => {
-    query.mockResolvedValueOnce({ rows: [{ id: 's1', platform: 'web', active: true }] });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 's1', platform: 'web', active: true }] });
 
     const app = makeApp();
     const res = await request(app).post('/api/notifications/subscribe').send({
@@ -61,7 +63,9 @@ describe('notifications routes', () => {
   });
 
   it('creates mobile expo subscription', async () => {
-    query.mockResolvedValueOnce({ rows: [{ id: 's2', platform: 'ios', active: true }] });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 's2', platform: 'ios', active: true }] });
 
     const app = makeApp();
     const res = await request(app).post('/api/notifications/subscribe').send({
@@ -71,6 +75,36 @@ describe('notifications routes', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.platform).toBe('ios');
+  });
+
+  it('reactivates existing web subscription instead of creating duplicate', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ id: 'existing-web' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'existing-web', platform: 'web', active: true }] });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/notifications/subscribe').send({
+      platform: 'web',
+      subscription: { endpoint: 'https://example.com/sub', keys: { p256dh: 'k', auth: 'a' } }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('existing-web');
+  });
+
+  it('reactivates existing mobile subscription instead of creating duplicate', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ id: 'existing-ios' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'existing-ios', platform: 'ios', active: true }] });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/notifications/subscribe').send({
+      platform: 'ios',
+      expoPushToken: 'ExpoPushToken[token-123]'
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('existing-ios');
   });
 
   it('rejects invalid quiet hours format', async () => {
