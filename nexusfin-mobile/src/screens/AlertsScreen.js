@@ -48,6 +48,9 @@ const AlertsScreen = ({ theme = 'dark' }) => {
   const [outcomeFilter, setOutcomeFilter] = useState('all');
 
   const [liveAlerts, setLiveAlerts] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [shareGroupId, setShareGroupId] = useState('');
+  const [shareLoadingId, setShareLoadingId] = useState('');
   const [historyData, setHistoryData] = useState({
     alerts: [],
     pagination: { page: 1, pages: 1, total: 0, limit: 20 },
@@ -168,6 +171,38 @@ const AlertsScreen = ({ theme = 'dark' }) => {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    api
+      .getGroups()
+      .then((out) => {
+        if (!active) return;
+        const next = out?.groups || [];
+        setGroups(next);
+        if (!shareGroupId && next[0]?.id) setShareGroupId(next[0].id);
+      })
+      .catch(() => {
+        if (!active) return;
+        setGroups([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const shareAlert = async (alertId) => {
+    if (!alertId || !shareGroupId) return;
+    setShareLoadingId(alertId);
+    setError('');
+    try {
+      await api.shareAlertToGroup(alertId, { groupId: shareGroupId });
+    } catch (e) {
+      setError(e?.message || 'No se pudo compartir alerta.');
+    } finally {
+      setShareLoadingId('');
+    }
+  };
+
+  useEffect(() => {
     if (tab === 'live') return;
     setError('');
     loadHistory({ page: historyPage, type: historyType }).catch(() => setError('No se pudieron cargar alertas.'));
@@ -201,13 +236,42 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         ))}
       </View>
 
+      <View style={styles.rowWrap}>
+        {groups.map((group) => (
+          <Pressable
+            key={group.id}
+            onPress={() => setShareGroupId(group.id)}
+            style={[styles.chip, { borderColor: palette.border, backgroundColor: palette.surface }, shareGroupId === group.id ? [styles.chipActive, { borderColor: palette.primary }] : null]}
+          >
+            <Text style={[styles.chipLabel, { color: palette.muted }, shareGroupId === group.id ? { color: palette.primary } : null]}>
+              {group.name}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       <FlatList
         data={historyData.alerts || []}
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={onRefresh}
         ListEmptyComponent={!historyLoading ? <Text style={[styles.muted, { color: palette.muted }]}>Sin alertas en historial.</Text> : null}
-        renderItem={({ item }) => <AlertRow item={item} palette={palette} />}
+        renderItem={({ item }) => (
+          <View>
+            <AlertRow item={item} palette={palette} />
+            <View style={styles.shareRow}>
+              <Pressable
+                style={[styles.shareBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
+                onPress={() => shareAlert(item.id)}
+                disabled={!shareGroupId || shareLoadingId === item.id}
+              >
+                <Text style={{ color: palette.text, fontWeight: '700' }}>
+                  {shareLoadingId === item.id ? 'Compartiendo...' : shareGroupId ? 'Compartir al grupo seleccionado' : 'Sin grupo'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
       />
 
       <View style={styles.pagination}>
@@ -343,6 +407,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8
+  },
+  shareRow: {
+    marginTop: -4,
+    marginBottom: 10
+  },
+  shareBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center'
   }
 });
 

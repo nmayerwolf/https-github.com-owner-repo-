@@ -14,6 +14,8 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [testPushLoading, setTestPushLoading] = useState(false);
+  const [phase3Health, setPhase3Health] = useState(null);
+  const [phase3Loading, setPhase3Loading] = useState(false);
   const [prefs, setPrefs] = useState({
     stopLoss: true,
     opportunities: true,
@@ -41,6 +43,22 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
     return () => {
       active = false;
     };
+  }, []);
+
+  const loadPhase3Health = async () => {
+    setPhase3Loading(true);
+    try {
+      const out = await api.healthPhase3();
+      setPhase3Health(out || null);
+    } catch {
+      setPhase3Health(null);
+    } finally {
+      setPhase3Loading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPhase3Health();
   }, []);
 
   useEffect(() => {
@@ -182,6 +200,29 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
         <Text style={[styles.secondaryLabel, { color: palette.text }]}>Cerrar sesión</Text>
       </Pressable>
 
+      <Text style={[styles.section, { color: palette.text }]}>Fase 3 readiness</Text>
+      <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        <Text style={[styles.prefLabel, { color: palette.text }]}>
+          Score: {phase3Health ? `${phase3Health.score}/${phase3Health.total}` : '--'}
+        </Text>
+        <Pressable
+          style={[styles.refreshBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
+          onPress={loadPhase3Health}
+          disabled={phase3Loading}
+        >
+          <Text style={{ color: palette.text, fontWeight: '700' }}>{phase3Loading ? '...' : 'Refrescar'}</Text>
+        </Pressable>
+      </View>
+      {phase3Health?.check ? (
+        <View style={[styles.healthList, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          {Object.entries(phase3Health.check).map(([key, ok]) => (
+            <Text key={key} style={{ color: ok ? palette.positive : palette.danger, marginBottom: 4 }}>
+              {ok ? 'OK' : 'PEND'} {key}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       <Text style={[styles.section, { color: palette.text }]}>Tema</Text>
       <View style={styles.rowTwo}>
         <Pressable
@@ -288,6 +329,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between'
   },
   prefLabel: {},
+  refreshBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  healthList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8
+  },
   prefHint: { marginTop: 6, marginBottom: 6 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timeInput: {

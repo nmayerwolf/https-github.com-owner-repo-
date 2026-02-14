@@ -79,6 +79,7 @@ Market proxy:
 - `GET /api/market/forex-candles`
 - `GET /api/market/commodity`
 - `GET /api/market/profile`
+- `GET /api/market/universe` (catálogo multi-activo realtime)
 
 Groups:
 - `POST /api/groups`
@@ -90,6 +91,7 @@ Groups:
 - `DELETE /api/groups/:id/members/:userId`
 - `DELETE /api/groups/:id/leave`
 - `GET /api/groups/:id/feed`
+- `POST /api/groups/:id/feed` (nota manual en feed)
 - `POST /api/groups/:groupId/feed/:eventId/react`
 
 Alerts (Fase 3 foundation):
@@ -118,6 +120,8 @@ Migration:
 Health:
 - `GET /api/health`
 - `GET /api/health/realtime` (autenticado)
+- `GET /api/health/mobile`
+- `GET /api/health/phase3`
 
 Realtime scaffold (Fase 3):
 - `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)

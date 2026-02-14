@@ -56,7 +56,9 @@ export const api = {
   updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
   getConfig: () => request('/config'),
   updateConfig: (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
+  healthPhase3: () => request('/health/phase3'),
   quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
+  getMarketUniverse: () => request('/market/universe'),
   getWatchlist: () => request('/watchlist'),
   addToWatchlist: (data) => request('/watchlist', { method: 'POST', body: JSON.stringify(data) }),
   removeFromWatchlist: (symbol) => request(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
@@ -65,6 +67,43 @@ export const api = {
     if (type) params.set('type', type);
     return request(`/alerts?${params.toString()}`);
   },
+  shareAlertToGroup: (alertId, { groupId, message = '' }) =>
+    request(`/alerts/${encodeURIComponent(alertId)}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ groupId, message })
+    }),
+  getGroups: () => request('/groups'),
+  createGroup: ({ name }) =>
+    request('/groups', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    }),
+  joinGroup: ({ code }) =>
+    request('/groups/join', {
+      method: 'POST',
+      body: JSON.stringify({ code })
+    }),
+  leaveGroup: (groupId) => request(`/groups/${encodeURIComponent(groupId)}/leave`, { method: 'DELETE' }),
+  deleteGroup: (groupId) => request(`/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' }),
+  renameGroup: (groupId, { name }) =>
+    request(`/groups/${encodeURIComponent(groupId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name })
+    }),
+  getGroupDetail: (groupId) => request(`/groups/${encodeURIComponent(groupId)}`),
+  removeGroupMember: (groupId, userId) => request(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+  getGroupFeed: (groupId, { page = 1, limit = 30 } = {}) =>
+    request(`/groups/${encodeURIComponent(groupId)}/feed?page=${encodeURIComponent(String(page))}&limit=${encodeURIComponent(String(limit))}`),
+  createGroupFeedNote: (groupId, { message }) =>
+    request(`/groups/${encodeURIComponent(groupId)}/feed`, {
+      method: 'POST',
+      body: JSON.stringify({ message })
+    }),
+  reactGroupEvent: (groupId, eventId, reaction) =>
+    request(`/groups/${encodeURIComponent(groupId)}/feed/${encodeURIComponent(eventId)}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reaction })
+    }),
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
     request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),

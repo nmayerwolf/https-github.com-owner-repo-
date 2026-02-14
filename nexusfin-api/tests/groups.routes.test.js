@@ -260,6 +260,35 @@ describe('groups routes', () => {
     expect(res.body.pagination.total).toBe(1);
   });
 
+  it('creates note event in group feed for member', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ role: 'member' }] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'e-note-1', type: 'note', user_id: 'u-member', data: { message: 'Revisen NVDA hoy' }, created_at: '2026-02-14T10:00:00Z' }]
+      })
+      .mockResolvedValueOnce({ rows: [{ display_name: 'amigo' }] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).post('/api/groups/g1/feed').send({ message: 'Revisen NVDA hoy' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe('note');
+    expect(res.body.userId).toBe('u-member');
+    expect(res.body.displayName).toBe('amigo');
+    expect(res.body.data).toEqual({ message: 'Revisen NVDA hoy' });
+    expect(res.body.reactions).toEqual({ agree: 0, disagree: 0, userReaction: null });
+  });
+
+  it('validates empty message for note event creation', async () => {
+    query.mockResolvedValueOnce({ rows: [{ role: 'member' }] });
+
+    const app = makeApp('u-member');
+    const res = await request(app).post('/api/groups/g1/feed').send({ message: '   ' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
   it('reacts to group feed event with upsert', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ role: 'member' }] })

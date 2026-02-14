@@ -38,4 +38,18 @@ describe('health routes', () => {
     expect(typeof res.body.auth.appleConfigured).toBe('boolean');
     expect(typeof res.body.ts).toBe('string');
   });
+
+  test('GET /api/health/phase3 returns readiness summary', async () => {
+    const res = await request(app).get('/api/health/phase3');
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.ok).toBe('boolean');
+    expect(typeof res.body.score).toBe('number');
+    expect(typeof res.body.total).toBe('number');
+    expect(typeof res.body.check).toBe('object');
+    expect(res.body.total).toBeGreaterThan(0);
+    expect(typeof res.body.check.marketUniverse).toBe('boolean');
+    expect(typeof res.body.check.realtimeWs).toBe('boolean');
+    expect(typeof res.body.ts).toBe('string');
+  });
 });

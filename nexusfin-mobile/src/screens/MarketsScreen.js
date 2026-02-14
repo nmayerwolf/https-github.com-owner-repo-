@@ -28,6 +28,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [wsStatus, setWsStatus] = useState('disconnected');
+  const [universe, setUniverse] = useState(MOBILE_MARKET_UNIVERSE);
   const [watchlistSymbols, setWatchlistSymbols] = useState([]);
   const [watchlistItems, setWatchlistItems] = useState([]);
   const [watchlistBusySymbol, setWatchlistBusySymbol] = useState('');
@@ -35,7 +36,37 @@ const MarketsScreen = ({ theme = 'dark' }) => {
     MOBILE_MARKET_UNIVERSE.map((asset) => ({ ...asset, price: null, changePercent: null, updatedAt: null }))
   );
   const knownSymbols = useMemo(() => new Set(rows.map((asset) => String(asset.symbol || '').toUpperCase())), [rows]);
-  const tabs = useMemo(() => [...MARKET_CATEGORIES, WATCHLIST_FILTER], []);
+  const tabs = useMemo(() => {
+    const categorySet = new Set(universe.map((asset) => asset.category).filter(Boolean));
+    const ordered = MARKET_CATEGORIES.filter((item) => item === 'all' || categorySet.has(item));
+    for (const item of categorySet) {
+      if (!ordered.includes(item)) ordered.push(item);
+    }
+    return [...ordered, WATCHLIST_FILTER];
+  }, [universe]);
+
+  const loadUniverse = async () => {
+    try {
+      const out = await api.getMarketUniverse();
+      const assets = Array.isArray(out?.assets) ? out.assets : [];
+      if (!assets.length) return;
+      setUniverse(assets);
+      setRows((prev) => {
+        const byId = new Map(prev.map((item) => [item.id, item]));
+        return assets.map((asset) => {
+          const existing = byId.get(asset.id);
+          return {
+            ...asset,
+            price: existing?.price ?? null,
+            changePercent: existing?.changePercent ?? null,
+            updatedAt: existing?.updatedAt ?? null
+          };
+        });
+      });
+    } catch {
+      // keep local fallback universe
+    }
+  };
 
   const visible = useMemo(
     () =>
@@ -58,7 +89,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
 
     try {
       const updates = await Promise.all(
-        MOBILE_MARKET_UNIVERSE.map(async (asset) => {
+        universe.map(async (asset) => {
           try {
             const quote = await api.quote(toQuoteSymbol(asset));
             const price = Number(quote?.c);
@@ -156,9 +187,13 @@ const MarketsScreen = ({ theme = 'dark' }) => {
   };
 
   useEffect(() => {
-    refreshQuotes();
+    loadUniverse();
     loadWatchlist();
   }, []);
+
+  useEffect(() => {
+    refreshQuotes();
+  }, [universe]);
 
   useEffect(() => {
     let ws = null;
@@ -184,7 +219,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
         ws.send(
           JSON.stringify({
             type: 'subscribe',
-            symbols: MOBILE_MARKET_UNIVERSE.map((asset) => asset.wsSymbol)
+            symbols: universe.map((asset) => asset.wsSymbol)
           })
         );
       };
@@ -232,14 +267,14 @@ const MarketsScreen = ({ theme = 'dark' }) => {
         // no-op
       }
     };
-  }, []);
+  }, [universe]);
 
   useEffect(() => {
     const id = setInterval(() => {
       refreshQuotes({ silent: true });
     }, 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [universe]);
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>

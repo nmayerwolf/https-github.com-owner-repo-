@@ -5,6 +5,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import { api } from './src/api/client';
@@ -12,7 +13,7 @@ import { hydrateSession, loginWithEmail, loginWithToken, logoutSession } from '.
 import { hydrateTheme, saveTheme } from './src/store/theme';
 import { getThemePalette } from './src/theme/palette';
 
-const TABS = ['dashboard', 'markets', 'alerts', 'settings'];
+const TABS = ['dashboard', 'markets', 'alerts', 'groups', 'settings'];
 
 const App = () => {
   const [booting, setBooting] = useState(true);
@@ -183,6 +184,7 @@ const App = () => {
         {!onboardingPending && tab === 'dashboard' ? <DashboardScreen user={session.user} theme={theme} /> : null}
         {!onboardingPending && tab === 'markets' ? <MarketsScreen theme={theme} /> : null}
         {!onboardingPending && tab === 'alerts' ? <AlertsScreen theme={theme} /> : null}
+        {!onboardingPending && tab === 'groups' ? <GroupsScreen theme={theme} /> : null}
         {!onboardingPending && tab === 'settings' ? <SettingsScreen onLogout={logout} theme={theme} onThemeChange={handleThemeChange} /> : null}
       </View>
 
