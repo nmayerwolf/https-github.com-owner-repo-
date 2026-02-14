@@ -57,6 +57,7 @@ export const api = {
   getConfig: () => request('/config'),
   updateConfig: (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
   quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
+  getMarketUniverse: () => request('/market/universe'),
   getWatchlist: () => request('/watchlist'),
   addToWatchlist: (data) => request('/watchlist', { method: 'POST', body: JSON.stringify(data) }),
   removeFromWatchlist: (symbol) => request(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),

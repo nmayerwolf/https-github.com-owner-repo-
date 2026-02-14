@@ -83,4 +83,22 @@ describe('market routes', () => {
     expect(finnhub.profile).toHaveBeenCalledTimes(1);
     expect(av.overview).toHaveBeenCalledTimes(1);
   });
+
+  it('returns realtime universe with categories and count', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/market/universe');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.assets)).toBe(true);
+    expect(Array.isArray(res.body.categories)).toBe(true);
+    expect(typeof res.body.count).toBe('number');
+    expect(res.body.count).toBeGreaterThan(20);
+    expect(res.body.categories).toContain('equity');
+    expect(res.body.categories).toContain('etf');
+    expect(res.body.categories).toContain('bond');
+    expect(res.body.categories).toContain('commodity');
+    expect(res.body.categories).toContain('metal');
+    expect(res.body.categories).toContain('crypto');
+    expect(res.body.categories).toContain('fx');
+  });
 });

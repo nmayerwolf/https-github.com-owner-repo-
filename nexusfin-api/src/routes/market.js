@@ -3,6 +3,7 @@ const { cache } = require('../config/cache');
 const av = require('../services/alphavantage');
 const finnhub = require('../services/finnhub');
 const { badRequest } = require('../utils/errors');
+const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
 
 const router = express.Router();
 
@@ -90,6 +91,15 @@ router.get('/profile', async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+});
+
+router.get('/universe', async (_req, res) => {
+  const categories = Array.from(new Set(MARKET_UNIVERSE.map((item) => item.category)));
+  return res.json({
+    assets: MARKET_UNIVERSE,
+    categories,
+    count: MARKET_UNIVERSE.length
+  });
 });
 
 module.exports = router;

@@ -79,6 +79,7 @@ Market proxy:
 - `GET /api/market/forex-candles`
 - `GET /api/market/commodity`
 - `GET /api/market/profile`
+- `GET /api/market/universe` (catálogo multi-activo realtime)
 
 Groups:
 - `POST /api/groups`
