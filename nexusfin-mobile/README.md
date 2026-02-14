@@ -12,6 +12,7 @@ MVP mobile para Fase 3 con:
 - alertas mobile con tabs `En vivo / Historial / Performance` y filtros
 - registro de push nativo Expo (`ios`/`android`) contra backend `/api/notifications/subscribe`
 - logout mobile revoca sesión backend (`POST /api/auth/logout`) además de limpiar token local/push
+- botón en Settings para enviar push de prueba (`POST /api/notifications/test`)
 - desuscripción automática al cerrar sesión (`DELETE /api/notifications/subscribe/:id`)
 - preferencias de notificaciones (stop-loss/oportunidades/grupo + quiet hours UTC)
 

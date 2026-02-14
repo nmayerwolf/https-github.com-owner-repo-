@@ -8,6 +8,7 @@ const pushNotifier = createPushNotifier({ query });
 
 const isBoolean = (v) => typeof v === 'boolean';
 const validTime = (v) => v == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v));
+const asTrimmed = (v) => String(v || '').trim();
 
 router.get('/vapid-public-key', (_req, res) => {
   return res.json({
@@ -208,6 +209,36 @@ router.delete('/subscribe/:id', async (req, res, next) => {
 
     if (!out.rows.length) throw notFound('Suscripción no encontrada', 'SUBSCRIPTION_NOT_FOUND');
     return res.status(204).end();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/test', async (req, res, next) => {
+  try {
+    const title = asTrimmed(req.body?.title) || 'NexusFin test';
+    const body = asTrimmed(req.body?.body) || 'Push de prueba desde Settings.';
+    const respectQuietHours = req.body?.respectQuietHours === undefined ? true : req.body?.respectQuietHours;
+
+    if (!isBoolean(respectQuietHours)) {
+      throw badRequest('respectQuietHours inválido', 'VALIDATION_ERROR');
+    }
+    if (title.length > 120) {
+      throw badRequest('title no puede superar 120 caracteres', 'VALIDATION_ERROR');
+    }
+    if (body.length > 500) {
+      throw badRequest('body no puede superar 500 caracteres', 'VALIDATION_ERROR');
+    }
+
+    const out = await pushNotifier.notifySystem({
+      userId: req.user.id,
+      title,
+      body,
+      data: { type: 'system_test', ts: new Date().toISOString() },
+      respectQuietHours
+    });
+
+    return res.json(out);
   } catch (error) {
     return next(error);
   }

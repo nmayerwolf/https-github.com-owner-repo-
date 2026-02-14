@@ -68,6 +68,11 @@ export const api = {
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) =>
     request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),
+  sendTestNotification: (data = {}) =>
+    request('/notifications/test', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
   subscribePush: ({ platform, expoPushToken }) =>
     request('/notifications/subscribe', {
       method: 'POST',

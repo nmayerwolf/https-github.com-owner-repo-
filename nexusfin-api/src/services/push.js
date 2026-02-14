@@ -186,6 +186,45 @@ const createPushNotifier = ({ query, logger = console }) => {
     return { sent };
   };
 
+  const notifySystem = async ({ userId, title, body, data = {}, respectQuietHours = true }) => {
+    if (!userId || !title || !body) return { sent: 0, skipped: 'INVALID_PAYLOAD' };
+
+    const prefOut = await query(
+      `SELECT quiet_hours_start, quiet_hours_end
+       FROM notification_preferences WHERE user_id = $1`,
+      [userId]
+    );
+    const prefs = prefOut.rows[0] || null;
+
+    if (respectQuietHours && prefs && isWithinQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end)) {
+      return { sent: 0, skipped: 'QUIET_HOURS' };
+    }
+
+    const subOut = await query(
+      `SELECT id, platform, subscription
+       FROM push_subscriptions
+       WHERE user_id = $1 AND active = true`,
+      [userId]
+    );
+
+    if (!subOut.rows.length) {
+      return { sent: 0, skipped: 'NO_SUBSCRIPTIONS' };
+    }
+
+    const { sent, skippedWebConfig } = await sendToSubscriptions({
+      subscriptions: subOut.rows,
+      title: String(title),
+      body: String(body),
+      data
+    });
+
+    if (sent === 0 && skippedWebConfig && !subOut.rows.some((s) => s.platform === 'ios' || s.platform === 'android')) {
+      return { sent: 0, skipped: 'VAPID_NOT_CONFIGURED' };
+    }
+
+    return { sent };
+  };
+
   const notifyGroupActivity = async ({ groupId, actorUserId, event }) => {
     if (!groupId || !event?.title || !event?.body) return { sent: 0, skipped: 'INVALID_PAYLOAD' };
 
@@ -234,6 +273,7 @@ const createPushNotifier = ({ query, logger = console }) => {
   return {
     getPublicKey,
     notifyAlert,
+    notifySystem,
     notifyGroupActivity,
     hasVapidConfig: webPushEnabled
   };

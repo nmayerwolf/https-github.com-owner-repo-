@@ -145,6 +145,38 @@ describe('notifications routes', () => {
     expect(res.body.error).toBe('VALIDATION_ERROR');
   });
 
+  it('sends test notification for authenticated user', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ status: 'ok' }] })
+    });
+
+    query
+      .mockResolvedValueOnce({ rows: [{ quiet_hours_start: null, quiet_hours_end: null }] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 's-ios-1', platform: 'ios', subscription: { expoPushToken: 'ExpoPushToken[token-123]' } }]
+      });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/notifications/test').send({
+      title: 'NexusFin test',
+      body: 'Push de prueba',
+      respectQuietHours: true
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sent).toBe(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates test notification payload', async () => {
+    const app = makeApp();
+    const res = await request(app).post('/api/notifications/test').send({ respectQuietHours: 'si' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
   it('returns 404 on unsubscribe missing subscription', async () => {
     query.mockResolvedValueOnce({ rows: [] });
 

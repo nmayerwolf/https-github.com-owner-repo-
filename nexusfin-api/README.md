@@ -104,6 +104,7 @@ Notifications (Fase 3 foundation):
 - `GET /api/notifications/preferences`
 - `PUT /api/notifications/preferences`
 - `DELETE /api/notifications/subscribe/:id`
+- `POST /api/notifications/test`
   - `platform=web` usa Web Push (VAPID)
   - `platform=ios|android` usa Expo Push (`expoPushToken`)
 
