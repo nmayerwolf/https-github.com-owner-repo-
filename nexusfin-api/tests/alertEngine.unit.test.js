@@ -103,4 +103,38 @@ describe('alertEngine cycle', () => {
     expect(result.alertsCreated).toBe(1);
     expect(wsHub.broadcastAlert).toHaveBeenCalledTimes(1);
   });
+
+  test('uses crypto endpoints for crypto watchlist symbols', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ sectors: [], rsi_os: 35, rsi_ob: 65, vol_thresh: 2, min_confluence: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ symbol: 'BTCUSDT', name: 'Bitcoin', category: 'crypto' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'c1', symbol: 'BTCUSDT', type: 'opportunity', recommendation: 'BUY', confidence: 'high' }] });
+
+    const prices = Array.from({ length: 90 }, (_, i) => 100 - i * 0.4);
+    const finnhub = {
+      quote: jest.fn().mockResolvedValue({ c: prices[prices.length - 1], pc: prices[prices.length - 2] }),
+      candles: jest.fn(),
+      cryptoCandles: jest.fn().mockResolvedValue({
+        s: 'ok',
+        c: prices,
+        h: prices.map((p) => p + 2),
+        l: prices.map((p) => p - 2),
+        v: prices.map((_, i) => (i === prices.length - 1 ? 9000 : 3000))
+      }),
+      forexCandles: jest.fn()
+    };
+
+    const wsHub = { broadcastAlert: jest.fn() };
+    const engine = createAlertEngine({ query, finnhub, wsHub, logger: { warn: jest.fn(), error: jest.fn() } });
+
+    const result = await engine.runUserCycle('u1');
+
+    expect(result.alertsCreated).toBe(1);
+    expect(finnhub.quote).toHaveBeenCalledWith('BINANCE:BTCUSDT');
+    expect(finnhub.cryptoCandles).toHaveBeenCalledWith('BTCUSDT', 'D', expect.any(Number), expect.any(Number));
+    expect(finnhub.candles).not.toHaveBeenCalled();
+  });
 });

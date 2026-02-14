@@ -52,4 +52,17 @@ describe('health routes', () => {
     expect(typeof res.body.check.realtimeWs).toBe('boolean');
     expect(typeof res.body.ts).toBe('string');
   });
+
+  test('GET /api/health/cron returns cron status payload', async () => {
+    const res = await request(app).get('/api/health/cron');
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.enabled).toBe('boolean');
+    expect(res.body).toHaveProperty('lastRun');
+    expect(res.body).toHaveProperty('lastDuration');
+    expect(res.body).toHaveProperty('alertsGenerated');
+    expect(res.body).toHaveProperty('stopLossChecked');
+    expect(res.body).toHaveProperty('nextRun');
+    expect(Array.isArray(res.body.errors)).toBe(true);
+  });
 });

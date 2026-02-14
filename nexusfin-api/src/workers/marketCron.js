@@ -1,55 +1,183 @@
 const cron = require('node-cron');
 const { env } = require('../config/env');
 
-const buildTasks = (config = env, runners = {}) => [
-  {
-    name: 'market-us',
-    schedule: `*/${Math.max(1, config.cronMarketIntervalMinutes)} * * * *`,
-    run: runners.us || (async () => ({ scanned: 0, generated: 0, market: 'us' }))
-  },
-  {
-    name: 'market-crypto',
-    schedule: `*/${Math.max(1, config.cronCryptoIntervalMinutes)} * * * *`,
-    run: runners.crypto || (async () => ({ scanned: 0, generated: 0, market: 'crypto' }))
-  },
-  {
-    name: 'market-forex',
-    schedule: `*/${Math.max(1, config.cronForexIntervalMinutes)} * * * *`,
-    run: runners.forex || (async () => ({ scanned: 0, generated: 0, market: 'forex' }))
-  },
-  {
-    name: 'market-commodity',
-    schedule: `*/${Math.max(1, config.cronCommodityIntervalMinutes)} * * * *`,
-    run: runners.commodity || (async () => ({ scanned: 0, generated: 0, market: 'commodity' }))
-  }
-];
+const ET_ZONE = 'America/New_York';
+
+const toEtParts = (date = new Date()) => {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET_ZONE,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  return {
+    weekday: String(parts.weekday || '').toLowerCase(),
+    hour: Number(parts.hour || 0),
+    minute: Number(parts.minute || 0)
+  };
+};
+
+const isWeekdayEt = (date = new Date()) => {
+  const day = toEtParts(date).weekday;
+  return !['sat', 'sun'].includes(day);
+};
+
+const isUsMarketHoursEt = (date = new Date()) => {
+  if (!isWeekdayEt(date)) return false;
+  const { hour, minute } = toEtParts(date);
+  const minutes = hour * 60 + minute;
+  return minutes >= 570 && minutes < 960; // 09:30-16:00 ET
+};
+
+const scheduleIntervalMs = (schedule) => {
+  const match = String(schedule || '').match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
+  if (!match) return null;
+  const mins = Number(match[1]);
+  if (!Number.isFinite(mins) || mins <= 0) return null;
+  return mins * 60 * 1000;
+};
+
+const toStopLossChecked = (out) => {
+  if (Number.isFinite(Number(out?.stopLossChecked))) return Number(out.stopLossChecked);
+  if (!Array.isArray(out?.results)) return 0;
+  return out.results.reduce((acc, item) => acc + Number(item?.positionsScanned || 0), 0);
+};
+
+const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
+  const inUsHours = () => isUsMarketHoursEt(clock());
+  const inWeekday = () => isWeekdayEt(clock());
+  return [
+    {
+      name: 'market-us',
+      schedule: `*/${Math.max(1, config.cronMarketIntervalMinutes)} * * * *`,
+      shouldRun: inUsHours,
+      run: runners.us || (async () => ({ scanned: 0, generated: 0, market: 'us' }))
+    },
+    {
+      name: 'market-crypto',
+      schedule: `*/${Math.max(1, config.cronCryptoIntervalMinutes)} * * * *`,
+      shouldRun: () => true,
+      run: runners.crypto || (async () => ({ scanned: 0, generated: 0, market: 'crypto' }))
+    },
+    {
+      name: 'market-forex',
+      schedule: `*/${Math.max(1, config.cronForexIntervalMinutes)} * * * *`,
+      shouldRun: inWeekday,
+      run: runners.forex || (async () => ({ scanned: 0, generated: 0, market: 'forex' }))
+    },
+    {
+      name: 'market-commodity',
+      schedule: `*/${Math.max(1, config.cronCommodityIntervalMinutes)} * * * *`,
+      shouldRun: inUsHours,
+      run: runners.commodity || (async () => ({ scanned: 0, generated: 0, market: 'commodity' }))
+    }
+  ];
+};
 
 const startMarketCron = (options = {}) => {
   const enabled = options.enabled ?? env.cronEnabled;
   const logger = options.logger ?? console;
+  const now = options.now ?? (() => Date.now());
+  const logRun = options.logRun;
   const tasks = options.tasks ?? buildTasks();
+
+  const status = {
+    enabled,
+    lastRun: null,
+    lastDuration: 0,
+    alertsGenerated: 0,
+    stopLossChecked: 0,
+    nextRun: null,
+    errors: [],
+    lastTask: null
+  };
 
   if (!enabled) {
     return {
       enabled: false,
-      stop: () => {}
+      stop: () => {},
+      getStatus: () => ({ ...status })
     };
   }
 
   const jobs = [];
 
   for (const task of tasks) {
+    const intervalMs = scheduleIntervalMs(task.schedule);
     const job = cron.schedule(
       task.schedule,
       async () => {
+        const startedAtMs = now();
+        status.lastTask = task.name;
+        status.nextRun = intervalMs ? new Date(startedAtMs + intervalMs).toISOString() : null;
+
+        if (typeof task.shouldRun === 'function' && !task.shouldRun()) {
+          return;
+        }
+
+        let runLogId = null;
+        if (typeof logRun === 'function') {
+          try {
+            runLogId = await logRun({
+              event: 'start',
+              task: task.name,
+              startedAt: new Date(startedAtMs).toISOString()
+            });
+          } catch {
+            runLogId = null;
+          }
+        }
+
         try {
           const out = await task.run();
           logger.log(`[cron:${task.name}] ok`, out);
+          const duration = Math.max(0, now() - startedAtMs);
+          const alertsGenerated = Number(out?.alertsCreated ?? out?.generated ?? 0);
+          const stopLossChecked = toStopLossChecked(out);
+          status.lastRun = new Date(startedAtMs).toISOString();
+          status.lastDuration = duration;
+          status.alertsGenerated = Number.isFinite(alertsGenerated) ? alertsGenerated : 0;
+          status.stopLossChecked = Number.isFinite(stopLossChecked) ? stopLossChecked : 0;
+          status.errors = [];
+
+          if (typeof logRun === 'function') {
+            await logRun({
+              event: 'success',
+              runId: runLogId,
+              task: task.name,
+              startedAt: new Date(startedAtMs).toISOString(),
+              finishedAt: new Date(now()).toISOString(),
+              durationMs: duration,
+              alertsGenerated: status.alertsGenerated,
+              stopLossChecked: status.stopLossChecked,
+              errors: []
+            });
+          }
         } catch (error) {
-          logger.error(`[cron:${task.name}] failed`, error?.message || error);
+          const message = String(error?.message || error);
+          logger.error(`[cron:${task.name}] failed`, message);
+          status.lastRun = new Date(startedAtMs).toISOString();
+          status.lastDuration = Math.max(0, now() - startedAtMs);
+          status.errors = [{ task: task.name, message, ts: new Date().toISOString() }, ...status.errors].slice(0, 10);
+
+          if (typeof logRun === 'function') {
+            await logRun({
+              event: 'failed',
+              runId: runLogId,
+              task: task.name,
+              startedAt: new Date(startedAtMs).toISOString(),
+              finishedAt: new Date(now()).toISOString(),
+              durationMs: status.lastDuration,
+              alertsGenerated: 0,
+              stopLossChecked: 0,
+              errors: [message]
+            });
+          }
         }
       },
-      { timezone: 'UTC' }
+      { timezone: ET_ZONE }
     );
     jobs.push(job);
   }
@@ -58,8 +186,9 @@ const startMarketCron = (options = {}) => {
     enabled: true,
     stop: () => {
       for (const job of jobs) job.stop();
-    }
+    },
+    getStatus: () => ({ ...status })
   };
 };
 
-module.exports = { startMarketCron, buildTasks };
+module.exports = { startMarketCron, buildTasks, isUsMarketHoursEt, isWeekdayEt, scheduleIntervalMs, toStopLossChecked };

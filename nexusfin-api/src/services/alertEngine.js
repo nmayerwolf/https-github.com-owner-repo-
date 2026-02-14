@@ -203,11 +203,30 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
     };
   };
 
-  const fetchAssetSnapshot = async (symbol) => {
+  const fetchAssetSnapshot = async (symbol, category = null) => {
     const to = nowEpoch();
     const from = to - 60 * 60 * 24 * 260;
+    const normalizedCategory = String(category || '').toLowerCase();
+    let quoteSymbol = symbol;
+    let quotePromise = null;
+    let candlesPromise = null;
 
-    const [quoteData, candlesData] = await Promise.all([finnhub.quote(symbol), finnhub.candles(symbol, 'D', from, to)]);
+    if (normalizedCategory === 'crypto' || /USDT$/.test(String(symbol || '').toUpperCase())) {
+      quoteSymbol = `BINANCE:${symbol}`;
+      quotePromise = finnhub.quote(quoteSymbol);
+      candlesPromise = finnhub.cryptoCandles(symbol, 'D', from, to);
+    } else if (normalizedCategory === 'fx' || String(symbol || '').includes('_')) {
+      const [base, quote] = String(symbol || '').split('_');
+      if (!base || !quote) return null;
+      quoteSymbol = `OANDA:${base}_${quote}`;
+      quotePromise = finnhub.quote(quoteSymbol);
+      candlesPromise = finnhub.forexCandles(base, quote, 'D', from, to);
+    } else {
+      quotePromise = finnhub.quote(quoteSymbol);
+      candlesPromise = finnhub.candles(symbol, 'D', from, to);
+    }
+
+    const [quoteData, candlesData] = await Promise.all([quotePromise, candlesPromise]);
     if (candlesData?.s !== 'ok') return null;
 
     return buildAssetFromMarketData(symbol, quoteData, candlesData);
@@ -224,22 +243,29 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
       ).rows?.[0] ||
       {};
 
-    const watchlistRows =
+    const allWatchlistRows =
       options.watchlistOverride ||
       (
         await query('SELECT symbol, name, category FROM watchlist_items WHERE user_id = $1 ORDER BY added_at ASC LIMIT 50', [userId])
       ).rows ||
       [];
 
+    const categoryFilter = Array.isArray(options.categories) && options.categories.length ? new Set(options.categories.map((x) => String(x || '').toLowerCase())) : null;
+    const watchlistRows = categoryFilter
+      ? allWatchlistRows.filter((item) => categoryFilter.has(String(item?.category || '').toLowerCase()))
+      : allWatchlistRows;
+
     const activePositions =
-      options.positionsOverride ||
-      (
-        await query(
-          'SELECT id, symbol, name, buy_price, quantity FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL',
-          [userId]
-        )
-      ).rows ||
-      [];
+      options.includeStopLoss === false
+        ? []
+        : options.positionsOverride ||
+          (
+            await query(
+              'SELECT id, symbol, name, buy_price, quantity FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL',
+              [userId]
+            )
+          ).rows ||
+          [];
 
     const config = mergeConfig(configRow);
     const snapshotsBySymbol = new Map();
@@ -251,7 +277,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
 
       let snapshot;
       try {
-        snapshot = options.assetSnapshotsOverride?.[symbol] || (await fetchAssetSnapshot(symbol));
+        snapshot = options.assetSnapshotsOverride?.[symbol] || (await fetchAssetSnapshot(symbol, item.category));
       } catch (error) {
         logger.warn?.(`[alertEngine] symbol ${symbol} skipped`, error?.message || error);
         continue;
@@ -281,7 +307,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
       let snapshot = snapshotsBySymbol.get(symbol);
       if (!snapshot) {
         try {
-          snapshot = options.assetSnapshotsOverride?.[symbol] || (await fetchAssetSnapshot(symbol));
+          snapshot = options.assetSnapshotsOverride?.[symbol] || (await fetchAssetSnapshot(symbol, position.category));
         } catch {
           snapshot = null;
         }
@@ -307,13 +333,13 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
     };
   };
 
-  const runGlobalCycle = async () => {
+  const runGlobalCycle = async (options = {}) => {
     const users = await query('SELECT id FROM users ORDER BY created_at ASC');
     const results = [];
 
     for (const user of users.rows) {
       try {
-        const out = await runUserCycle(user.id);
+        const out = await runUserCycle(user.id, options);
         results.push(out);
       } catch (error) {
         logger.error?.(`[alertEngine] user cycle failed (${user.id})`, error?.message || error);
