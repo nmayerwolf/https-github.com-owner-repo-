@@ -107,8 +107,20 @@ export const api = {
     request(`/market/crypto-candles?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}`),
   forexCandles: (from, to, fromTs, toTs, resolution = 'D') =>
     request(`/market/forex-candles?from=${from}&to=${to}&fromTs=${fromTs}&toTs=${toTs}&resolution=${resolution}`),
-  commodity: (fn) => request(`/market/commodity?function=${fn}`),
+  commodity: (fn, params = {}) => {
+    const q = new URLSearchParams({ function: String(fn || '') });
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== '') q.set(k, String(v));
+    });
+    return request(`/market/commodity?${q.toString()}`);
+  },
   profile: (symbol) => request(`/market/profile?symbol=${encodeURIComponent(symbol)}`),
+  marketNews: (symbol, from, to) => {
+    const q = new URLSearchParams({ symbol: String(symbol || '') });
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    return request(`/market/news?${q.toString()}`);
+  },
 
   getGroups: () => request('/groups'),
   createGroup: (name) => request('/groups', { method: 'POST', body: JSON.stringify({ name }) }),

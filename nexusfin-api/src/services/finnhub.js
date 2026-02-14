@@ -15,5 +15,6 @@ const cryptoCandles = (symbol, resolution, from, to) => fetchFinnhub('/crypto/ca
 const forexCandles = (from, to, resolution, tsFrom, tsTo) =>
   fetchFinnhub('/forex/candle', { symbol: `OANDA:${from}_${to}`, resolution, from: tsFrom, to: tsTo });
 const profile = (symbol) => fetchFinnhub('/stock/profile2', { symbol });
+const companyNews = (symbol, from, to) => fetchFinnhub('/company-news', { symbol, from, to });
 
-module.exports = { quote, candles, cryptoCandles, forexCandles, profile };
+module.exports = { quote, candles, cryptoCandles, forexCandles, profile, companyNews };
