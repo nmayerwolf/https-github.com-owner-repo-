@@ -5,6 +5,7 @@ import { MARKET_CATEGORIES, MOBILE_MARKET_UNIVERSE } from '../constants/markets'
 import { getThemePalette } from '../theme/palette';
 
 const toQuoteSymbol = (asset) => asset.wsSymbol;
+const WATCHLIST_FILTER = 'watchlist';
 
 const formatUsd = (value) => {
   const n = Number(value);
@@ -28,14 +29,27 @@ const MarketsScreen = ({ theme = 'dark' }) => {
   const [message, setMessage] = useState('');
   const [wsStatus, setWsStatus] = useState('disconnected');
   const [watchlistSymbols, setWatchlistSymbols] = useState([]);
-  const [watchlistLoadingId, setWatchlistLoadingId] = useState('');
+  const [watchlistItems, setWatchlistItems] = useState([]);
+  const [watchlistBusySymbol, setWatchlistBusySymbol] = useState('');
   const [rows, setRows] = useState(() =>
     MOBILE_MARKET_UNIVERSE.map((asset) => ({ ...asset, price: null, changePercent: null, updatedAt: null }))
   );
+  const knownSymbols = useMemo(() => new Set(rows.map((asset) => String(asset.symbol || '').toUpperCase())), [rows]);
+  const tabs = useMemo(() => [...MARKET_CATEGORIES, WATCHLIST_FILTER], []);
 
   const visible = useMemo(
-    () => rows.filter((asset) => category === 'all' || asset.category === category),
-    [rows, category]
+    () =>
+      rows.filter((asset) => {
+        if (category === 'all') return true;
+        if (category === WATCHLIST_FILTER) return watchlistSymbols.includes(String(asset.symbol || '').toUpperCase());
+        return asset.category === category;
+      }),
+    [rows, category, watchlistSymbols]
+  );
+
+  const externalWatchlistItems = useMemo(
+    () => watchlistItems.filter((item) => !knownSymbols.has(String(item.symbol || '').toUpperCase())),
+    [watchlistItems, knownSymbols]
   );
 
   const refreshQuotes = async ({ silent = false } = {}) => {
@@ -75,10 +89,32 @@ const MarketsScreen = ({ theme = 'dark' }) => {
   const loadWatchlist = async () => {
     try {
       const out = await api.getWatchlist();
-      const symbols = (out?.symbols || []).map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean);
+      const rawItems = Array.isArray(out?.symbols) ? out.symbols : [];
+      const symbols = rawItems.map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean);
       setWatchlistSymbols(symbols);
+      setWatchlistItems(rawItems);
     } catch {
       setWatchlistSymbols([]);
+      setWatchlistItems([]);
+    }
+  };
+
+  const removeWatchlistSymbol = async (symbol) => {
+    if (!symbol) return;
+
+    setWatchlistBusySymbol(symbol);
+    setMessage('');
+    setError('');
+
+    try {
+      await api.removeFromWatchlist(symbol);
+      setWatchlistSymbols((prev) => prev.filter((item) => item !== symbol));
+      setWatchlistItems((prev) => prev.filter((item) => String(item.symbol || '').toUpperCase() !== symbol));
+      setMessage(`${symbol} removido de watchlist.`);
+    } catch (err) {
+      setError(err?.message || 'No se pudo actualizar watchlist.');
+    } finally {
+      setWatchlistBusySymbol('');
     }
   };
 
@@ -86,30 +122,36 @@ const MarketsScreen = ({ theme = 'dark' }) => {
     const symbol = String(asset?.symbol || '').toUpperCase();
     if (!symbol) return;
 
-    setWatchlistLoadingId(asset.id);
+    const exists = watchlistSymbols.includes(symbol);
+    if (exists) {
+      await removeWatchlistSymbol(symbol);
+      return;
+    }
+
+    setWatchlistBusySymbol(symbol);
     setMessage('');
     setError('');
 
     try {
-      const exists = watchlistSymbols.includes(symbol);
-      if (exists) {
-        await api.removeFromWatchlist(symbol);
-        setWatchlistSymbols((prev) => prev.filter((item) => item !== symbol));
-        setMessage(`${symbol} removido de watchlist.`);
-      } else {
-        await api.addToWatchlist({
-          symbol,
-          name: asset.name,
-          type: asset.category,
-          category: asset.category
-        });
-        setWatchlistSymbols((prev) => [symbol, ...prev.filter((item) => item !== symbol)]);
-        setMessage(`${symbol} agregado a watchlist.`);
-      }
+      await api.addToWatchlist({
+        symbol,
+        name: asset.name,
+        type: asset.category,
+        category: asset.category
+      });
+      const created = {
+        symbol,
+        name: asset.name,
+        type: asset.category,
+        category: asset.category
+      };
+      setWatchlistSymbols((prev) => [symbol, ...prev.filter((item) => item !== symbol)]);
+      setWatchlistItems((prev) => [created, ...prev.filter((item) => String(item.symbol || '').toUpperCase() !== symbol)]);
+      setMessage(`${symbol} agregado a watchlist.`);
     } catch (err) {
       setError(err?.message || 'No se pudo actualizar watchlist.');
     } finally {
-      setWatchlistLoadingId('');
+      setWatchlistBusySymbol('');
     }
   };
 
@@ -208,14 +250,14 @@ const MarketsScreen = ({ theme = 'dark' }) => {
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
       <View style={styles.chips}>
-        {MARKET_CATEGORIES.map((item) => (
+        {tabs.map((item) => (
           <Pressable
             key={item}
             onPress={() => setCategory(item)}
             style={[styles.chip, { borderColor: palette.border, backgroundColor: palette.surface }, category === item ? [styles.chipActive, { borderColor: palette.primary }] : null]}
           >
             <Text style={[styles.chipLabel, { color: palette.muted }, category === item ? [styles.chipLabelActive, { color: palette.primary }] : null]}>
-              {item.toUpperCase()}
+              {item === WATCHLIST_FILTER ? 'WATCHLIST' : item.toUpperCase()}
             </Text>
           </Pressable>
         ))}
@@ -230,6 +272,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
         renderItem={({ item }) => {
           const isUp = Number(item.changePercent) >= 0;
           const inWatchlist = watchlistSymbols.includes(String(item.symbol || '').toUpperCase());
+          const isBusy = watchlistBusySymbol === String(item.symbol || '').toUpperCase();
           return (
             <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
               <View style={{ flex: 1 }}>
@@ -241,7 +284,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
                 <Text style={[styles.change, { color: isUp ? palette.positive : palette.negative }]}>{formatPct(item.changePercent)}</Text>
                 <Pressable
                   onPress={() => toggleWatchlist(item)}
-                  disabled={watchlistLoadingId === item.id}
+                  disabled={isBusy}
                   style={[
                     styles.watchButton,
                     inWatchlist
@@ -250,13 +293,39 @@ const MarketsScreen = ({ theme = 'dark' }) => {
                   ]}
                 >
                   <Text style={[styles.watchButtonLabel, { color: palette.text }]}>
-                    {watchlistLoadingId === item.id ? '...' : inWatchlist ? 'Quitar' : 'Agregar'}
+                    {isBusy ? '...' : inWatchlist ? 'Quitar' : 'Agregar'}
                   </Text>
                 </Pressable>
               </View>
             </View>
           );
         }}
+        ListFooterComponent={
+          externalWatchlistItems.length ? (
+            <View style={[styles.externalCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+              <Text style={[styles.externalTitle, { color: palette.text }]}>Watchlist backend (fuera de universo mobile)</Text>
+              {externalWatchlistItems.map((item) => {
+                const symbol = String(item.symbol || '').toUpperCase();
+                const isBusy = watchlistBusySymbol === symbol;
+                return (
+                  <View key={symbol} style={styles.externalRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.symbol, { color: palette.text }]}>{symbol}</Text>
+                      <Text style={[styles.meta, { color: palette.muted }]}>{item.name || item.category || 'Activo'}</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => removeWatchlistSymbol(symbol)}
+                      disabled={isBusy}
+                      style={[styles.watchButton, styles.watchButtonOn, { backgroundColor: palette.surfaceAlt, borderColor: palette.primary, marginTop: 0 }]}
+                    >
+                      <Text style={[styles.watchButtonLabel, { color: palette.text }]}>{isBusy ? '...' : 'Quitar'}</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null
+        }
       />
     </View>
   );
@@ -307,6 +376,23 @@ const styles = StyleSheet.create({
   watchButtonLabel: {
     fontWeight: '700',
     fontSize: 12
+  },
+  externalCard: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12
+  },
+  externalTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8
+  },
+  externalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6
   }
 });
 
