@@ -22,6 +22,7 @@ Branch: `codex/nexusfin-phase3-final`
 - Push nativo mobile (subscribe/unsubscribe), preferencias y push de prueba (`POST /api/notifications/test`).
 - Logout mobile con revoke de sesión backend (`POST /api/auth/logout`).
 - Export de alerta PDF backend (`GET|POST /api/export/alert/:id?format=pdf`).
+- Health de readiness de Fase 3 (`GET /api/health/phase3`) visible en Settings mobile.
 
 ## Validación automatizada ejecutada
 
@@ -48,3 +49,8 @@ Branch: `codex/nexusfin-phase3-final`
   - logout y limpieza de sesión
 - Verificación de env vars productivas y migraciones en target.
 - Confirmación final de checks CI en GitHub sobre la PR.
+
+## Estado de PR final
+
+- PR única de cierre: `main <- codex/nexusfin-phase3-final`
+- Commits en esta rama final: social groups mobile, alert sharing mobile, notas manuales de feed, universe realtime desde API, readiness endpoint y closeout docs.
