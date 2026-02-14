@@ -322,6 +322,41 @@ router.get('/:id/feed', async (req, res, next) => {
   }
 });
 
+router.post('/:id/feed', async (req, res, next) => {
+  try {
+    const role = await memberRole(req.params.id, req.user.id);
+    if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
+
+    const message = String(req.body?.message || '').trim();
+    if (!message) throw badRequest('message requerido', 'VALIDATION_ERROR');
+    if (message.length > 280) throw badRequest('message no puede superar 280 caracteres', 'VALIDATION_ERROR');
+
+    const created = await query(
+      `INSERT INTO group_events (group_id, user_id, type, data)
+       VALUES ($1, $2, 'note', $3::jsonb)
+       RETURNING id, type, user_id, data, created_at`,
+      [req.params.id, req.user.id, JSON.stringify({ message })]
+    );
+
+    const userOut = await query("SELECT COALESCE(display_name, split_part(email, '@', 1)) AS display_name FROM users WHERE id = $1", [
+      req.user.id
+    ]);
+
+    const event = created.rows[0];
+    return res.status(201).json({
+      id: event.id,
+      type: event.type,
+      userId: event.user_id,
+      displayName: userOut.rows[0]?.display_name || 'user',
+      data: event.data || {},
+      reactions: { agree: 0, disagree: 0, userReaction: null },
+      createdAt: event.created_at
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post('/:groupId/feed/:eventId/react', async (req, res, next) => {
   try {
     const role = await memberRole(req.params.groupId, req.user.id);

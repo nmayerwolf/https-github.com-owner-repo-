@@ -23,6 +23,7 @@ const GroupsScreen = ({ theme = 'dark' }) => {
   const [createName, setCreateName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [renameInput, setRenameInput] = useState('');
+  const [noteInput, setNoteInput] = useState('');
 
   const selectedGroup = useMemo(() => groups.find((g) => g.id === selectedGroupId) || null, [groups, selectedGroupId]);
   const isAdmin = selectedGroup?.role === 'admin';
@@ -172,6 +173,25 @@ const GroupsScreen = ({ theme = 'dark' }) => {
     }
   };
 
+  const createNote = async () => {
+    if (!selectedGroup?.id) return;
+    const messageText = String(noteInput || '').trim();
+    if (!messageText) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const created = await api.createGroupFeedNote(selectedGroup.id, { message: messageText });
+      setNoteInput('');
+      setFeed((prev) => [created, ...prev].slice(0, 50));
+      setMessage('Nota publicada en el feed.');
+    } catch (e) {
+      setError(e?.message || 'No se pudo publicar nota.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <ScrollView style={[styles.container, { backgroundColor: palette.bg }]} contentContainerStyle={{ paddingBottom: 24 }}>
       <Text style={[styles.title, { color: palette.text }]}>Groups</Text>
@@ -295,6 +315,18 @@ const GroupsScreen = ({ theme = 'dark' }) => {
       ) : null}
 
       <Text style={[styles.section, { color: palette.text }]}>Feed</Text>
+      <View style={styles.row}>
+        <TextInput
+          value={noteInput}
+          onChangeText={setNoteInput}
+          placeholder="Escribí una nota para el grupo..."
+          placeholderTextColor={palette.muted}
+          style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.border, color: palette.text }]}
+        />
+        <Pressable style={[styles.actionBtn, { backgroundColor: palette.primary }]} onPress={createNote} disabled={busy || !selectedGroup?.id}>
+          <Text style={[styles.actionBtnLabel, { color: palette.primaryText }]}>{busy ? '...' : 'Publicar'}</Text>
+        </Pressable>
+      </View>
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}

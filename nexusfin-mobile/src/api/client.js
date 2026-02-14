@@ -92,6 +92,11 @@ export const api = {
   removeGroupMember: (groupId, userId) => request(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
   getGroupFeed: (groupId, { page = 1, limit = 30 } = {}) =>
     request(`/groups/${encodeURIComponent(groupId)}/feed?page=${encodeURIComponent(String(page))}&limit=${encodeURIComponent(String(limit))}`),
+  createGroupFeedNote: (groupId, { message }) =>
+    request(`/groups/${encodeURIComponent(groupId)}/feed`, {
+      method: 'POST',
+      body: JSON.stringify({ message })
+    }),
   reactGroupEvent: (groupId, eventId, reaction) =>
     request(`/groups/${encodeURIComponent(groupId)}/feed/${encodeURIComponent(eventId)}/react`, {
       method: 'POST',
