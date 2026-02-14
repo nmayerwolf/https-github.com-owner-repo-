@@ -68,6 +68,7 @@ const { errorHandler } = require('../src/middleware/errorHandler');
 const makeApp = () => {
   const app = express();
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
   app.use(cookieParser());
   app.use('/api/auth', authRoutes);
   app.use(errorHandler);
@@ -339,6 +340,34 @@ describe('auth routes', () => {
     expect(res.headers.location).toBe('http://localhost:5173/?oauth=success');
     expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
     expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code');
+    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+    expect(mockSetAuthCookies).toHaveBeenCalled();
+  });
+
+  it('completes apple callback via POST form and redirects with oauth success', async () => {
+    mockExchangeAppleCode.mockResolvedValueOnce({
+      provider: 'apple',
+      oauthId: 'apple-uid-1',
+      email: 'user@mail.com',
+      displayName: null,
+      avatarUrl: null
+    });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post('/api/auth/apple/callback')
+      .type('form')
+      .send({ state: 'valid-state', code: 'apple-code-post' })
+      .set('Cookie', ['nxf_oauth_state=valid-state']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:5173/?oauth=success');
+    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
+    expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code-post');
     expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
     expect(mockSetAuthCookies).toHaveBeenCalled();
   });
