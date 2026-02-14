@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import MarketsScreen from './src/screens/MarketsScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { hydrateSession, loginWithEmail, logoutSession } from './src/store/auth';
 
-const TABS = ['dashboard', 'alerts', 'settings'];
+const TABS = ['dashboard', 'markets', 'alerts', 'settings'];
 
 const App = () => {
   const [booting, setBooting] = useState(true);
@@ -72,6 +73,7 @@ const App = () => {
     <SafeAreaView style={styles.root}>
       <View style={styles.content}>
         {tab === 'dashboard' ? <DashboardScreen user={session.user} /> : null}
+        {tab === 'markets' ? <MarketsScreen /> : null}
         {tab === 'alerts' ? <AlertsScreen /> : null}
         {tab === 'settings' ? <SettingsScreen onLogout={logout} /> : null}
       </View>
