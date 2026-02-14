@@ -81,6 +81,7 @@ export const api = {
   refresh: () => request('/auth/refresh', { method: 'POST' }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
+  updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
   getCsrf: () => request('/auth/csrf'),
   getOAuthProviders: () => request('/auth/oauth/providers'),
   resetPassword: (currentPassword, newPassword) =>

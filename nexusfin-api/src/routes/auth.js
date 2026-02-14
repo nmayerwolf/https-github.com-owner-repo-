@@ -23,7 +23,7 @@ const {
   exchangeGoogleCode,
   buildAppleAuthUrl
 } = require('../services/oauth');
-const { conflict, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
+const { badRequest, conflict, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
 
 const router = express.Router();
@@ -322,6 +322,66 @@ router.get('/me', authRequired, async (req, res, next) => {
     ]);
     const row = out.rows[0];
 
+    if (!row) throw unauthorized('No autorizado', 'UNAUTHORIZED');
+
+    return res.json({
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name || null,
+      avatar: row.avatar_url || null,
+      authProvider: row.auth_provider || 'email',
+      onboardingCompleted: !!row.onboarding_completed
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+
+router.patch('/me', authRequired, requireCsrf, async (req, res, next) => {
+  try {
+    const changes = [];
+    const params = [];
+
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'onboardingCompleted')) {
+      if (typeof req.body.onboardingCompleted !== 'boolean') {
+        throw badRequest('onboardingCompleted debe ser booleano', 'VALIDATION_ERROR');
+      }
+      params.push(req.body.onboardingCompleted);
+      changes.push(`onboarding_completed = $${params.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'displayName')) {
+      const displayName = String(req.body.displayName || '').trim();
+      if (displayName.length > 100) {
+        throw badRequest('displayName no puede superar 100 caracteres', 'VALIDATION_ERROR');
+      }
+      params.push(displayName || null);
+      changes.push(`display_name = $${params.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'avatar')) {
+      const avatar = req.body.avatar ? String(req.body.avatar) : null;
+      params.push(avatar);
+      changes.push(`avatar_url = $${params.length}`);
+    }
+
+    if (!changes.length) {
+      throw badRequest('No hay cambios para actualizar', 'VALIDATION_ERROR');
+    }
+
+    params.push(req.user.id);
+
+    const out = await query(
+      `UPDATE users
+       SET ${changes.join(', ')},
+           updated_at = NOW()
+       WHERE id = $${params.length}
+       RETURNING id, email, display_name, avatar_url, auth_provider, onboarding_completed`,
+      params
+    );
+
+    const row = out.rows[0];
     if (!row) throw unauthorized('No autorizado', 'UNAUTHORIZED');
 
     return res.json({

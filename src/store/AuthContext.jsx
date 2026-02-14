@@ -32,6 +32,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const me = await api.me();
+      setUser(me || null);
+      return me;
+    } catch {
+      return null;
+    }
+  };
+
   const logout = async (notice = '', options = {}) => {
     const { remote = true } = options;
 
@@ -102,6 +112,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const completeOnboarding = async () => {
+    const out = await api.updateMe({ onboardingCompleted: true });
+    setUser(out || null);
+    return out;
+  };
+
   const clearSessionNotice = () => setSessionNotice('');
 
   const value = useMemo(
@@ -113,6 +129,8 @@ export const AuthProvider = ({ children }) => {
       login,
       register,
       logout,
+      refreshUser,
+      completeOnboarding,
       sessionNotice,
       clearSessionNotice
     }),

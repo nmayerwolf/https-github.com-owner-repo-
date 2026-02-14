@@ -244,4 +244,45 @@ describe('auth routes', () => {
     expect(res.body.error).toBe('WEAK_PASSWORD');
     expect(query).not.toHaveBeenCalled();
   });
+
+  it('updates onboardingCompleted via patch me', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'u1',
+          email: 'user@mail.com',
+          display_name: 'User',
+          avatar_url: null,
+          auth_provider: 'email',
+          onboarding_completed: true
+        }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .patch('/api/auth/me')
+      .set('Authorization', 'Bearer old.token')
+      .send({ onboardingCompleted: true });
+
+    expect(res.status).toBe(200);
+    expect(mockRequireCsrf).toHaveBeenCalled();
+    expect(res.body.onboardingCompleted).toBe(true);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('onboarding_completed = $1'),
+      [true, 'u1']
+    );
+  });
+
+  it('returns 422 for invalid onboardingCompleted in patch me', async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .patch('/api/auth/me')
+      .set('Authorization', 'Bearer old.token')
+      .send({ onboardingCompleted: 'si' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
 });

@@ -57,6 +57,7 @@ Auth:
 - `POST /api/auth/reset-password` (autenticado)
 - `GET /api/auth/csrf` (autenticado)
 - `GET /api/auth/me` (autenticado)
+- `PATCH /api/auth/me` (autenticado)
 - `GET /api/auth/oauth/providers`
 - `GET /api/auth/google`
 - `GET /api/auth/google/callback`
