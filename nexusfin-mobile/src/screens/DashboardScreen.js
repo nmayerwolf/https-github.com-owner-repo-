@@ -1,28 +1,27 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { getThemePalette } from '../theme/palette';
 
-const DashboardScreen = ({ user }) => {
+const DashboardScreen = ({ user, theme = 'dark' }) => {
+  const palette = getThemePalette(theme);
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Dashboard</Text>
-      <Text style={styles.card}>Sesión activa: {user?.email}</Text>
-      <Text style={styles.muted}>MVP mobile de Fase 3 (Expo + push nativo).</Text>
+    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+      <Text style={[styles.title, { color: palette.text }]}>Dashboard</Text>
+      <Text style={[styles.card, { color: palette.text, backgroundColor: palette.surface, borderColor: palette.border }]}>Sesión activa: {user?.email}</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>MVP mobile de Fase 3 (Expo + push nativo).</Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080F1E', padding: 16 },
-  title: { color: '#E0E7F0', fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  container: { flex: 1, padding: 16 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
   card: {
-    color: '#E0E7F0',
-    backgroundColor: '#0F1A2E',
-    borderColor: '#25324B',
     borderWidth: 1,
     borderRadius: 10,
     padding: 12
   },
-  muted: { color: '#6B7B8D', marginTop: 10 }
+  muted: { marginTop: 10 }
 });
 
 export default DashboardScreen;

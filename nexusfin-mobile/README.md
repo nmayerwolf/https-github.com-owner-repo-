@@ -4,6 +4,7 @@ MVP mobile para Fase 3 con:
 - login email/password mobile (token bearer)
 - tabs básicas (Dashboard, Markets, Alerts, Settings)
 - onboarding guiado de 4 pasos al primer login (riesgo, sectores, horizonte, push)
+- theme toggle claro/oscuro persistente
 - markets realtime multi-activo (acciones, ETF, bonos, metales, commodities, crypto, FX)
 - watchlist add/remove desde mobile (sync con backend)
 - alertas con fetch inicial + refresh manual + stream en vivo por `WS /ws`
