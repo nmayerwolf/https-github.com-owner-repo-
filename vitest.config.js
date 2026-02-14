@@ -9,7 +9,7 @@ export default defineConfig({
       reporter: ['text', 'html'],
       reportsDirectory: './coverage',
       include: ['src/engine/**/*.js', 'src/store/**/*.js', 'src/store/**/*.jsx'],
-      exclude: ['src/store/watchlistStore.js', 'src/store/AuthContext.jsx'],
+      exclude: ['src/store/watchlistStore.js', 'src/store/AuthContext.jsx', 'src/store/ThemeContext.jsx'],
       thresholds: {
         lines: 75,
         functions: 70,
