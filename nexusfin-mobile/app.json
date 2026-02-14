@@ -16,6 +16,9 @@
         "backgroundColor": "#080F1E"
       }
     },
+    "plugins": [
+      "expo-notifications"
+    ],
     "extra": {
       "apiUrl": "http://localhost:3001/api"
     }
