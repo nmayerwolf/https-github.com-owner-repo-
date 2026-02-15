@@ -4,13 +4,14 @@ import { generateInvestmentThesis } from '../api/claude';
 import { calculateConfluence } from '../engine/confluence';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
+import { ALERT_OUTCOMES, ALERT_TYPES } from '../../packages/nexusfin-core/contracts.js';
 import AIThesis from './AIThesis';
 import ConfluenceBar from './common/ConfluenceBar';
 
 const MAIN_TABS = ['live', 'history', 'performance'];
 const LIVE_TABS = ['all', 'compra', 'venta', 'stoploss'];
-const HISTORY_TYPE_TABS = ['all', 'opportunity', 'bearish', 'stop_loss'];
-const OUTCOME_TABS = ['all', 'win', 'loss', 'open'];
+const HISTORY_TYPE_TABS = ['all', ...ALERT_TYPES];
+const OUTCOME_TABS = ['all', ...ALERT_OUTCOMES];
 
 const MAIN_LABEL = {
   live: 'En vivo',
