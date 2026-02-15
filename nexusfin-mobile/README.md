@@ -86,6 +86,7 @@ Automatizado (con logs):
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
+npm run release:preflight
 npm run release:store:dry
 # y cuando tengas credenciales listas:
 npm run release:store
