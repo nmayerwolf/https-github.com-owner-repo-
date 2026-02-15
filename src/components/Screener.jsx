@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMemo, useState } from 'react';
 import { askClaude } from '../api/claude';
 import { useApp } from '../store/AppContext';

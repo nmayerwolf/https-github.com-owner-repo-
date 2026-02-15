@@ -1,3 +1,5 @@
+import React from 'react';
+
 const palette = {
   'STRONG BUY': '#00E08E',
   BUY: '#00E08E',
