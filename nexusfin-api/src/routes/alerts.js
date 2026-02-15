@@ -2,32 +2,12 @@ const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
 const { createPushNotifier } = require('../services/push');
+const { ALERT_TYPES, normalizeAlertSummary } = require('../../../packages/nexusfin-core/contracts.cjs');
 
 const router = express.Router();
 const pushNotifier = createPushNotifier({ query, logger: console });
 
-const allowedTypes = new Set(['opportunity', 'bearish', 'stop_loss']);
-
-const toAlertSummary = (row) => ({
-  id: row.id,
-  symbol: row.symbol,
-  name: row.name,
-  type: row.type,
-  recommendation: row.recommendation,
-  confidence: row.confidence,
-  confluenceBull: row.confluence_bull,
-  confluenceBear: row.confluence_bear,
-  signals: row.signals || [],
-  priceAtAlert: Number(row.price_at_alert),
-  stopLoss: row.stop_loss == null ? null : Number(row.stop_loss),
-  takeProfit: row.take_profit == null ? null : Number(row.take_profit),
-  currentPrice: null,
-  priceChange: null,
-  outcome: row.outcome || 'open',
-  aiThesis: row.ai_thesis,
-  createdAt: row.created_at,
-  notified: !!row.notified
-});
+const allowedTypes = new Set(ALERT_TYPES);
 
 router.get('/', async (req, res, next) => {
   try {
@@ -82,7 +62,7 @@ router.get('/', async (req, res, next) => {
     const losses = Number(s.losses || 0);
 
     return res.json({
-      alerts: list.rows.map(toAlertSummary),
+      alerts: list.rows.map(normalizeAlertSummary),
       pagination: {
         page,
         limit,
@@ -118,7 +98,7 @@ router.get('/:id', async (req, res, next) => {
 
     const row = out.rows[0];
     return res.json({
-      ...toAlertSummary(row),
+      ...normalizeAlertSummary(row),
       outcomePrice: row.outcome_price == null ? null : Number(row.outcome_price),
       outcomeDate: row.outcome_date,
       snapshot: row.snapshot || null
