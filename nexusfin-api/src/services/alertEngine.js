@@ -77,19 +77,95 @@ const evaluateOutcome = ({ type, priceAtAlert, stopLoss, takeProfit, currentPric
   return { outcome: 'open', shouldUpdate: false };
 };
 
-const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger = console }) => {
-  const hasRecentDuplicate = async ({ userId, symbol, type, recommendation }) => {
+const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent = null, logger = console }) => {
+  const hasRecentDuplicate = async ({ userId, symbol, type }) => {
     const exists = await query(
       `SELECT id FROM alerts
        WHERE user_id = $1
          AND symbol = $2
          AND type = $3
-         AND recommendation = $4
          AND created_at > NOW() - INTERVAL '4 hours'
        LIMIT 1`,
-      [userId, symbol, type, recommendation]
+      [userId, symbol, type]
     );
     return Boolean(exists.rows.length);
+  };
+
+  const directionFromType = (type) => (String(type || '').toLowerCase() === 'bearish' ? 'bear' : 'bull');
+
+  const getCooldown = async ({ symbol, direction }) => {
+    try {
+      const out = await query('SELECT rejection_count, cooldown_until FROM agent_cooldowns WHERE symbol = $1 AND direction = $2', [symbol, direction]);
+      return out.rows[0] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setCooldown = async ({ symbol, direction, rejectionCount, rejectionThreshold, rejectionCooldownHours }) => {
+    try {
+      const cooldownUntil =
+        rejectionCount >= rejectionThreshold
+          ? new Date(Date.now() + rejectionCooldownHours * 60 * 60 * 1000).toISOString()
+          : null;
+
+      await query(
+        `INSERT INTO agent_cooldowns (symbol, direction, last_alert_at, rejection_count, cooldown_until)
+         VALUES ($1, $2, NOW(), $3, $4)
+         ON CONFLICT (symbol, direction) DO UPDATE
+         SET last_alert_at = NOW(),
+             rejection_count = EXCLUDED.rejection_count,
+             cooldown_until = EXCLUDED.cooldown_until`,
+        [symbol, direction, rejectionCount, cooldownUntil]
+      );
+    } catch {
+      // noop when table is not available yet
+    }
+  };
+
+  const clearCooldownRejections = async ({ symbol, direction }) => {
+    try {
+      await query(
+        `INSERT INTO agent_cooldowns (symbol, direction, last_alert_at, rejection_count, cooldown_until)
+         VALUES ($1, $2, NOW(), 0, NULL)
+         ON CONFLICT (symbol, direction) DO UPDATE
+         SET last_alert_at = NOW(),
+             rejection_count = 0,
+             cooldown_until = NULL`,
+        [symbol, direction]
+      );
+    } catch {
+      // noop when table is not available yet
+    }
+  };
+
+  const isInRejectionCooldown = (cooldownRow) => {
+    if (!cooldownRow?.cooldown_until) return false;
+    const until = new Date(cooldownRow.cooldown_until).getTime();
+    return Number.isFinite(until) && until > Date.now();
+  };
+
+  const getDailyCount = async (userId) => {
+    try {
+      const out = await query('SELECT count FROM daily_alert_counts WHERE user_id = $1 AND alert_date = CURRENT_DATE', [userId]);
+      return Number(out.rows[0]?.count || 0);
+    } catch {
+      return 0;
+    }
+  };
+
+  const bumpDailyCount = async (userId) => {
+    try {
+      await query(
+        `INSERT INTO daily_alert_counts (user_id, alert_date, count)
+         VALUES ($1, CURRENT_DATE, 1)
+         ON CONFLICT (user_id, alert_date) DO UPDATE
+         SET count = daily_alert_counts.count + 1`,
+        [userId]
+      );
+    } catch {
+      // noop when table is not available yet
+    }
   };
 
   const insertAlert = async (payload) => {
@@ -98,12 +174,12 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
          (user_id, symbol, name, type, recommendation, confidence,
           confluence_bull, confluence_bear, signals,
           price_at_alert, stop_loss, take_profit,
-          snapshot, notified)
+          snapshot, notified, ai_validated, ai_confidence, ai_reasoning, ai_adjusted_stop, ai_adjusted_target, ai_model, ai_thesis, cron_run_id)
        VALUES
          ($1, $2, $3, $4, $5, $6,
           $7, $8, $9::jsonb,
           $10, $11, $12,
-          $13::jsonb, $14)
+          $13::jsonb, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, $22)
        RETURNING id, symbol, type, recommendation, confidence, price_at_alert, stop_loss, take_profit, created_at`,
       [
         payload.userId,
@@ -119,7 +195,15 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
         payload.stopLoss,
         payload.takeProfit,
         JSON.stringify(payload.snapshot || {}),
-        false
+        false,
+        Boolean(payload.aiValidated),
+        payload.aiConfidence || null,
+        payload.aiReasoning || null,
+        payload.aiAdjustedStop ?? null,
+        payload.aiAdjustedTarget ?? null,
+        payload.aiModel || null,
+        JSON.stringify(payload.aiThesis || null),
+        payload.cronRunId || null
       ]
     );
     return inserted.rows[0];
@@ -281,6 +365,14 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
   };
 
   const runUserCycle = async (userId, options = {}) => {
+    const metrics = {
+      candidatesFound: 0,
+      aiValidations: 0,
+      aiConfirmations: 0,
+      aiRejections: 0,
+      aiFailures: 0,
+      symbolsScanned: 0
+    };
     const configRow =
       options.configOverride ||
       (
@@ -318,10 +410,15 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
     const config = mergeConfig(configRow);
     const snapshotsBySymbol = new Map();
     const created = [];
+    let dailyCount = await getDailyCount(userId);
+    const maxDailyAlerts = Number(options.maxAlertsPerUserPerDay || 10);
+    const rejectionCooldownHours = Number(options.rejectionCooldownHours || 24);
+    const rejectionThreshold = Number(options.rejectionThreshold || 3);
 
     for (const item of watchlistRows) {
       const symbol = String(item.symbol || '').toUpperCase();
       if (!symbol) continue;
+      metrics.symbolsScanned += 1;
 
       let snapshot;
       try {
@@ -339,12 +436,69 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
       const confluence = calculateConfluence(snapshot, config);
       const payload = buildSignalAlertPayload({ userId, asset: snapshot, confluence });
       if (!payload) continue;
+      metrics.candidatesFound += 1;
 
       const duplicate = await hasRecentDuplicate(payload);
       if (duplicate) continue;
+      if (dailyCount >= maxDailyAlerts) continue;
+
+      const direction = directionFromType(payload.type);
+      const cooldownRow = await getCooldown({ symbol: payload.symbol, direction });
+      if (isInRejectionCooldown(cooldownRow)) continue;
+
+      if (aiAgent?.validateSignal) {
+        const aiOut = await aiAgent.validateSignal({
+          candidate: payload,
+          userConfig: {
+            riskProfile: configRow.risk_profile || 'moderado',
+            horizon: configRow.horizon || 'mediano'
+          },
+          context: {}
+        });
+
+        if (aiOut.mode === 'rejected' || aiOut.confirm === false) {
+          metrics.aiValidations += 1;
+          metrics.aiRejections += 1;
+          const nextRejectionCount = Number(cooldownRow?.rejection_count || 0) + 1;
+          await setCooldown({
+            symbol: payload.symbol,
+            direction,
+            rejectionCount: nextRejectionCount,
+            rejectionThreshold,
+            rejectionCooldownHours
+          });
+          continue;
+        }
+
+        if (aiOut.mode === 'validated') {
+          metrics.aiValidations += 1;
+          metrics.aiConfirmations += 1;
+          await clearCooldownRejections({ symbol: payload.symbol, direction });
+        } else if (aiOut.mode === 'fallback') {
+          metrics.aiFailures += 1;
+        }
+
+        payload.aiValidated = Boolean(aiOut.aiValidated);
+        payload.aiConfidence = aiOut.confidence || payload.confidence;
+        payload.aiReasoning = aiOut.reasoning || null;
+        payload.aiAdjustedStop = aiOut.adjustedStopLoss ?? payload.stopLoss;
+        payload.aiAdjustedTarget = aiOut.adjustedTarget ?? payload.takeProfit;
+        payload.aiModel = aiOut.model || null;
+        payload.aiThesis = aiOut.thesis || null;
+        payload.stopLoss = aiOut.adjustedStopLoss ?? payload.stopLoss;
+        payload.takeProfit = aiOut.adjustedTarget ?? payload.takeProfit;
+        payload.confidence = aiOut.confidence || payload.confidence;
+      } else {
+        payload.aiValidated = false;
+        payload.aiConfidence = payload.confidence;
+      }
+
+      payload.cronRunId = options.cronRunId || null;
 
       const saved = await insertAlert(payload);
       created.push(saved);
+      dailyCount += 1;
+      await bumpDailyCount(userId);
       await notifyAndBroadcast({ userId, savedAlert: saved });
     }
 
@@ -370,6 +524,8 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
 
       const saved = await insertAlert(payload);
       created.push(saved);
+      dailyCount += 1;
+      await bumpDailyCount(userId);
       await notifyAndBroadcast({ userId, savedAlert: saved });
     }
 
@@ -377,7 +533,8 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
       userId,
       watchlistScanned: watchlistRows.length,
       positionsScanned: activePositions.length,
-      alertsCreated: created.length
+      alertsCreated: created.length,
+      metrics
     };
   };
 
@@ -397,6 +554,12 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, logger 
     return {
       usersScanned: users.rows.length,
       alertsCreated: results.reduce((acc, item) => acc + item.alertsCreated, 0),
+      symbolsScanned: results.reduce((acc, item) => acc + Number(item?.metrics?.symbolsScanned || 0), 0),
+      candidatesFound: results.reduce((acc, item) => acc + Number(item?.metrics?.candidatesFound || 0), 0),
+      aiValidations: results.reduce((acc, item) => acc + Number(item?.metrics?.aiValidations || 0), 0),
+      aiConfirmations: results.reduce((acc, item) => acc + Number(item?.metrics?.aiConfirmations || 0), 0),
+      aiRejections: results.reduce((acc, item) => acc + Number(item?.metrics?.aiRejections || 0), 0),
+      aiFailures: results.reduce((acc, item) => acc + Number(item?.metrics?.aiFailures || 0), 0),
       results
     };
   };

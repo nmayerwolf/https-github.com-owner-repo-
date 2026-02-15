@@ -60,13 +60,15 @@ describe('alertEngine helpers', () => {
 
 describe('alertEngine cycle', () => {
   test('creates opportunity alert from watchlist symbol', async () => {
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: [{ sectors: [], rsi_os: 35, rsi_ob: 65, vol_thresh: 2, min_confluence: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ symbol: 'AAPL', name: 'Apple', category: 'equity' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'a1', symbol: 'AAPL', type: 'opportunity', recommendation: 'BUY', confidence: 'medium' }] });
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM user_configs')) return { rows: [{ sectors: [], rsi_os: 35, rsi_ob: 65, vol_thresh: 2, min_confluence: 1 }] };
+      if (text.includes('FROM watchlist_items')) return { rows: [{ symbol: 'AAPL', name: 'Apple', category: 'equity' }] };
+      if (text.includes('FROM positions')) return { rows: [] };
+      if (text.includes('INSERT INTO alerts'))
+        return { rows: [{ id: 'a1', symbol: 'AAPL', type: 'opportunity', recommendation: 'BUY', confidence: 'medium' }] };
+      return { rows: [] };
+    });
 
     const wsHub = { broadcastAlert: jest.fn() };
     const finnhub = { quote: jest.fn(), candles: jest.fn() };
@@ -93,13 +95,15 @@ describe('alertEngine cycle', () => {
   });
 
   test('creates stop-loss alert for active position under stop', async () => {
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: [{ sectors: [], rsi_os: 30, rsi_ob: 70, vol_thresh: 2, min_confluence: 5 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'p1', symbol: 'AAPL', name: 'Apple', buy_price: 200, quantity: 1 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'sl1', symbol: 'AAPL', type: 'stop_loss', recommendation: 'STOP LOSS', confidence: 'high' }] });
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM user_configs')) return { rows: [{ sectors: [], rsi_os: 30, rsi_ob: 70, vol_thresh: 2, min_confluence: 5 }] };
+      if (text.includes('FROM watchlist_items')) return { rows: [] };
+      if (text.includes('FROM positions')) return { rows: [{ id: 'p1', symbol: 'AAPL', name: 'Apple', buy_price: 200, quantity: 1 }] };
+      if (text.includes('INSERT INTO alerts'))
+        return { rows: [{ id: 'sl1', symbol: 'AAPL', type: 'stop_loss', recommendation: 'STOP LOSS', confidence: 'high' }] };
+      return { rows: [] };
+    });
 
     const wsHub = { broadcastAlert: jest.fn() };
     const finnhub = { quote: jest.fn(), candles: jest.fn() };
@@ -130,13 +134,15 @@ describe('alertEngine cycle', () => {
   });
 
   test('uses crypto endpoints for crypto watchlist symbols', async () => {
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: [{ sectors: [], rsi_os: 35, rsi_ob: 65, vol_thresh: 2, min_confluence: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ symbol: 'BTCUSDT', name: 'Bitcoin', category: 'crypto' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'c1', symbol: 'BTCUSDT', type: 'opportunity', recommendation: 'BUY', confidence: 'high' }] });
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM user_configs')) return { rows: [{ sectors: [], rsi_os: 35, rsi_ob: 65, vol_thresh: 2, min_confluence: 1 }] };
+      if (text.includes('FROM watchlist_items')) return { rows: [{ symbol: 'BTCUSDT', name: 'Bitcoin', category: 'crypto' }] };
+      if (text.includes('FROM positions')) return { rows: [] };
+      if (text.includes('INSERT INTO alerts'))
+        return { rows: [{ id: 'c1', symbol: 'BTCUSDT', type: 'opportunity', recommendation: 'BUY', confidence: 'high' }] };
+      return { rows: [] };
+    });
 
     const prices = Array.from({ length: 90 }, (_, i) => 100 - i * 0.4);
     const finnhub = {

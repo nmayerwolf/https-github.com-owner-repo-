@@ -13,6 +13,7 @@ const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const av = require('./services/alphavantage');
 const { createAlertEngine } = require('./services/alertEngine');
+const { createAiAgent } = require('./services/aiAgent');
 const { createPushNotifier } = require('./services/push');
 
 const authRoutes = require('./routes/auth');
@@ -59,6 +60,12 @@ app.locals.getCronStatus = () => ({
   enabled: false,
   lastRun: null,
   lastDuration: 0,
+  symbolsScanned: 0,
+  candidatesFound: 0,
+  aiValidations: 0,
+  aiConfirmations: 0,
+  aiRejections: 0,
+  aiFailures: 0,
   alertsGenerated: 0,
   stopLossChecked: 0,
   nextRun: null,
@@ -139,6 +146,12 @@ app.get('/api/health/cron', (_req, res) => {
       enabled: false,
       lastRun: null,
       lastDuration: 0,
+      symbolsScanned: 0,
+      candidatesFound: 0,
+      aiValidations: 0,
+      aiConfirmations: 0,
+      aiRejections: 0,
+      aiFailures: 0,
       alertsGenerated: 0,
       stopLossChecked: 0,
       nextRun: null,
@@ -311,10 +324,16 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const server = http.createServer(app);
   const wsHub = startWSHub(server);
   const pushNotifier = createPushNotifier({ query, logger: console });
+  const aiAgent = createAiAgent();
 
-  const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, logger: console });
+  const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
-    const cycle = await alertEngine.runGlobalCycle(options);
+    const cycle = await alertEngine.runGlobalCycle({
+      ...options,
+      maxAlertsPerUserPerDay: env.aiAgentMaxAlertsPerUserPerDay,
+      rejectionCooldownHours: env.aiAgentRejectionCooldownHours,
+      rejectionThreshold: 3
+    });
     const outcomes = await alertEngine.runOutcomeEvaluationCycle();
     return {
       ...cycle,
@@ -329,12 +348,30 @@ const startHttpServer = ({ port = env.port } = {}) => {
     forex: () => runMarketCycleWithOutcome({ categories: ['fx'], includeStopLoss: false }),
     commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false })
   });
-  const logCronRun = async ({ event, runId, task, startedAt, finishedAt, durationMs, alertsGenerated, stopLossChecked, errors }) => {
+  const logCronRun = async ({
+    event,
+    runId,
+    task,
+    startedAt,
+    finishedAt,
+    durationMs,
+    symbolsScanned,
+    candidatesFound,
+    aiValidations,
+    aiConfirmations,
+    aiRejections,
+    aiFailures,
+    alertsGenerated,
+    stopLossChecked,
+    errors
+  }) => {
     try {
       if (event === 'start') {
         const inserted = await query(
-          `INSERT INTO cron_runs (started_at, alerts_generated, stop_losses_checked, errors)
-           VALUES ($1, 0, 0, '[]'::jsonb)
+          `INSERT INTO cron_runs
+            (started_at, symbols_scanned, candidates_found, ai_validations, ai_confirmations, ai_rejections, ai_failures, alerts_generated, stop_losses_checked, errors)
+           VALUES
+            ($1, 0, 0, 0, 0, 0, 0, 0, 0, '[]'::jsonb)
            RETURNING id`,
           [startedAt]
         );
@@ -347,11 +384,30 @@ const startHttpServer = ({ port = env.port } = {}) => {
         `UPDATE cron_runs
          SET finished_at = $2,
              duration_ms = $3,
-             alerts_generated = $4,
-             stop_losses_checked = $5,
-             errors = $6::jsonb
+             symbols_scanned = $4,
+             candidates_found = $5,
+             ai_validations = $6,
+             ai_confirmations = $7,
+             ai_rejections = $8,
+             ai_failures = $9,
+             alerts_generated = $10,
+             stop_losses_checked = $11,
+             errors = $12::jsonb
          WHERE id = $1`,
-        [runId, finishedAt, durationMs, alertsGenerated || 0, stopLossChecked || 0, JSON.stringify(errors || [])]
+        [
+          runId,
+          finishedAt,
+          durationMs,
+          symbolsScanned || 0,
+          candidatesFound || 0,
+          aiValidations || 0,
+          aiConfirmations || 0,
+          aiRejections || 0,
+          aiFailures || 0,
+          alertsGenerated || 0,
+          stopLossChecked || 0,
+          JSON.stringify(errors || [])
+        ]
       );
       return runId;
     } catch (error) {
