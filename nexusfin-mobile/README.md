@@ -81,3 +81,12 @@ cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
 npx eas submit --platform ios --profile production
 npx eas submit --platform android --profile production
 ```
+
+Automatizado (con logs):
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
+npm run release:store:dry
+# y cuando tengas credenciales listas:
+npm run release:store
+```
