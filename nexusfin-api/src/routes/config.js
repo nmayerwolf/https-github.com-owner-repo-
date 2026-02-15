@@ -1,24 +1,21 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest } = require('../utils/errors');
+const { DEFAULT_USER_CONFIG, validateUserConfigInput } = require('../../../packages/nexusfin-core/contracts.cjs');
 
 const router = express.Router();
 
-const ALLOWED_RISK = ['conservador', 'moderado', 'agresivo'];
-const ALLOWED_HORIZON = ['corto', 'mediano', 'largo'];
-const ALLOWED_SECTORS = ['tech', 'finance', 'health', 'energy', 'auto', 'crypto', 'metals', 'bonds', 'fx'];
-
 const defaults = {
-  risk_profile: 'moderado',
-  horizon: 'mediano',
-  sectors: ['tech', 'crypto', 'metals'],
-  max_pe: 50,
-  min_div_yield: 0,
-  min_mkt_cap: 100,
-  rsi_os: 30,
-  rsi_ob: 70,
-  vol_thresh: 2,
-  min_confluence: 2
+  risk_profile: DEFAULT_USER_CONFIG.riskProfile,
+  horizon: DEFAULT_USER_CONFIG.horizon,
+  sectors: DEFAULT_USER_CONFIG.sectors,
+  max_pe: DEFAULT_USER_CONFIG.maxPE,
+  min_div_yield: DEFAULT_USER_CONFIG.minDivYield,
+  min_mkt_cap: DEFAULT_USER_CONFIG.minMktCap,
+  rsi_os: DEFAULT_USER_CONFIG.rsiOS,
+  rsi_ob: DEFAULT_USER_CONFIG.rsiOB,
+  vol_thresh: DEFAULT_USER_CONFIG.volThresh,
+  min_confluence: DEFAULT_USER_CONFIG.minConfluence
 };
 
 const toApi = (row) => ({
@@ -34,41 +31,9 @@ const toApi = (row) => ({
   minConfluence: row.min_confluence
 });
 
-const assertNumberInRange = (value, key, min, max) => {
-  if (value === undefined) return;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < min || n > max) {
-    throw badRequest(`${key} fuera de rango`, 'VALIDATION_ERROR');
-  }
-};
-
 const validateInput = (input) => {
-  if (input.riskProfile !== undefined && !ALLOWED_RISK.includes(input.riskProfile)) {
-    throw badRequest('riskProfile inválido', 'VALIDATION_ERROR');
-  }
-
-  if (input.horizon !== undefined && !ALLOWED_HORIZON.includes(input.horizon)) {
-    throw badRequest('horizon inválido', 'VALIDATION_ERROR');
-  }
-
-  if (input.sectors !== undefined) {
-    if (!Array.isArray(input.sectors)) {
-      throw badRequest('sectors debe ser un array', 'VALIDATION_ERROR');
-    }
-
-    const invalidSector = input.sectors.find((s) => !ALLOWED_SECTORS.includes(s));
-    if (invalidSector) {
-      throw badRequest(`sector inválido: ${invalidSector}`, 'VALIDATION_ERROR');
-    }
-  }
-
-  assertNumberInRange(input.maxPE, 'maxPE', 10, 100);
-  assertNumberInRange(input.minDivYield, 'minDivYield', 0, 5);
-  assertNumberInRange(input.minMktCap, 'minMktCap', 0, 1000);
-  assertNumberInRange(input.rsiOS, 'rsiOS', 15, 40);
-  assertNumberInRange(input.rsiOB, 'rsiOB', 60, 85);
-  assertNumberInRange(input.volThresh, 'volThresh', 1.2, 4);
-  assertNumberInRange(input.minConfluence, 'minConfluence', 1, 5);
+  const error = validateUserConfigInput(input);
+  if (error) throw badRequest(error, 'VALIDATION_ERROR');
 };
 
 router.get('/', async (req, res, next) => {

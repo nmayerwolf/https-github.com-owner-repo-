@@ -1,3 +1,5 @@
+import { DEFAULT_USER_CONFIG } from '../../packages/nexusfin-core/contracts.js';
+
 export const COLORS = {
   bg: '#080F1E',
   surface: 'rgba(255,255,255,0.03)',
@@ -11,16 +13,8 @@ export const COLORS = {
 };
 
 export const DEFAULT_CONFIG = {
-  riskProfile: 'moderado',
-  horizon: 'mediano',
-  sectors: ['tech', 'crypto', 'metals'],
-  maxPE: 50,
-  minDivYield: 0,
-  minMktCap: 100,
-  rsiOS: 30,
-  rsiOB: 70,
-  volThresh: 2,
-  minConfluence: 2
+  ...DEFAULT_USER_CONFIG,
+  sectors: [...DEFAULT_USER_CONFIG.sectors]
 };
 
 export const DEFAULT_WATCHLIST = [
