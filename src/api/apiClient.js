@@ -84,8 +84,10 @@ export const api = {
   updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
   getCsrf: () => request('/auth/csrf'),
   getOAuthProviders: () => request('/auth/oauth/providers'),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPasswordWithToken: (token, newPassword) => request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword }) }),
   resetPassword: (currentPassword, newPassword) =>
-    request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+    request('/auth/reset-password/authenticated', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   health: () => request('/health'),
 
   getPortfolio: () => request('/portfolio'),
