@@ -101,4 +101,5 @@ Workflow: `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE3_CLOSEOUT.md`
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE3_SMOKE_RUNBOOK.md`
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
+- `/Users/nmayerwolf/Documents/nexusfin/PHASE4_CLOSEOUT.md`
 - `/Users/nmayerwolf/Documents/nexusfin/CHANGELOG.md`
