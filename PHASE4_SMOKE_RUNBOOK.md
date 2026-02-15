@@ -101,6 +101,14 @@ npx eas submit --platform ios --profile production
 npx eas submit --platform android --profile production
 ```
 
+Alternativa automatizada con logging:
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
+npm run release:store:dry
+npm run release:store
+```
+
 ## 7) Merge gate final
 
 - CI verde en PR.

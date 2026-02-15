@@ -30,6 +30,7 @@ Fecha: 2026-02-15
 - [ ] `eas build` Android producción ejecutado.
 - [ ] Submit a TestFlight ejecutado.
 - [ ] Submit a Play Internal ejecutado.
+- [ ] `npm -C /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile run release:store` ejecutado y log guardado en `nexusfin-mobile/release-logs/`.
 
 ## 5) Evidencia para auditoría
 
