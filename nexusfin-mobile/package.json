@@ -12,6 +12,7 @@
     "build:android": "eas build --platform android --profile production",
     "submit:ios": "eas submit --platform ios --profile production",
     "submit:android": "eas submit --platform android --profile production",
+    "release:preflight": "bash ./scripts/release_preflight.sh",
     "release:store:dry": "DRY_RUN=1 RUN_SUBMIT=0 bash ./scripts/store_release.sh",
     "release:store": "DRY_RUN=0 RUN_SUBMIT=1 bash ./scripts/store_release.sh"
   },
