@@ -1,0 +1,4 @@
+packages:
+  - "nexusfin-api"
+  - "nexusfin-mobile"
+  - "packages/*"
