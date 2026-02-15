@@ -1,95 +1,104 @@
-# NexusFin (Phase 3)
+# NexusFin (Phase 4)
 
-Plataforma de monitoreo financiero en tiempo real con análisis técnico, alertas, portfolio multi-usuario y grupos.
+NexusFin es una plataforma de monitoreo financiero multi-activo con:
+- web (React + Vite),
+- backend API (Node + Express + PostgreSQL),
+- mobile (Expo),
+- realtime por WebSocket, alertas, portfolio, grupos y notificaciones push.
 
 ## Arquitectura
 
-- Frontend: React + Vite + React Router (`/Users/nmayerwolf/Documents/nexusfin`)
-- Backend: Node.js + Express + PostgreSQL (`/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`)
-- Mobile: Expo React Native (`/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile`)
-- Market data proxy: Finnhub + Alpha Vantage (keys solo en backend)
-- Auth: email/password + JWT bearer
+- Web: `/Users/nmayerwolf/Documents/nexusfin`
+- API: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`
+- Mobile: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile`
 
-## Estado actual (Phase 3)
+## Quickstart (10 min)
 
-- Auth (`register/login/refresh/logout/reset-password`) con lockout y `Retry-After` en 429
-- Portfolio / Config / Watchlist persistidos en PostgreSQL
-- Market proxy backend para quote/candles/forex/commodity/profile
-- Migración `localStorage -> backend` vía `POST /api/migrate`
-- Grupos: crear, unirse, renombrar, eliminar grupo, ver detalle, expulsar miembro, salir
-- Detalle de grupos con posiciones read-only y `plPercent` live (sin exponer `buyPrice`)
+1. API
 
-## Variables de entorno (frontend)
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
+cp .env.example .env
+npm install
+npm run migrate
+npm run dev
+```
 
-Crear `/Users/nmayerwolf/Documents/nexusfin/.env` desde `.env.example`:
+2. Web
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+cp .env.example .env
+npm install
+npm run dev
+```
+
+3. Mobile (opcional)
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
+npm install
+npm run start
+```
+
+## Variables de entorno (web)
+
+Archivo: `/Users/nmayerwolf/Documents/nexusfin/.env`
 
 ```bash
 VITE_API_URL=http://localhost:3001/api
 VITE_ANTHROPIC_KEY=
 ```
 
-Notas:
-- `VITE_API_URL` debe apuntar al backend.
-- Las keys de Finnhub/Alpha Vantage no van en frontend.
+## Calidad y checks
 
-## Desarrollo local
-
-1. Backend
-
-```bash
-cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
-npm install
-npm run migrate
-npm run dev
-```
-
-2. Frontend
-
-```bash
-cd /Users/nmayerwolf/Documents/nexusfin
-npm install
-npm run dev
-```
-
-## Calidad
-
-Frontend:
+Web:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin
 npm run check
-npm run test:coverage
 ```
 
-Backend:
+Incluye:
+- tests frontend,
+- build,
+- escaneo de secretos en bundle (`check:bundle-secrets`).
+
+API:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
 DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm run check
 ```
 
-## Deploy (mínimo recomendado)
+## Estado actual (resumen)
 
-1. Provisionar PostgreSQL (Railway / Neon / Supabase).
-2. Deploy backend con variables de `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.example`.
-3. Ejecutar migraciones en backend: `npm run migrate`.
-4. Deploy frontend con `VITE_API_URL=https://<tu-backend>/api`.
-5. Ejecutar smoke test del release usando `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`.
+- Realtime multi-activo por backend (`/api/market/universe`, WS `/ws`).
+- Cron server-side con health (`GET /api/health/cron`).
+- AI agent de validación (fallback técnico cuando AI no está disponible).
+- Outcome evaluation server-side (win/loss/open).
+- Export:
+  - CSV portfolio (`GET /api/export/portfolio?format=csv`)
+  - PDF de alerta (`GET|POST /api/export/alert/:id?format=pdf`)
+- Auth:
+  - login/register/refresh/logout,
+  - reset autenticado (`POST /api/auth/reset-password/authenticated`),
+  - forgot/reset por token (`POST /api/auth/forgot-password`, `POST /api/auth/reset-password`).
+- Push:
+  - web (VAPID + service worker),
+  - mobile (Expo).
 
 ## CI
 
-Pipeline en `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`:
-- test matrix Node 20.x / 22.x
-- build frontend
+Workflow: `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`
 
-## Nota importante sobre PR
+- test matrix Node 20/22,
+- build web,
+- escaneo de secretos en `dist/`.
 
-Abrí siempre los PR contra `main` para que corra CI:
-- `base: main`
-- `compare: codex/<tu-rama>`
+## Documentación de cierre
 
-## Release
-
-- Notas de cierre de fase 2: `/Users/nmayerwolf/Documents/nexusfin/PHASE2_RELEASE_NOTES.md`
-- Checklist fase 2: `/Users/nmayerwolf/Documents/nexusfin/RELEASE_CHECKLIST.md`
-- Checklist fase 3: `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
+- `/Users/nmayerwolf/Documents/nexusfin/PHASE3_CLOSEOUT.md`
+- `/Users/nmayerwolf/Documents/nexusfin/PHASE3_SMOKE_RUNBOOK.md`
+- `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
+- `/Users/nmayerwolf/Documents/nexusfin/CHANGELOG.md`
