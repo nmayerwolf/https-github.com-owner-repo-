@@ -46,6 +46,13 @@ const env = {
   cronCryptoIntervalMinutes: asPositiveInt(process.env.CRON_CRYPTO_INTERVAL, 15),
   cronForexIntervalMinutes: asPositiveInt(process.env.CRON_FOREX_INTERVAL, 15),
   cronCommodityIntervalMinutes: asPositiveInt(process.env.CRON_COMMODITY_INTERVAL, 60),
+  aiAgentEnabled: asBool(process.env.AI_AGENT_ENABLED, false),
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  aiAgentModel: process.env.AI_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+  aiAgentMaxAlertsPerUserPerDay: asPositiveInt(process.env.AI_AGENT_MAX_ALERTS_PER_USER_PER_DAY, 10),
+  aiAgentCooldownHours: asPositiveInt(process.env.AI_AGENT_COOLDOWN_HOURS, 4),
+  aiAgentRejectionCooldownHours: asPositiveInt(process.env.AI_AGENT_REJECTION_COOLDOWN_HOURS, 24),
+  aiAgentTimeoutMs: asPositiveInt(process.env.AI_AGENT_TIMEOUT_MS, 10000),
   wsPriceIntervalSeconds: asPositiveInt(process.env.WS_PRICE_INTERVAL, 20),
 
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',

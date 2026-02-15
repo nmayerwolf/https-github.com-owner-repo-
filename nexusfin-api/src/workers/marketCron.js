@@ -45,6 +45,11 @@ const toStopLossChecked = (out) => {
   return out.results.reduce((acc, item) => acc + Number(item?.positionsScanned || 0), 0);
 };
 
+const toMetric = (out, key) => {
+  const value = Number(out?.[key]);
+  return Number.isFinite(value) ? value : 0;
+};
+
 const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
   const inUsHours = () => isUsMarketHoursEt(clock());
   const inWeekday = () => isWeekdayEt(clock());
@@ -87,6 +92,12 @@ const startMarketCron = (options = {}) => {
     enabled,
     lastRun: null,
     lastDuration: 0,
+    symbolsScanned: 0,
+    candidatesFound: 0,
+    aiValidations: 0,
+    aiConfirmations: 0,
+    aiRejections: 0,
+    aiFailures: 0,
     alertsGenerated: 0,
     stopLossChecked: 0,
     nextRun: null,
@@ -136,8 +147,20 @@ const startMarketCron = (options = {}) => {
           const duration = Math.max(0, now() - startedAtMs);
           const alertsGenerated = Number(out?.alertsCreated ?? out?.generated ?? 0);
           const stopLossChecked = toStopLossChecked(out);
+          const symbolsScanned = toMetric(out, 'symbolsScanned');
+          const candidatesFound = toMetric(out, 'candidatesFound');
+          const aiValidations = toMetric(out, 'aiValidations');
+          const aiConfirmations = toMetric(out, 'aiConfirmations');
+          const aiRejections = toMetric(out, 'aiRejections');
+          const aiFailures = toMetric(out, 'aiFailures');
           status.lastRun = new Date(startedAtMs).toISOString();
           status.lastDuration = duration;
+          status.symbolsScanned = symbolsScanned;
+          status.candidatesFound = candidatesFound;
+          status.aiValidations = aiValidations;
+          status.aiConfirmations = aiConfirmations;
+          status.aiRejections = aiRejections;
+          status.aiFailures = aiFailures;
           status.alertsGenerated = Number.isFinite(alertsGenerated) ? alertsGenerated : 0;
           status.stopLossChecked = Number.isFinite(stopLossChecked) ? stopLossChecked : 0;
           status.errors = [];
@@ -150,6 +173,12 @@ const startMarketCron = (options = {}) => {
               startedAt: new Date(startedAtMs).toISOString(),
               finishedAt: new Date(now()).toISOString(),
               durationMs: duration,
+              symbolsScanned,
+              candidatesFound,
+              aiValidations,
+              aiConfirmations,
+              aiRejections,
+              aiFailures,
               alertsGenerated: status.alertsGenerated,
               stopLossChecked: status.stopLossChecked,
               errors: []
@@ -170,6 +199,12 @@ const startMarketCron = (options = {}) => {
               startedAt: new Date(startedAtMs).toISOString(),
               finishedAt: new Date(now()).toISOString(),
               durationMs: status.lastDuration,
+              symbolsScanned: 0,
+              candidatesFound: 0,
+              aiValidations: 0,
+              aiConfirmations: 0,
+              aiRejections: 0,
+              aiFailures: 0,
               alertsGenerated: 0,
               stopLossChecked: 0,
               errors: [message]
