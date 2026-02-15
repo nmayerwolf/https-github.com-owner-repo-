@@ -104,4 +104,5 @@ Workflow: `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE4_CLOSEOUT.md`
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE4_SMOKE_RUNBOOK.md`
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE4_RELEASE_CHECKLIST.md`
+- `/Users/nmayerwolf/Documents/nexusfin/PHASE4_PR_PACKAGE.md`
 - `/Users/nmayerwolf/Documents/nexusfin/CHANGELOG.md`
