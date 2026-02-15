@@ -1,154 +1,112 @@
-# NexusFin API (Phase 2/3 Foundation)
+# NexusFin API (Phase 4)
 
-Backend de NexusFin para auth, persistencia multi-usuario, proxy seguro de market data y base de Fase 3.
+Backend de NexusFin para auth, portfolio/config/watchlist, market proxy, realtime WS, cron/AI agent y notificaciones push.
 
 ## Setup local
 
-1. Copiar `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.example` a `.env`
-2. Completar variables requeridas
-3. Instalar dependencias, migrar y correr:
-
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
+cp .env.example .env
 npm install
 npm run migrate
 npm run dev
 ```
 
-## Variables de entorno
+## Env vars principales
 
 ```bash
 PORT=3001
 DATABASE_URL=postgresql://user:pass@host:5432/nexusfin
 JWT_SECRET=<secret-largo>
 CSRF_SECRET=<secret-csrf>
-COOKIE_DOMAIN=
-FINNHUB_KEY=<key>
-ALPHA_VANTAGE_KEY=<key>
 FRONTEND_URL=http://localhost:5173
 NODE_ENV=development
+COOKIE_DOMAIN=
 
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_CALLBACK_URL=http://localhost:3001/api/auth/google/callback
-APPLE_CLIENT_ID=
-APPLE_TEAM_ID=
-APPLE_KEY_ID=
-APPLE_PRIVATE_KEY=
-APPLE_CALLBACK_URL=http://localhost:3001/api/auth/apple/callback
+FINNHUB_KEY=
+ALPHA_VANTAGE_KEY=
 
 CRON_ENABLED=false
-VAPID_PUBLIC_KEY=<vapid-public>
-VAPID_PRIVATE_KEY=<vapid-private>
-VAPID_SUBJECT=mailto:admin@nexusfin.app
-EXPO_ACCESS_TOKEN=
 CRON_MARKET_INTERVAL=5
 CRON_CRYPTO_INTERVAL=15
 CRON_FOREX_INTERVAL=15
 CRON_COMMODITY_INTERVAL=60
 WS_PRICE_INTERVAL=20
+
+AI_AGENT_ENABLED=false
+ANTHROPIC_API_KEY=
+AI_AGENT_MODEL=claude-haiku-4-5-20251001
+AI_AGENT_MAX_ALERTS_PER_USER_PER_DAY=10
+AI_AGENT_COOLDOWN_HOURS=4
+AI_AGENT_REJECTION_COOLDOWN_HOURS=24
+AI_AGENT_TIMEOUT_MS=10000
+
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:admin@nexusfin.app
+EXPO_ACCESS_TOKEN=
 ```
 
-## Endpoints principales
+## Endpoints clave
 
 Auth:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
-- `POST /api/auth/logout` (autenticado)
-- `POST /api/auth/reset-password` (autenticado)
-- `GET /api/auth/csrf` (autenticado)
-- `GET /api/auth/me` (autenticado)
-- `PATCH /api/auth/me` (autenticado)
-- `GET /api/auth/oauth/providers`
-- `GET /api/auth/google`
-- `GET /api/auth/google/callback`
-- `GET /api/auth/apple`
-- `GET /api/auth/apple/callback`
-- OAuth mobile: iniciar con `?platform=mobile&redirect_uri=nexusfin://oauth` y callback devuelve deep-link con `token`/`oauth_error`
+- `POST /api/auth/logout`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password` (por token)
+- `POST /api/auth/reset-password/authenticated`
+- `GET /api/auth/csrf`
+- `GET /api/auth/me`
+- `PATCH /api/auth/me`
 
-Datos de usuario:
-- `GET|POST|PATCH|DELETE /api/portfolio`
-- `GET|PUT /api/config`
-- `GET|POST|DELETE /api/watchlist`
-
-Market proxy:
+Market:
 - `GET /api/market/quote`
 - `GET /api/market/candles`
 - `GET /api/market/crypto-candles`
 - `GET /api/market/forex-candles`
 - `GET /api/market/commodity`
 - `GET /api/market/profile`
-- `GET /api/market/universe` (catálogo multi-activo realtime)
+- `GET /api/market/news`
+- `GET /api/market/universe`
 
-Groups:
-- `POST /api/groups`
-- `POST /api/groups/join`
-- `GET /api/groups`
-- `GET /api/groups/:id`
-- `PATCH /api/groups/:id`
-- `DELETE /api/groups/:id`
-- `DELETE /api/groups/:id/members/:userId`
-- `DELETE /api/groups/:id/leave`
-- `GET /api/groups/:id/feed`
-- `POST /api/groups/:id/feed` (nota manual en feed)
-- `POST /api/groups/:groupId/feed/:eventId/react`
+Portfolio/config/watchlist:
+- `GET|POST|PATCH|DELETE /api/portfolio`
+- `GET|PUT /api/config`
+- `GET|POST|DELETE /api/watchlist`
 
-Alerts (Fase 3 foundation):
+Groups/alerts/notifications/export:
+- `GET|POST|PATCH|DELETE /api/groups/*`
 - `GET /api/alerts`
-- `GET /api/alerts/:id`
 - `POST /api/alerts/:id/share`
-
-Notifications (Fase 3 foundation):
-- `GET /api/notifications/vapid-public-key`
-- `POST /api/notifications/subscribe`
-- `GET /api/notifications/subscriptions`
-- `GET /api/notifications/preferences`
-- `PUT /api/notifications/preferences`
-- `DELETE /api/notifications/subscribe/:id`
-- `POST /api/notifications/test`
-  - `platform=web` usa Web Push (VAPID)
-  - `platform=ios|android` usa Expo Push (`expoPushToken`)
-
-Export:
+- `GET|PUT|POST|DELETE /api/notifications/*`
 - `GET /api/export/portfolio?format=csv&filter=all|active|sold`
-- `GET /api/export/alert/:id?format=pdf`
+- `GET|POST /api/export/alert/:id?format=pdf`
 
-Migration:
-- `POST /api/migrate`
-
-Health:
+Health/realtime:
 - `GET /api/health`
-- `GET /api/health/realtime` (autenticado)
+- `GET /api/health/realtime`
 - `GET /api/health/mobile`
 - `GET /api/health/phase3`
+- `GET /api/health/cron`
+- `WS /ws`
 
-Realtime scaffold (Fase 3):
-- `WS /ws` (auth vía cookie `nxf_token` o query `?token=<jwt>`)
-- price relay backend por símbolos suscriptos (`type: "price"`) usando `WS_PRICE_INTERVAL`
-  - Finnhub: `AAPL`, `BINANCE:BTCUSDT`, `OANDA:EUR_USD`
-  - Alpha Vantage macro: `AV:GOLD`, `AV:SILVER`, `AV:WTI`, `AV:TREASURY_YIELD:10YEAR`
-  - relay con backoff ante errores y heartbeat para evitar ruido cuando el precio no cambia
-  - estado operativo disponible en `GET /api/health/realtime` (métricas de ciclos, fallos, broadcasts, cooldown)
-- cron worker configurable por `CRON_*` vars
-- alert engine server-side: calcula indicadores + confluencia y persiste alerts sin duplicados (<4h)
+## Seguridad/operación
 
-## Reglas importantes
-
-- Todas las rutas excepto `/api/health` y `/api/auth/*` requieren auth (Bearer o cookie `nxf_token`).
-- En modo web con cookie, mutaciones requieren header `X-CSRF-Token` obtenido desde `GET /api/auth/csrf`.
-- Google OAuth está funcional vía callback HTTP.
-- Apple OAuth funcional: inicia flujo, valida state, hace exchange de código y crea/vincula sesión.
-- API keys viven solo en backend.
-- Lockout de login devuelve `429` con body `retryAfter` y header `Retry-After`.
-- Migración localStorage se bloquea con `409 ALREADY_MIGRATED` si el usuario ya tiene datos.
-- `POST /api/auth/reset-password` invalida otras sesiones activas del usuario.
+- CSRF obligatorio para mutaciones web en modo cookie.
+- Market rate limit por usuario autenticado.
+- Sanitización de texto libre en rutas de portfolio/grupos.
+- Escaneo de fugas de keys en bundle frontend se ejecuta en CI (repo root).
 
 ## Migraciones
 
-- `001_initial.sql`: base de Fase 2.
-- `002_phase3_foundation.sql`: tablas base de Fase 3 (alerts, notifications, social feed, shared alerts, campos OAuth).
-- `003_push_subscription_dedupe.sql`: dedupe + índices únicos para suscripciones push activas (web/mobile).
+- `001_initial.sql`
+- `002_phase3_foundation.sql`
+- `003_push_subscription_dedupe.sql`
+- `004_phase4_cron_runs.sql`
+- `005_phase4_ai_agent.sql`
+- `006_phase4_password_reset_tokens.sql`
 
 ## Tests
 
