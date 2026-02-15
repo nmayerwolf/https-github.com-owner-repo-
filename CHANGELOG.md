@@ -10,10 +10,13 @@ Todas las fechas en este changelog usan formato `YYYY-MM-DD`.
 - Outcome evaluation de alertas (`win/loss/open`) ejecutado en backend.
 - AI Agent opcional para validar señales y controles anti-spam (cooldowns + límites diarios).
 - Export CSV de portfolio (`GET /api/export/portfolio?format=csv&filter=all|active|sold`).
+- E2E Playwright de flujo autenticado (`login -> dashboard -> portfolio -> alta de posición`).
 - Flujo de reset de contraseña por token:
   - `POST /api/auth/forgot-password`
   - `POST /api/auth/reset-password`
 - Escaneo de secretos en bundle frontend (`scripts/check_frontend_bundle_secrets.sh`) integrado en CI.
+- Cierre operativo de Fase 4 documentado en `PHASE4_CLOSEOUT.md`.
+- Configuración de App Store readiness para mobile (EAS profiles, assets y metadata base).
 
 ### Changed
 - Hardening de rate limiting en market proxy por usuario autenticado.
@@ -23,6 +26,7 @@ Todas las fechas en este changelog usan formato `YYYY-MM-DD`.
 
 ### Fixed
 - Prevención de exposición de API keys de mercado en el build frontend.
+- Correcciones de runtime en componentes React (imports faltantes).
 - Ajustes de estabilidad en tests de auth/reset y motor de alertas.
 
 ## [3.0.0] - 2026-02-14
