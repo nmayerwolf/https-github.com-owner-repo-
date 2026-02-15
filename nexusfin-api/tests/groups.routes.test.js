@@ -51,6 +51,24 @@ describe('groups routes', () => {
     expect(res.body.error).toBe('GROUP_LIMIT_REACHED');
   });
 
+  it('sanitizes group name on create', async () => {
+    generateUniqueGroupCode.mockResolvedValueOnce('NXF-A7K2M');
+    query
+      .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'g1', name: 'Mi Grupo', code: 'NXF-A7K2M' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u-admin');
+    const res = await request(app).post('/api/groups').send({ name: '  Mi\u0000 Grupo  ' });
+
+    expect(res.status).toBe(201);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'INSERT INTO groups (name, code, created_by) VALUES ($1,$2,$3) RETURNING id, name, code',
+      ['Mi Grupo', 'NXF-A7K2M', 'u-admin']
+    );
+  });
+
   it('rejects join when code format is invalid', async () => {
     const app = makeApp('u-admin');
     const res = await request(app).post('/api/groups/join').send({ code: 'BAD' });
@@ -284,6 +302,17 @@ describe('groups routes', () => {
 
     const app = makeApp('u-member');
     const res = await request(app).post('/api/groups/g1/feed').send({ message: '   ' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects overly long message in feed note', async () => {
+    query.mockResolvedValueOnce({ rows: [{ role: 'member' }] });
+
+    const app = makeApp('u-member');
+    const longMessage = 'x'.repeat(281);
+    const res = await request(app).post('/api/groups/g1/feed').send({ message: longMessage });
 
     expect(res.status).toBe(422);
     expect(res.body.error).toBe('VALIDATION_ERROR');

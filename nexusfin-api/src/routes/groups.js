@@ -3,6 +3,7 @@ const { query } = require('../config/db');
 const { badRequest, forbidden, notFound } = require('../utils/errors');
 const { generateUniqueGroupCode } = require('../services/groupCode');
 const finnhub = require('../services/finnhub');
+const { sanitizeText } = require('../utils/validate');
 
 const router = express.Router();
 
@@ -56,8 +57,7 @@ const getQuotePrice = async (symbol, quoteCache) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const name = String(req.body.name || '').trim();
-    if (!name) return res.status(422).json({ error: 'VALIDATION_ERROR', message: 'Nombre requerido' });
+    const name = sanitizeText(req.body.name, { field: 'Nombre', maxLen: 80, allowEmpty: false });
 
     const myGroups = await userGroupCount(req.user.id);
     if (myGroups >= MAX_GROUPS_PER_USER) {
@@ -133,8 +133,7 @@ router.patch('/:id', async (req, res, next) => {
     if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
     if (role !== 'admin') throw forbidden('Solo admin puede editar el grupo', 'ADMIN_ONLY');
 
-    const name = String(req.body.name || '').trim();
-    if (!name) throw badRequest('Nombre requerido', 'VALIDATION_ERROR');
+    const name = sanitizeText(req.body.name, { field: 'Nombre', maxLen: 80, allowEmpty: false });
 
     const updated = await query('UPDATE groups SET name = $1 WHERE id = $2 RETURNING id, name, code', [name, req.params.id]);
     if (!updated.rows.length) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
@@ -327,9 +326,7 @@ router.post('/:id/feed', async (req, res, next) => {
     const role = await memberRole(req.params.id, req.user.id);
     if (!role) throw notFound('Grupo no encontrado', 'GROUP_NOT_FOUND');
 
-    const message = String(req.body?.message || '').trim();
-    if (!message) throw badRequest('message requerido', 'VALIDATION_ERROR');
-    if (message.length > 280) throw badRequest('message no puede superar 280 caracteres', 'VALIDATION_ERROR');
+    const message = sanitizeText(req.body?.message, { field: 'message', maxLen: 280, allowEmpty: false });
 
     const created = await query(
       `INSERT INTO group_events (group_id, user_id, type, data)

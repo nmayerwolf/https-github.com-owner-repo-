@@ -65,4 +65,60 @@ describe('portfolio routes', () => {
     expect(res.status).toBe(422);
     expect(res.body.error).toBe('VALIDATION_ERROR');
   });
+
+  it('rejects create with invalid symbol format', async () => {
+    const app = makeApp();
+    const res = await request(app).post('/api/portfolio').send({
+      symbol: 'bad symbol!',
+      name: 'Apple Inc.',
+      category: 'equity',
+      buyDate: '2026-02-13',
+      buyPrice: 100,
+      quantity: 1
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes notes and uppercases symbol on create', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'p1',
+            symbol: 'AAPL',
+            name: 'Apple Inc.',
+            category: 'equity',
+            buy_date: '2026-02-13',
+            buy_price: '100',
+            quantity: '1',
+            sell_date: null,
+            sell_price: null,
+            notes: 'hola mundo',
+            created_at: '2026-02-13T00:00:00.000Z'
+          }
+        ]
+      });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/portfolio').send({
+      symbol: 'aapl',
+      name: 'Apple Inc.',
+      category: 'EQUITY',
+      buyDate: '2026-02-13',
+      buyPrice: 100,
+      quantity: 1,
+      notes: 'hola\u0000 mundo'
+    });
+
+    expect(res.status).toBe(201);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('INSERT INTO positions'),
+      ['u1', 'AAPL', 'Apple Inc.', 'equity', '2026-02-13', 100, 1, 'hola mundo']
+    );
+  });
 });
