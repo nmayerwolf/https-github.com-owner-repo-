@@ -26,9 +26,26 @@ const validatePositiveNumber = (value, field) => {
   return n;
 };
 
+const sanitizeText = (value, { field = 'campo', maxLen = 500, allowEmpty = true } = {}) => {
+  const raw = String(value ?? '');
+  // Remove control chars that can break logs/rendering.
+  const cleaned = raw.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim();
+
+  if (!allowEmpty && !cleaned) {
+    throw badRequest(`${field} requerido`, 'VALIDATION_ERROR');
+  }
+
+  if (cleaned.length > maxLen) {
+    throw badRequest(`${field} no puede superar ${maxLen} caracteres`, 'VALIDATION_ERROR');
+  }
+
+  return cleaned;
+};
+
 module.exports = {
   normalizeEmail,
   validatePassword,
   validateEmail,
-  validatePositiveNumber
+  validatePositiveNumber,
+  sanitizeText
 };

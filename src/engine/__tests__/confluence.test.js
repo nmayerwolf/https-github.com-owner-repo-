@@ -41,4 +41,40 @@ describe('calculateConfluence', () => {
     expect(out.recommendation).toBe('STRONG SELL');
     expect(out.net).toBeLessThanOrEqual(-4);
   });
+
+  it('covers moderate RSI branches and returns BUY/SELL by minConfluence', () => {
+    const buyAsset = {
+      changePercent: 0.5,
+      indicators: {
+        rsi: 35,
+        macd: { line: 0.8, signal: 0.4, histogram: 0 },
+        bollinger: { lower: 90, upper: 120 },
+        sma50: null,
+        sma200: null,
+        currentPrice: 100,
+        volumeRatio: 1.2
+      }
+    };
+
+    const sellAsset = {
+      changePercent: -0.5,
+      indicators: {
+        rsi: 65,
+        macd: { line: -0.4, signal: -0.1, histogram: 0 },
+        bollinger: { lower: 90, upper: 110 },
+        sma50: null,
+        sma200: null,
+        currentPrice: 95,
+        volumeRatio: 1.1
+      }
+    };
+
+    const buy = calculateConfluence(buyAsset, config);
+    const sell = calculateConfluence(sellAsset, config);
+
+    expect(buy.recommendation).toBe('BUY');
+    expect(buy.net).toBeGreaterThanOrEqual(config.minConfluence);
+    expect(sell.recommendation).toBe('SELL');
+    expect(sell.net).toBeLessThanOrEqual(-config.minConfluence);
+  });
 });

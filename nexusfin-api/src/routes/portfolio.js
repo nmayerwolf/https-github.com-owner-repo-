@@ -1,9 +1,10 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, forbidden, notFound } = require('../utils/errors');
-const { validatePositiveNumber } = require('../utils/validate');
+const { validatePositiveNumber, sanitizeText } = require('../utils/validate');
 
 const router = express.Router();
+const SYMBOL_PATTERN = /^[A-Z0-9./:_-]{1,20}$/;
 
 router.get('/', async (req, res, next) => {
   try {
@@ -25,6 +26,13 @@ router.post('/', async (req, res, next) => {
     const { symbol, name, category, buyDate, buyPrice, quantity, notes } = req.body;
     if (!symbol || !name || !category || !buyDate) throw badRequest('Faltan campos obligatorios');
 
+    const normalizedSymbol = String(symbol).trim().toUpperCase();
+    if (!SYMBOL_PATTERN.test(normalizedSymbol)) throw badRequest('symbol inválido', 'VALIDATION_ERROR');
+
+    const safeName = sanitizeText(name, { field: 'name', maxLen: 120, allowEmpty: false });
+    const safeCategory = sanitizeText(category, { field: 'category', maxLen: 40, allowEmpty: false }).toLowerCase();
+    const safeNotes = sanitizeText(notes, { field: 'notes', maxLen: 1000, allowEmpty: true }) || null;
+
     const count = await query('SELECT COUNT(*)::int AS total FROM positions WHERE user_id = $1 AND deleted_at IS NULL', [req.user.id]);
     if (count.rows[0].total >= 200) {
       return res.status(403).json({ error: 'LIMIT_REACHED', message: 'Máximo 200 posiciones' });
@@ -34,7 +42,16 @@ router.post('/', async (req, res, next) => {
       `INSERT INTO positions (user_id, symbol, name, category, buy_date, buy_price, quantity, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING id, symbol, name, category, buy_date, buy_price, quantity, sell_date, sell_price, notes, created_at`,
-      [req.user.id, symbol, name, category, buyDate, validatePositiveNumber(buyPrice, 'buyPrice'), validatePositiveNumber(quantity, 'quantity'), notes || null]
+      [
+        req.user.id,
+        normalizedSymbol,
+        safeName,
+        safeCategory,
+        buyDate,
+        validatePositiveNumber(buyPrice, 'buyPrice'),
+        validatePositiveNumber(quantity, 'quantity'),
+        safeNotes
+      ]
     );
 
     return res.status(201).json(row.rows[0]);
@@ -63,7 +80,7 @@ router.patch('/:id', async (req, res, next) => {
     const next = {
       buyPrice: req.body.buyPrice ?? row.buy_price,
       quantity: req.body.quantity ?? row.quantity,
-      notes: req.body.notes ?? row.notes,
+      notes: req.body.notes !== undefined ? sanitizeText(req.body.notes, { field: 'notes', maxLen: 1000, allowEmpty: true }) : row.notes,
       sellDate: hasSellDate ? req.body.sellDate : row.sell_date,
       sellPrice: hasSellPrice ? req.body.sellPrice : row.sell_price
     };
