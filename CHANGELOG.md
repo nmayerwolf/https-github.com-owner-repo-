@@ -17,6 +17,7 @@ Todas las fechas en este changelog usan formato `YYYY-MM-DD`.
 - Escaneo de secretos en bundle frontend (`scripts/check_frontend_bundle_secrets.sh`) integrado en CI.
 - Cierre operativo de Fase 4 documentado en `PHASE4_CLOSEOUT.md`.
 - Configuración de App Store readiness para mobile (EAS profiles, assets y metadata base).
+- Runbook/checklist/script de release final (`PHASE4_SMOKE_RUNBOOK.md`, `PHASE4_RELEASE_CHECKLIST.md`, `scripts/phase4_release_pack.sh`).
 
 ### Changed
 - Hardening de rate limiting en market proxy por usuario autenticado.
