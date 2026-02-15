@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,7 +46,11 @@ vi.mock('../../store/AuthContext', () => ({
 }));
 
 vi.mock('../Navigation', () => ({ default: () => <div>Navigation</div> }));
-vi.mock('../Dashboard', () => ({ default: () => <div>Dashboard</div> }));
+vi.mock('../Dashboard', () => ({
+  default: () => {
+    throw new Error('dashboard exploded');
+  }
+}));
 vi.mock('../Markets', () => ({ default: () => <div>Markets</div> }));
 vi.mock('../Alerts', () => ({ default: () => <div>Alerts</div> }));
 vi.mock('../Portfolio', () => ({ default: () => <div>Portfolio</div> }));
@@ -64,7 +68,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('App offline banner', () => {
+describe('App route error boundaries', () => {
   beforeEach(() => {
     apiMock.health.mockReset();
     apiMock.migrate.mockReset();
@@ -72,47 +76,18 @@ describe('App offline banner', () => {
     appCtxMock.actions.dismissUiError.mockReset();
   });
 
-  it('shows offline banner when backend health check fails', async () => {
-    apiMock.health.mockRejectedValueOnce(new Error('network down'));
-
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
-
-    expect(await screen.findByText('Modo offline')).toBeTruthy();
-    expect(await screen.findByText(/No se pudo conectar con el backend/i)).toBeTruthy();
-  });
-
-  it('keeps offline banner hidden when backend health check succeeds', async () => {
+  it('renders fallback when dashboard crashes', async () => {
     apiMock.health.mockResolvedValueOnce({ ok: true });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>
     );
 
-    await waitFor(() => {
-      expect(apiMock.health).toHaveBeenCalled();
-    });
-
-    expect(screen.queryByText('Modo offline')).toBeNull();
-  });
-
-  it('shows network offline banner when browser goes offline', async () => {
-    apiMock.health.mockResolvedValueOnce({ ok: true });
-
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
-
-    window.dispatchEvent(new Event('offline'));
-
-    expect(await screen.findByText('Sin conexión')).toBeTruthy();
-    expect(await screen.findByText(/Tu dispositivo está sin red/i)).toBeTruthy();
+    expect(await screen.findByText('Error en Dashboard')).toBeTruthy();
+    expect(await screen.findByText(/dashboard exploded/i)).toBeTruthy();
+    errSpy.mockRestore();
   });
 });

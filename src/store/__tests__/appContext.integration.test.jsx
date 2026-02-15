@@ -172,4 +172,35 @@ describe('AppContext integration', () => {
       expect(getLatest().state.uiErrors.some((e) => e.module === 'WebSocket')).toBe(true);
     });
   });
+
+  it('loads cached assets when realtime fetch fails for all symbols', async () => {
+    const cachedAssets = [
+      {
+        symbol: 'CACHED',
+        name: 'Cached Asset',
+        category: 'equity',
+        sector: 'tech',
+        source: 'cache',
+        price: 101,
+        prevClose: 100,
+        changePercent: 1,
+        candles: makeCandles(100),
+        indicators: {},
+        signal: null
+      }
+    ];
+
+    localStorage.setItem('nexusfin_assets_cache_v1', JSON.stringify({ ts: Date.now(), assets: cachedAssets }));
+    fetchAssetSnapshotMock.mockResolvedValue(null);
+
+    const getLatest = renderWithProbe();
+
+    await waitFor(() => {
+      expect(getLatest()).toBeTruthy();
+      expect(getLatest().state.loading).toBe(false);
+    });
+
+    expect(getLatest().state.assets.some((a) => a.symbol === 'CACHED')).toBe(true);
+    expect(getLatest().state.uiErrors.some((e) => e.module === 'Offline')).toBe(true);
+  });
 });
