@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMemo } from 'react';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD } from '../utils/format';

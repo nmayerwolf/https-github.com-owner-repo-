@@ -1,3 +1,5 @@
+import React from 'react';
+
 const colors = {
   equity: '#60A5FA',
   crypto: '#FBBF24',

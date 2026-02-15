@@ -1,3 +1,5 @@
+import React from 'react';
+
 const Sparkline = ({ values = [], color = '#60A5FA', height = 32 }) => {
   if (!values.length) return null;
   const min = Math.min(...values);
