@@ -72,3 +72,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Scan bundle for leaked market keys
+        run: npm run check:bundle-secrets
