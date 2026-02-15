@@ -52,3 +52,32 @@ npm start
 Luego abrir en:
 - iOS simulator / device
 - Android emulator / device
+
+## App Store Readiness (Fase 4)
+
+Assets configurados:
+- icon: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile/assets/icon.png`
+- adaptive icon: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile/assets/adaptive-icon.png`
+- splash: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile/assets/splash.png`
+
+Config:
+- app config: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile/app.json`
+- EAS profiles: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile/eas.json`
+- store metadata draft: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile/APP_STORE_METADATA.md`
+
+Builds de release:
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
+npx eas login
+npx eas build --platform ios --profile production
+npx eas build --platform android --profile production
+```
+
+Submissions:
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
+npx eas submit --platform ios --profile production
+npx eas submit --platform android --profile production
+```
