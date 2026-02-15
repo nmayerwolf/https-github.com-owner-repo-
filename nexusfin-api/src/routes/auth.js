@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const express = require('express');
 const { env } = require('../config/env');
 const { query } = require('../config/db');
@@ -29,6 +30,8 @@ const { validateEmail, validatePassword } = require('../utils/validate');
 
 const router = express.Router();
 const OAUTH_MOBILE_REDIRECT_COOKIE = 'nxf_oauth_mobile_redirect';
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const RESET_TOKEN_BYTES = 32;
 
 const enforceLoginLock = async (email) => {
   const recent = await query(
@@ -96,6 +99,9 @@ const finishLogin = async (req, res, user, status = 200) => {
 
   return res.status(status).json(body);
 };
+
+const hashResetToken = (token) => crypto.createHash('sha256').update(String(token || '')).digest('hex');
+const issueResetToken = () => crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
 
 const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarUrl }) => {
   const byOauth = await query('SELECT id, email FROM users WHERE auth_provider = $1 AND oauth_id = $2', [provider, oauthId]);
@@ -351,7 +357,75 @@ router.post('/logout', authRequired, requireCsrf, async (req, res, next) => {
   }
 });
 
-router.post('/reset-password', authRequired, requireCsrf, async (req, res, next) => {
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const email = validateEmail(req.body.email);
+    const found = await query('SELECT id, email FROM users WHERE email = $1 LIMIT 1', [email]);
+
+    if (found.rows.length) {
+      const userId = found.rows[0].id;
+      const rawToken = issueResetToken();
+      const tokenHashValue = hashResetToken(rawToken);
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
+
+      await query('UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL', [userId]);
+      await query(
+        `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [userId, tokenHashValue, expiresAt]
+      );
+
+      if (env.nodeEnv !== 'production' && String(process.env.LOG_PASSWORD_RESET_TOKENS || '').toLowerCase() === 'true') {
+        console.log(`[auth] password reset token for ${email}: ${rawToken}`);
+      }
+    }
+
+    return res.json({ message: 'Si existe una cuenta con ese email, recibirás un link de reseteo.' });
+  } catch (error) {
+    if (error?.code === 'INVALID_EMAIL') {
+      return res.json({ message: 'Si existe una cuenta con ese email, recibirás un link de reseteo.' });
+    }
+    return next(error);
+  }
+});
+
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const token = String(req.body.token || '').trim();
+    const newPassword = validatePassword(req.body.newPassword);
+    if (!token) {
+      throw badRequest('token requerido', 'VALIDATION_ERROR');
+    }
+
+    const tokenHashValue = hashResetToken(token);
+    const found = await query(
+      `SELECT id, user_id
+       FROM password_reset_tokens
+       WHERE token_hash = $1
+         AND used_at IS NULL
+         AND expires_at > NOW()
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tokenHashValue]
+    );
+    if (!found.rows.length) {
+      throw badRequest('El link expiró o es inválido.', 'INVALID_TOKEN');
+    }
+
+    const tokenRow = found.rows[0];
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, tokenRow.user_id]);
+    await query('UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1', [tokenRow.id]);
+    await query('DELETE FROM sessions WHERE user_id = $1', [tokenRow.user_id]);
+
+    return res.json({ message: 'Contraseña actualizada.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/reset-password/authenticated', authRequired, requireCsrf, async (req, res, next) => {
   try {
     const userId = req.user?.id;
     const currentPassword = String(req.body.currentPassword || '');
@@ -371,10 +445,7 @@ router.post('/reset-password', authRequired, requireCsrf, async (req, res, next)
 
     const newHash = await bcrypt.hash(newPassword, 10);
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, userId]);
-
-    if (req.rawToken) {
-      await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [userId, tokenHash(req.rawToken)]);
-    }
+    if (req.rawToken) await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [userId, tokenHash(req.rawToken)]);
 
     return res.json({ ok: true });
   } catch (error) {

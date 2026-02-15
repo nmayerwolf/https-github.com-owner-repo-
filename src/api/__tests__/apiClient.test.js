@@ -75,11 +75,24 @@ describe('apiClient', () => {
 
     expect(out).toEqual({ ok: true });
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:3001/api/auth/reset-password',
+      'http://localhost:3001/api/auth/reset-password/authenticated',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
         body: JSON.stringify({ currentPassword: 'old12345', newPassword: 'newpass123' })
+      })
+    );
+  });
+
+  it('calls forgot-password endpoint', async () => {
+    global.fetch.mockResolvedValueOnce(makeResponse({ ok: true, status: 200, body: { message: 'ok' } }));
+    const out = await api.forgotPassword('user@mail.com');
+    expect(out).toEqual({ message: 'ok' });
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/api/auth/forgot-password',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'user@mail.com' })
       })
     );
   });
