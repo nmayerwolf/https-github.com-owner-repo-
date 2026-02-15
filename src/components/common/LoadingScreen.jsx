@@ -1,3 +1,5 @@
+import React from 'react';
+
 const LoadingScreen = ({ loaded, total }) => (
   <div className="center-screen">
     <div className="card" style={{ width: 320 }}>

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "check:bundle-secrets": "bash ./scripts/check_frontend_bundle_secrets.sh",
     "check": "npm test && npm run build && npm run check:bundle-secrets"
   },
@@ -18,6 +19,7 @@
     "react-router-dom": "^6.30.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@testing-library/react": "^16.2.0",
     "@vitest/coverage-v8": "^2.1.8",
     "jsdom": "^25.0.1",

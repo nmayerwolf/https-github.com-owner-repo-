@@ -87,11 +87,45 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  e2e:
+    name: E2E (Playwright Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: web-test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
   build:
     name: Build (Node 20.x)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [web-test, api-test]
+    needs: [web-test, api-test, e2e]
 
     steps:
       - name: Checkout
