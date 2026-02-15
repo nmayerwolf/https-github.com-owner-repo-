@@ -11,6 +11,7 @@ import Settings from './components/Settings';
 import Screener from './components/Screener';
 import Groups from './components/Groups';
 import LoadingScreen from './components/common/LoadingScreen';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import AssetDetail from './components/AssetDetail';
 import AuthScreen from './components/AuthScreen';
 import { useApp } from './store/AppContext';
@@ -59,6 +60,8 @@ const toggleSector = (sectors, sector) => {
   if (sectors.includes(sector)) return sectors.filter((x) => x !== sector);
   return [...sectors, sector];
 };
+
+const RouteBoundary = ({ moduleName, children }) => <ErrorBoundary moduleName={moduleName}>{children}</ErrorBoundary>;
 
 const OnboardingModal = ({ step, state, onChange, onPrev, onNext, onComplete, saving, pushLoading, pushMessage, pushError }) => (
   <div className="modal-backdrop" role="presentation">
@@ -159,6 +162,7 @@ const App = () => {
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
+  const [networkOffline, setNetworkOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
 
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
@@ -266,6 +270,19 @@ const App = () => {
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    const onOnline = () => setNetworkOffline(false);
+    const onOffline = () => setNetworkOffline(true);
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
   const finishOnboarding = async () => {
     setOnboardingSaving(true);
     try {
@@ -366,10 +383,14 @@ const App = () => {
           <HealthBadge label={`Claude ${state.apiHealth.claude.calls}/${state.apiHealth.claude.errors}`} ok={claudeOk} detail={state.apiHealth.claude.lastError || 'OK'} />
         </div>
 
-        {backendOffline && (
+        {(backendOffline || networkOffline) && (
           <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }}>
-            <strong>Modo offline</strong>
-            <div className="muted">No se pudo conectar con el backend. Verificá tu conexión o VITE_API_URL.</div>
+            <strong>{networkOffline ? 'Sin conexión' : 'Modo offline'}</strong>
+            <div className="muted">
+              {networkOffline
+                ? 'Tu dispositivo está sin red. Mostramos datos guardados cuando están disponibles.'
+                : 'No se pudo conectar con el backend. Verificá tu conexión o VITE_API_URL.'}
+            </div>
           </section>
         )}
 
@@ -391,14 +412,70 @@ const App = () => {
       <Navigation />
       <main className="container">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/markets" element={<Markets />} />
-          <Route path="/markets/:symbol" element={<AssetDetail />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/screener" element={<Screener />} />
-          <Route path="/groups" element={<Groups />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route
+            path="/"
+            element={
+              <RouteBoundary moduleName="Dashboard">
+                <Dashboard />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/markets"
+            element={
+              <RouteBoundary moduleName="Mercados">
+                <Markets />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/markets/:symbol"
+            element={
+              <RouteBoundary moduleName="Detalle de activo">
+                <AssetDetail />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/alerts"
+            element={
+              <RouteBoundary moduleName="Alertas">
+                <Alerts />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/portfolio"
+            element={
+              <RouteBoundary moduleName="Portfolio">
+                <Portfolio />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/screener"
+            element={
+              <RouteBoundary moduleName="Screener">
+                <Screener />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/groups"
+            element={
+              <RouteBoundary moduleName="Grupos">
+                <Groups />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <RouteBoundary moduleName="Configuración">
+                <Settings />
+              </RouteBoundary>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

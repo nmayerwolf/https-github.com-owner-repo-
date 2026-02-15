@@ -14,6 +14,7 @@ import { loadConfig, saveConfig } from './configStore';
 import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
 
 const AppContext = createContext(null);
+const ASSET_CACHE_KEY = 'nexusfin_assets_cache_v1';
 
 const initialState = {
   assets: [],
@@ -205,6 +206,32 @@ export const makeUiError = (module, message) => ({
   message
 });
 
+const readAssetCache = () => {
+  try {
+    const raw = localStorage.getItem(ASSET_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || !Array.isArray(parsed.assets) || !parsed.assets.length) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const saveAssetCache = (assets) => {
+  try {
+    if (!Array.isArray(assets) || !assets.length) return;
+    localStorage.setItem(
+      ASSET_CACHE_KEY,
+      JSON.stringify({
+        ts: Date.now(),
+        assets
+      })
+    );
+  } catch {
+    // Ignore local cache failures.
+  }
+};
+
 export const AppProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const assetsRef = useRef([]);
@@ -215,6 +242,10 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     assetsRef.current = state.assets;
+  }, [state.assets]);
+
+  useEffect(() => {
+    saveAssetCache(state.assets);
   }, [state.assets]);
 
   useEffect(() => {
@@ -288,6 +319,17 @@ export const AppProvider = ({ children }) => {
 
       dispatch({ type: 'SET_PROGRESS', payload: { loaded: i + 1, total: watchlist.length } });
       dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
+    }
+
+    if (!loaded.length) {
+      const cached = readAssetCache();
+      if (cached?.assets?.length) {
+        dispatch({ type: 'SET_ASSETS', payload: cached.assets });
+        dispatch({
+          type: 'PUSH_UI_ERROR',
+          payload: makeUiError('Offline', 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.')
+        });
+      }
     }
 
     dispatch({ type: 'SET_LOADING', payload: false });
