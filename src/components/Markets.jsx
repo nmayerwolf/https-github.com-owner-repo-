@@ -130,7 +130,7 @@ const Markets = () => {
           ))}
         </div>
 
-        <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
+        <div className="markets-tools">
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Agregar a watchlist</span>
             <select className="select-field" aria-label="Activo para agregar a watchlist" value={candidate} onChange={(e) => setCandidate(e.target.value)}>
@@ -144,6 +144,7 @@ const Markets = () => {
           </label>
           <button
             type="button"
+            className="markets-tools-btn"
             onClick={() => {
               actions.addToWatchlist(candidate);
               setCandidate('');
@@ -154,7 +155,7 @@ const Markets = () => {
           </button>
         </div>
 
-        <div className="row" style={{ marginTop: 10, alignItems: 'flex-end' }}>
+        <div className="markets-selected-pick">
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Activo seleccionado</span>
             <select className="select-field" aria-label="Activo seleccionado para resumen rápido" value={selectedSymbol} onChange={(e) => setSelectedSymbol(e.target.value)}>
@@ -168,25 +169,46 @@ const Markets = () => {
         </div>
 
         {selectedAsset ? (
-          <div className="ind-grid" style={{ marginTop: 10 }}>
-            <div className="ind-cell">
-              <div className="ind-label">Apertura</div>
-              <div className="ind-val mono">{formatUSD(Number.isFinite(sessionOpen) ? sessionOpen : null)}</div>
+          <div className="markets-selected-summary">
+            <div className="markets-selected-header">
+              <div>
+                <div className="ind-label">Resumen rápido</div>
+                <div className="markets-selected-title mono">
+                  {selectedAsset.symbol} <span className="muted">{selectedAsset.name}</span>
+                </div>
+              </div>
             </div>
-            <div className="ind-cell">
-              <div className="ind-label">Cierre</div>
-              <div className="ind-val mono">{formatUSD(Number.isFinite(sessionClose) ? sessionClose : null)}</div>
-            </div>
-            <div className="ind-cell">
-              <div className="ind-label">P/E</div>
-              <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
-            </div>
-            <div className="ind-cell">
-              <div className="ind-label">Market Cap</div>
-              <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.marketCap}</div>
+
+            <div className="ind-grid markets-selected-grid">
+              <div className="ind-cell">
+                <div className="ind-label">Precio</div>
+                <div className="ind-val mono">{formatUSD(selectedAsset.price)}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">Apertura</div>
+                <div className="ind-val mono">{formatUSD(Number.isFinite(sessionOpen) ? sessionOpen : null)}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">Cierre</div>
+                <div className="ind-val mono">{formatUSD(Number.isFinite(sessionClose) ? sessionClose : null)}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">P/E</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">Market Cap</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.marketCap}</div>
+              </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="markets-selected-empty muted">Seleccioná un activo para ver su resumen.</div>
+        )}
       </section>
 
       <section className="card">
