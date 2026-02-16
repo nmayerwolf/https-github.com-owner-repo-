@@ -26,7 +26,7 @@ const links = [
   },
   {
     to: '/alerts',
-    label: 'AI Agent',
+    label: 'Agente IA',
     special: true,
     icon: (
       <svg viewBox="0 0 24 24">
@@ -37,7 +37,7 @@ const links = [
   },
   {
     to: '/portfolio',
-    label: 'Portfolio',
+    label: 'Cartera',
     icon: (
       <svg viewBox="0 0 24 24">
         <rect x="3" y="4" width="18" height="14" rx="2" />
@@ -47,7 +47,7 @@ const links = [
   },
   {
     to: '/settings',
-    label: 'Config',
+    label: 'Ajustes',
     icon: (
       <svg viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="3" />

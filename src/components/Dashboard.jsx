@@ -130,7 +130,7 @@ const Dashboard = () => {
 
       <section>
         <div className="section-header-inline">
-          <h3 className="section-title">Señales del AI Agent</h3>
+          <h3 className="section-title">Señales del Agente IA</h3>
           <div className="row" style={{ justifyContent: 'flex-end' }}>
             {hasMoreAlerts ? (
               <button type="button" className="inline-link-btn" onClick={() => setAlertVisibleCount((prev) => prev + 3)}>
@@ -151,7 +151,7 @@ const Dashboard = () => {
       </section>
 
       <section className="ai-card">
-        <div className="ai-card-title">AI Screener</div>
+        <div className="ai-card-title">Screener IA</div>
         <div className="ai-card-sub">Explorá oportunidades por contexto en lenguaje natural.</div>
         <div className="ai-suggestions">
           {screenerSuggestions.map((item) => (
@@ -178,7 +178,7 @@ const Dashboard = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Watchlist</h3>
+          <h3 className="section-title">Seguimiento</h3>
         </div>
         <div className="asset-list">
           {watchlistAssets.map((asset) => (
@@ -189,14 +189,14 @@ const Dashboard = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Performance del Agente</h3>
+          <h3 className="section-title">Rendimiento del Agente</h3>
         </div>
         <div className="muted" style={{ marginBottom: 8 }}>
           Métricas agregadas sobre señales activas y resultado del portfolio actual.
         </div>
         <div className="ind-grid">
           <div className="ind-cell">
-            <div className="ind-label">Hit Rate</div>
+            <div className="ind-label">Tasa de acierto</div>
             <div className="ind-val mono">{formatPct(performance.hitRate)}</div>
           </div>
           <div className="ind-cell">
@@ -208,7 +208,7 @@ const Dashboard = () => {
             <div className="ind-val mono">{formatPct(performance.drawdown)}</div>
           </div>
           <div className="ind-cell">
-            <div className="ind-label">Risk/Reward</div>
+            <div className="ind-label">Riesgo/Beneficio</div>
             <div className="ind-val mono">1:{performance.rr.toFixed(1)}</div>
           </div>
         </div>
@@ -220,7 +220,7 @@ const Dashboard = () => {
             <div className="row" style={{ alignItems: 'flex-start' }}>
               <div>
                 <h3 style={{ marginBottom: 6 }}>{selectedAlert.symbol || 'Señal'}</h3>
-                <div className="muted">{selectedAlert.title || selectedAlert.recommendation || 'Recomendación del AI Agent'}</div>
+                <div className="muted">{selectedAlert.title || selectedAlert.recommendation || 'Recomendación del Agente IA'}</div>
               </div>
               <button type="button" onClick={() => setSelectedAlert(null)}>
                 Cerrar
@@ -249,15 +249,15 @@ const Dashboard = () => {
                 <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
               </div>
               <div className="ind-cell">
-                <div className="ind-label">Market Cap</div>
+                <div className="ind-label">Capitalización</div>
                 <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.marketCap}</div>
               </div>
               <div className="ind-cell">
-                <div className="ind-label">Stop Loss</div>
+                <div className="ind-label">Stop loss</div>
                 <div className="ind-val mono">{selectedAlert.stopLoss ? formatUSD(selectedAlert.stopLoss) : '-'}</div>
               </div>
               <div className="ind-cell">
-                <div className="ind-label">Take Profit</div>
+                <div className="ind-label">Take profit</div>
                 <div className="ind-val mono">{selectedAlert.takeProfit ? formatUSD(selectedAlert.takeProfit) : '-'}</div>
               </div>
               <div className="ind-cell">

@@ -19,21 +19,21 @@ const OUTCOME_TABS = ['all', ...ALERT_OUTCOMES];
 const MAIN_LABEL = {
   live: 'En vivo',
   history: 'Historial',
-  performance: 'Performance'
+  performance: 'Rendimiento'
 };
 
 const HISTORY_TYPE_LABEL = {
   all: 'Todos',
   opportunity: 'Compra',
   bearish: 'Venta',
-  stop_loss: 'Stop Loss'
+  stop_loss: 'Stop loss'
 };
 
 const OUTCOME_LABEL = {
   all: 'Todos',
-  win: 'Win',
-  loss: 'Loss',
-  open: 'Open'
+  win: 'Ganada',
+  loss: 'Perdida',
+  open: 'Abierta'
 };
 
 const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Riesgo en watchlist'];
@@ -311,7 +311,7 @@ const Alerts = () => {
       </section>
 
       <section className="card">
-        <h2 style={{ marginBottom: 8 }}>AI Agent</h2>
+        <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
         <div className="chat-area">
           {!chatMessages.length ? (
             <div className="muted">Preguntale al agente sobre activos, señales o riesgo de portfolio.</div>
@@ -395,7 +395,7 @@ const Alerts = () => {
             <div className="row" style={{ alignItems: 'flex-start' }}>
               <div>
                 <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Señal'}</h3>
-                <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del AI Agent'}</div>
+                <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del Agente IA'}</div>
               </div>
               <button type="button" onClick={() => setSelectedLiveAlert(null)}>
                 Cerrar
@@ -424,15 +424,15 @@ const Alerts = () => {
                 <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
               </div>
               <div className="ind-cell">
-                <div className="ind-label">Market Cap</div>
+                <div className="ind-label">Capitalización</div>
                 <div className="ind-val mono">{selectedFundamentals.loading ? '...' : formatLargeNumber(selectedFundamentals.marketCap)}</div>
               </div>
               <div className="ind-cell">
-                <div className="ind-label">Stop Loss</div>
+                <div className="ind-label">Stop loss</div>
                 <div className="ind-val mono">{selectedLiveAlert.stopLoss ? formatUSD(selectedLiveAlert.stopLoss) : '-'}</div>
               </div>
               <div className="ind-cell">
-                <div className="ind-label">Take Profit</div>
+                <div className="ind-label">Take profit</div>
                 <div className="ind-val mono">{selectedLiveAlert.takeProfit ? formatUSD(selectedLiveAlert.takeProfit) : '-'}</div>
               </div>
               <div className="ind-cell">
@@ -530,7 +530,7 @@ const Alerts = () => {
       <>
         <section className="grid grid-2">
           <article className="card">
-            <h3>Hit Rate</h3>
+            <h3>Tasa de acierto</h3>
             <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRatePct)}</div>
           </article>
           <article className="card">
@@ -542,7 +542,7 @@ const Alerts = () => {
             <div style={{ fontSize: 22, marginTop: 6 }}>{Number(stats.total || 0)}</div>
           </article>
           <article className="card">
-            <h3>Breakdown</h3>
+            <h3>Desglose</h3>
             <div className="muted" style={{ marginTop: 6 }}>
               Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · StopLoss: {Number(stats.stopLoss || 0)}
             </div>

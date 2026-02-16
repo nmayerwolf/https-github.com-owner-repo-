@@ -201,7 +201,7 @@ const Markets = () => {
               </div>
 
               <div className="ind-cell">
-                <div className="ind-label">Market Cap</div>
+                <div className="ind-label">Capitalización</div>
                 <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.marketCap}</div>
               </div>
             </div>
