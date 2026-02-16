@@ -113,4 +113,24 @@ describe('market routes', () => {
     expect(res.body).toHaveLength(1);
     expect(finnhub.companyNews).toHaveBeenCalledWith('NVDA', '2026-02-01', '2026-02-14');
   });
+
+  it('returns bulk snapshot with successes and per-symbol errors', async () => {
+    finnhub.quote.mockImplementation(async (symbol) => {
+      if (symbol === 'MSFT') throw Object.assign(new Error('Finnhub HTTP 403 /quote'), { code: 'FINNHUB_ENDPOINT_FORBIDDEN' });
+      return { c: 120, pc: 100, dp: 20 };
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/snapshot?symbols=AAPL,MSFT,BTCUSDT');
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(3);
+    expect(res.body.count).toBe(2);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
+    expect(Array.isArray(res.body.errors)).toBe(true);
+    expect(res.body.errors).toEqual(
+      expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'FINNHUB_ENDPOINT_FORBIDDEN' })])
+    );
+  });
 });

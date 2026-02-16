@@ -16,6 +16,7 @@ import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
 const AppContext = createContext(null);
 const ASSET_CACHE_KEY = 'nexusfin_assets_cache_v1';
 const INITIAL_BLOCKING_ASSET_LOAD = 4;
+const BULK_SNAPSHOT_BATCH_SIZE = 8;
 
 const initialState = {
   assets: [],
@@ -231,6 +232,24 @@ const fetchSnapshotViaProxy = async (meta) => {
   }
 };
 
+const fetchSnapshotBatchViaProxy = async (metaBatch = []) => {
+  try {
+    const symbols = metaBatch.map((x) => x.symbol).filter(Boolean);
+    if (!symbols.length) return { okBySymbol: {}, failedSymbols: [] };
+    const out = await api.snapshot(symbols);
+    const okBySymbol = {};
+    for (const item of out?.items || []) {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol) continue;
+      okBySymbol[symbol] = { quote: item.quote, candles: item.candles };
+    }
+    const failedSymbols = (out?.errors || []).map((x) => String(x?.symbol || '').toUpperCase()).filter(Boolean);
+    return { okBySymbol, failedSymbols };
+  } catch {
+    return { okBySymbol: {}, failedSymbols: metaBatch.map((x) => String(x?.symbol || '').toUpperCase()).filter(Boolean) };
+  }
+};
+
 export const makeUiError = (module, message) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   module,
@@ -358,11 +377,46 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
     };
 
+    const loadBatch = async (metaBatch, startIndex) => {
+      if (!metaBatch.length) return;
+      if (!isAuthenticated) {
+        for (let i = 0; i < metaBatch.length; i += 1) {
+          await loadSingle(metaBatch[i], startIndex + i);
+        }
+        return;
+      }
+
+      const { okBySymbol, failedSymbols } = await fetchSnapshotBatchViaProxy(metaBatch);
+      for (let i = 0; i < metaBatch.length; i += 1) {
+        const meta = metaBatch[i];
+        const symbol = String(meta.symbol || '').toUpperCase();
+        const data = okBySymbol[symbol];
+
+        if (data?.quote && data?.candles?.c?.length) {
+          pushAsset(meta, data);
+        } else {
+          if (failedLoads < 3) {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Mercados', `No se pudo cargar ${meta.symbol}.`) });
+          }
+          failedLoads += 1;
+        }
+
+        const processed = startIndex + i + 1;
+        dispatch({ type: 'SET_PROGRESS', payload: { loaded: processed, total: watchlist.length } });
+      }
+
+      if (failedSymbols.length && failedLoads < 3) {
+        dispatch({
+          type: 'PUSH_UI_ERROR',
+          payload: makeUiError('Mercados', `Sin datos para ${failedSymbols.slice(0, 2).join(', ')}.`)
+        });
+      }
+
+      dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
+    };
+
     const firstSliceEnd = Math.min(INITIAL_BLOCKING_ASSET_LOAD, watchlist.length);
-    for (let i = 0; i < firstSliceEnd; i += 1) {
-      const meta = watchlist[i];
-      await loadSingle(meta, i);
-    }
+    await loadBatch(watchlist.slice(0, firstSliceEnd), 0);
 
     if (!loaded.length) {
       if (cached?.assets?.length) {
@@ -379,9 +433,9 @@ export const AppProvider = ({ children }) => {
     if (firstSliceEnd >= watchlist.length) return;
 
     (async () => {
-      for (let i = firstSliceEnd; i < watchlist.length; i += 1) {
-        const meta = watchlist[i];
-        await loadSingle(meta, i);
+      for (let i = firstSliceEnd; i < watchlist.length; i += BULK_SNAPSHOT_BATCH_SIZE) {
+        const batch = watchlist.slice(i, i + BULK_SNAPSHOT_BATCH_SIZE);
+        await loadBatch(batch, i);
       }
 
       if (!loaded.length && cached?.assets?.length) {

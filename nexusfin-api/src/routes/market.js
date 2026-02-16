@@ -15,6 +15,35 @@ const getOrSet = async (key, ttlSec, fn) => {
   return value;
 };
 
+const toFinite = (value) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : null;
+};
+
+const normalizeSymbolList = (value) => {
+  const raw = String(value || '')
+    .split(',')
+    .map((s) => String(s || '').trim().toUpperCase())
+    .filter(Boolean);
+  return Array.from(new Set(raw)).slice(0, 60);
+};
+
+const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
+  const current = toFinite(price);
+  const prev = toFinite(previousClose);
+  if (!current || current <= 0) return null;
+  const start = prev && prev > 0 ? prev : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    s: 'ok',
+    c,
+    h: c.map((v) => Number((v * 1.002).toFixed(6))),
+    l: c.map((v) => Number((v * 0.998).toFixed(6))),
+    v: c.map(() => 0)
+  };
+};
+
 router.get('/quote', async (req, res, next) => {
   try {
     if (!req.query.symbol) throw badRequest('symbol requerido');
@@ -56,6 +85,64 @@ router.get('/forex-candles', async (req, res, next) => {
     const key = `fx:${from}:${to}:${resolution}:${fromTs}:${toTs}`;
     const data = await getOrSet(key, 300, () => finnhub.forexCandles(from, to, resolution, fromTs, toTs));
     return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/snapshot', async (req, res, next) => {
+  try {
+    const symbols = normalizeSymbolList(req.query.symbols);
+    if (!symbols.length) throw badRequest('symbols requerido');
+
+    const items = [];
+    const errors = [];
+
+    for (const symbol of symbols) {
+      const cacheKey = `snapshot:${symbol}`;
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        items.push(cached);
+        continue;
+      }
+
+      try {
+        let quoteSymbol = symbol;
+        if (symbol.endsWith('USDT')) quoteSymbol = `BINANCE:${symbol}`;
+        if (symbol.includes('_')) quoteSymbol = `OANDA:${symbol}`;
+
+        const quote = await finnhub.quote(quoteSymbol);
+        const price = toFinite(quote?.c);
+        const previousClose = toFinite(quote?.pc);
+        if (!price || price <= 0) throw new Error('invalid quote');
+
+        const snapshot = {
+          symbol,
+          quote: {
+            c: price,
+            pc: previousClose ?? price,
+            dp: toFinite(quote?.dp) ?? 0
+          },
+          candles: buildSyntheticCandles(price, previousClose)
+        };
+
+        cache.set(cacheKey, snapshot, 45);
+        items.push(snapshot);
+      } catch (error) {
+        errors.push({
+          symbol,
+          code: error?.code || 'SNAPSHOT_FAILED',
+          message: error?.message || 'snapshot failed'
+        });
+      }
+    }
+
+    return res.json({
+      items,
+      errors,
+      total: symbols.length,
+      count: items.length
+    });
   } catch (error) {
     return next(error);
   }

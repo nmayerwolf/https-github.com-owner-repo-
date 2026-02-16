@@ -103,6 +103,13 @@ export const api = {
   removeFromWatchlist: (symbol) => request(`/watchlist/${symbol}`, { method: 'DELETE' }),
 
   quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
+  snapshot: (symbols = []) => {
+    const clean = Array.isArray(symbols)
+      ? symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+    const q = clean.join(',');
+    return request(`/market/snapshot?symbols=${encodeURIComponent(q)}`);
+  },
   candles: (symbol, from, to, resolution = 'D') =>
     request(`/market/candles?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}`),
   cryptoCandles: (symbol, from, to, resolution = 'D') =>
