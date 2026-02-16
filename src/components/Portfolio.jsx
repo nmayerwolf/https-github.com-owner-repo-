@@ -208,6 +208,7 @@ const Portfolio = () => {
 
       <section className="card">
         <h2>Nueva posición</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Cargá una posición para monitorear P&L y señales relacionadas.</p>
         <form onSubmit={submit} className="grid grid-2" style={{ marginTop: 8 }}>
           <label className="label">
             <span className="muted">Símbolo</span>
@@ -220,12 +221,12 @@ const Portfolio = () => {
           <label className="label">
             <span className="muted">Categoría</span>
             <select className="select-field" aria-label="Categoría de activo" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="equity">Equity</option>
-              <option value="crypto">Crypto</option>
+              <option value="equity">Acciones</option>
+              <option value="crypto">Cripto</option>
               <option value="fx">FX</option>
               <option value="metal">Metal</option>
-              <option value="commodity">Commodity</option>
-              <option value="bond">Bond</option>
+              <option value="commodity">Commodities</option>
+              <option value="bond">Bonos</option>
             </select>
           </label>
           <label className="label">
@@ -244,7 +245,7 @@ const Portfolio = () => {
         </form>
       </section>
 
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card portfolio-toolbar">
         <button type="button" onClick={() => setTab('active')} style={{ borderColor: tab === 'active' ? '#00E08E' : undefined }}>
           Activas
         </button>

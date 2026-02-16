@@ -302,7 +302,7 @@ const Alerts = () => {
 
   const renderLive = () => (
     <>
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card alerts-toolbar">
         {LIVE_TABS.map((t) => (
           <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
             {t}
@@ -312,6 +312,7 @@ const Alerts = () => {
 
       <section className="card">
         <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
+        <div className="muted" style={{ marginBottom: 8 }}>Preguntá por oportunidades, riesgo o activos puntuales.</div>
         <div className="chat-area">
           {!chatMessages.length ? (
             <div className="muted">Preguntale al agente sobre activos, señales o riesgo de portfolio.</div>
@@ -448,7 +449,7 @@ const Alerts = () => {
 
   const renderHistory = () => (
     <>
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card alerts-toolbar">
         {HISTORY_TYPE_TABS.map((type) => (
           <button
             key={type}
@@ -472,7 +473,7 @@ const Alerts = () => {
       {!historyLoading && !historyError && (
         <>
           {historyList.map((a) => (
-            <article key={a.id} className="card">
+            <article key={a.id} className="card alerts-history-card">
               <div className="row">
                 <strong>
                   {a.symbol} · {a.recommendation}
@@ -588,7 +589,7 @@ const Alerts = () => {
     <div className="grid">
       {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
 
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card alerts-toolbar">
         {MAIN_TABS.map((t) => (
           <button
             key={t}

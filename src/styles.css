@@ -761,6 +761,14 @@ a:focus-visible {
   align-items: center;
 }
 
+.portfolio-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+  align-items: flex-end;
+}
+
 /* AI chat */
 .chat-area {
   display: grid;
@@ -784,6 +792,18 @@ a:focus-visible {
   margin-right: 42px;
   background: var(--bg-card-hover);
   border: 1px solid var(--border);
+}
+
+.alerts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.alerts-history-card {
+  border-color: var(--border);
 }
 
 /* Markets */
@@ -1057,6 +1077,11 @@ a:focus-visible {
 
   .portfolio-stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .portfolio-toolbar,
+  .alerts-toolbar {
+    gap: 6px;
   }
 }
 
