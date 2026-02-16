@@ -410,23 +410,6 @@ a:focus-visible {
   font-size: 0.72rem;
 }
 
-.live-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.62rem;
-  color: var(--green);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-}
-
 .alerts-scroll {
   display: flex;
   gap: 10px;

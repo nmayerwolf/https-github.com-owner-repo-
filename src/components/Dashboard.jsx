@@ -118,16 +118,15 @@ const Dashboard = () => {
         <div className="section-header-inline">
           <h3 className="section-title">Señales del AI Agent</h3>
           <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <span className="live-indicator">
-              <span className="live-dot" />
-              Live
-            </span>
             {hasMoreAlerts ? (
               <button type="button" className="inline-link-btn" onClick={() => setAlertVisibleCount((prev) => prev + 3)}>
                 Ver más
               </button>
             ) : null}
           </div>
+        </div>
+        <div className="muted" style={{ marginBottom: 8 }}>
+          Seleccioná una señal para ver recomendación, confluencia y niveles sugeridos.
         </div>
         <div className="alerts-scroll">
           {visibleAlerts.map((a) => (
