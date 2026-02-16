@@ -68,7 +68,7 @@ describe('export routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/csv');
-    expect(res.headers['content-disposition']).toContain('attachment; filename="nexusfin-portfolio-');
+    expect(res.headers['content-disposition']).toContain('attachment; filename="horsy-portfolio-');
     expect(res.text.charCodeAt(0)).toBe(65279);
     expect(res.text).toContain('Symbol,Name,Category,Buy Date,Buy Price,Quantity,Sell Date,Sell Price,P&L %,Notes');
     expect(res.text).toContain('AAPL,Apple Inc.,equity,2026-01-10,100.0000,2.5,2026-02-01,125.0000,25.00%,"nota, con coma"');
@@ -121,7 +121,7 @@ describe('export routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('application/pdf');
-    expect(res.headers['content-disposition']).toContain('attachment; filename="nexusfin-alert-NVDA-');
+    expect(res.headers['content-disposition']).toContain('attachment; filename="horsy-alert-NVDA-');
     expect(Buffer.isBuffer(res.body)).toBe(true);
     expect(res.body.toString('utf8', 0, 4)).toBe('%PDF');
   });

@@ -176,7 +176,7 @@ const Alerts = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `nexusfin-alert-${symbol || alertId}.pdf`;
+      link.download = `horsy-alert-${symbol || alertId}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
