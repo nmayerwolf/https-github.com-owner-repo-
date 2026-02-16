@@ -124,10 +124,20 @@ export const api = {
     return request(`/market/commodity?${q.toString()}`);
   },
   profile: (symbol) => request(`/market/profile?symbol=${encodeURIComponent(symbol)}`),
-  marketNews: (symbol, from, to) => {
-    const q = new URLSearchParams({ symbol: String(symbol || '') });
-    if (from) q.set('from', from);
-    if (to) q.set('to', to);
+  marketNews: (arg1 = {}, fromArg, toArg) => {
+    const q = new URLSearchParams();
+    if (typeof arg1 === 'string') {
+      q.set('symbol', String(arg1 || ''));
+      if (fromArg) q.set('from', fromArg);
+      if (toArg) q.set('to', toArg);
+    } else {
+      const opts = arg1 || {};
+      if (opts.symbol) q.set('symbol', String(opts.symbol));
+      if (opts.category) q.set('category', String(opts.category));
+      if (opts.from) q.set('from', String(opts.from));
+      if (opts.to) q.set('to', String(opts.to));
+      if (opts.minId != null) q.set('minId', String(opts.minId));
+    }
     return request(`/market/news?${q.toString()}`);
   },
 

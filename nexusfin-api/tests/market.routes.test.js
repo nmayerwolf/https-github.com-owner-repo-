@@ -10,7 +10,8 @@ jest.mock('../src/services/finnhub', () => ({
   cryptoCandles: jest.fn(),
   forexCandles: jest.fn(),
   profile: jest.fn(),
-  companyNews: jest.fn()
+  companyNews: jest.fn(),
+  generalNews: jest.fn()
 }));
 
 jest.mock('../src/services/alphavantage', () => ({
@@ -112,6 +113,17 @@ describe('market routes', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(1);
     expect(finnhub.companyNews).toHaveBeenCalledWith('NVDA', '2026-02-01', '2026-02-14');
+  });
+
+  it('returns proxied general news list', async () => {
+    finnhub.generalNews.mockResolvedValueOnce([{ id: 2, headline: 'Market opens mixed', url: 'https://example.com/general' }]);
+    const app = makeApp();
+    const res = await request(app).get('/api/market/news?category=general&minId=0');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(1);
+    expect(finnhub.generalNews).toHaveBeenCalledWith('general', 0);
   });
 
   it('returns bulk snapshot with successes and per-symbol errors', async () => {

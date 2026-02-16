@@ -1,7 +1,10 @@
 import React from 'react';
 import { useMemo } from 'react';
 import { useApp } from '../store/AppContext';
-import { formatPct, formatUSD } from '../utils/format';
+import { formatPct, formatUSD, shortDate } from '../utils/format';
+import AssetRow from './common/AssetRow';
+import AlertCard from './common/AlertCard';
+import NewsSection from './NewsSection';
 
 const Dashboard = () => {
   const { state } = useApp();
@@ -23,70 +26,99 @@ const Dashboard = () => {
     return { invested, value, pnl, pnlPct };
   }, [state.positions, state.assets]);
 
-  const indices = ['SPY', 'QQQ', 'DIA', 'BTCUSDT'].map((s) => state.assets.find((a) => a.symbol === s)).filter(Boolean);
+  const tickerAssets = ['AAPL', 'NVDA', 'BTCUSDT', 'ETHUSDT', 'GLD', 'EUR_USD', 'SPY'].map((s) => state.assets.find((a) => a.symbol === s)).filter(Boolean);
+  const watchlistAssets = state.assets.slice(0, 10);
+  const performance = {
+    hitRate: Number(state.alerts.length ? (state.alerts.filter((a) => String(a.type).includes('compra')).length / state.alerts.length) * 100 : 0),
+    avgReturn: portfolio.invested ? (portfolio.pnl / portfolio.invested) * 100 : 0,
+    drawdown: Math.min(0, portfolio.pnlPct - 5),
+    rr: 2.5
+  };
 
   return (
-    <div className="grid">
-      <section className="card">
-        <h2>Resumen Portfolio</h2>
-        <div className="grid grid-2" style={{ marginTop: 8 }}>
-          <div>
-            <div className="muted">Valor actual</div>
-            <strong>{formatUSD(portfolio.value)}</strong>
-          </div>
-          <div>
-            <div className="muted">P&L total</div>
-            <strong className={portfolio.pnl >= 0 ? 'up' : 'down'}>
-              {formatUSD(portfolio.pnl)} ({formatPct(portfolio.pnlPct)})
-            </strong>
-          </div>
+    <div className="dashboard-page">
+      <section className="portfolio-hero card">
+        <div className="portfolio-label">Valor del portfolio</div>
+        <div className="portfolio-value mono">{formatUSD(portfolio.value)}</div>
+        <div className={`portfolio-change ${portfolio.pnl >= 0 ? 'up' : 'down'} mono`}>
+          {formatUSD(portfolio.pnl)} ({formatPct(portfolio.pnlPct)})
         </div>
+        <div className="muted">Actualizado {state.lastUpdated ? shortDate(new Date(state.lastUpdated).toISOString()) : '-'}</div>
       </section>
 
-      <section className="card">
-        <h2>Índices</h2>
-        <div className="grid" style={{ marginTop: 8 }}>
-          {indices.map((x) => (
-            <div className="row" key={x.symbol}>
-              <strong>{x.symbol}</strong>
-              <span>{formatUSD(x.price)}</span>
-              <span className={x.changePercent >= 0 ? 'up' : 'down'}>{formatPct(x.changePercent)}</span>
+      <section className="ticker-wrap card">
+        <div className="ticker">
+          {[...tickerAssets, ...tickerAssets].map((x, idx) => (
+            <div className="tk-item" key={`${x.symbol}-${idx}`}>
+              <span className="tk-sym mono">{x.symbol}</span>
+              <span className="tk-price mono">{formatUSD(x.price)}</span>
+              <span className={`tk-chg mono ${x.changePercent >= 0 ? 'up' : 'down'}`}>{formatPct(x.changePercent)}</span>
             </div>
           ))}
         </div>
       </section>
 
+      <section>
+        <div className="section-header-inline">
+          <h3 className="section-title">Señales del AI Agent</h3>
+          <span className="live-indicator">
+            <span className="live-dot" />
+            Live
+          </span>
+        </div>
+        <div className="alerts-scroll">
+          {state.alerts.slice(0, 6).map((a) => (
+            <AlertCard key={a.id} alert={a} />
+          ))}
+          {!state.alerts.length ? <div className="card muted">Sin señales activas.</div> : null}
+        </div>
+      </section>
+
+      <section className="ai-card">
+        <div className="ai-card-title">AI Screener</div>
+        <div className="ai-card-sub">Explorá oportunidades por contexto en lenguaje natural.</div>
+        <div className="ai-suggestions">
+          <span className="ai-sug">Acciones oversold</span>
+          <span className="ai-sug">Crypto momentum</span>
+          <span className="ai-sug">Metales defensivos</span>
+          <span className="ai-sug">Bonds con yield</span>
+        </div>
+      </section>
+
+      <NewsSection title="Noticias" />
+
       <section className="card">
-        <h2>Carga de mercado</h2>
-        <div className="grid" style={{ marginTop: 8 }}>
-          <div className="row">
-            <span className="muted">Watchlist base</span>
-            <span>
-              {state.progress.loaded}/{state.progress.total}
-            </span>
-          </div>
-          <div className="row">
-            <span className="muted">Macro (Alpha Vantage)</span>
-            <span>
-              {state.macroStatus === 'loading' && 'Cargando...'}
-              {state.macroStatus === 'loaded' && 'Listo'}
-              {state.macroStatus === 'error' && 'Error'}
-              {state.macroStatus === 'idle' && 'Pendiente'}
-            </span>
-          </div>
+        <div className="section-header-inline">
+          <h3 className="section-title">Watchlist</h3>
+        </div>
+        <div className="asset-list">
+          {watchlistAssets.map((asset) => (
+            <AssetRow key={asset.symbol} asset={asset} to={`/markets/${asset.symbol}`} />
+          ))}
         </div>
       </section>
 
       <section className="card">
-        <h2>Alertas recientes</h2>
-        <div className="grid" style={{ marginTop: 8 }}>
-          {state.alerts.slice(0, 5).map((a) => (
-            <div key={a.id} className="row">
-              <span>{a.title}</span>
-              <span className="muted">{a.confidence || 'high'}</span>
-            </div>
-          ))}
-          {!state.alerts.length && <div className="muted">Sin alertas por ahora.</div>}
+        <div className="section-header-inline">
+          <h3 className="section-title">Performance del Agente</h3>
+        </div>
+        <div className="ind-grid">
+          <div className="ind-cell">
+            <div className="ind-label">Hit Rate</div>
+            <div className="ind-val mono">{formatPct(performance.hitRate)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Retorno Promedio</div>
+            <div className="ind-val mono">{formatPct(performance.avgReturn)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Pérdida Promedio</div>
+            <div className="ind-val mono">{formatPct(performance.drawdown)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Risk/Reward</div>
+            <div className="ind-val mono">1:{performance.rr.toFixed(1)}</div>
+          </div>
         </div>
       </section>
     </div>

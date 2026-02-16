@@ -253,12 +253,20 @@ router.get('/commodity', async (req, res, next) => {
 router.get('/news', async (req, res, next) => {
   try {
     const symbol = String(req.query.symbol || '').trim().toUpperCase();
-    if (!symbol) throw badRequest('symbol requerido');
+    let data = [];
 
-    const to = String(req.query.to || new Date().toISOString().slice(0, 10));
-    const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
-    const key = `news:${symbol}:${from}:${to}`;
-    const data = await getOrSet(key, 300, () => finnhub.companyNews(symbol, from, to));
+    if (symbol) {
+      const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+      const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
+      const key = `news:company:${symbol}:${from}:${to}`;
+      data = await getOrSet(key, 900, () => finnhub.companyNews(symbol, from, to));
+    } else {
+      const category = String(req.query.category || 'general').trim().toLowerCase() || 'general';
+      const minId = Number.isFinite(Number(req.query.minId)) ? Number(req.query.minId) : 0;
+      const key = `news:general:${category}:${minId}`;
+      data = await getOrSet(key, 900, () => finnhub.generalNews(category, minId));
+    }
+
     return res.json(Array.isArray(data) ? data : []);
   } catch (error) {
     return next(error);
