@@ -5,6 +5,7 @@ import { useApp } from '../store/AppContext';
 const MAX_ITEMS = 60;
 const WATCHLIST_SYMBOL_LIMIT = 6;
 const REFRESH_MS = 45000;
+const AI_RELEVANCE_MIN = 6;
 
 const KEYWORDS_HIGH = [
   'earnings',
@@ -99,6 +100,7 @@ const News = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
+  const [mode, setMode] = useState('ai');
   const [query, setQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(15);
 
@@ -108,13 +110,14 @@ const News = () => {
     [state.assets]
   );
   const filteredItems = useMemo(() => {
+    const modeItems = mode === 'ai' ? items.filter((item) => Number(item?._score || 0) >= AI_RELEVANCE_MIN) : items;
     const q = String(query || '').trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => {
+    if (!q) return modeItems;
+    return modeItems.filter((item) => {
       const haystack = [item?.headline, item?.summary, item?.source, item?.related].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [items, query]);
+  }, [items, mode, query]);
 
   useEffect(() => {
     let active = true;
@@ -168,6 +171,14 @@ const News = () => {
           <h2 className="screen-title">Noticias</h2>
         </div>
         <div className="muted">Feed en tiempo real con impacto potencial en mercados globales y activos de tu watchlist.</div>
+        <div className="alerts-toolbar" style={{ marginTop: 10 }}>
+          <button type="button" onClick={() => setMode('ai')} style={{ borderColor: mode === 'ai' ? '#60A5FA' : undefined }}>
+            Recomendadas por IA
+          </button>
+          <button type="button" onClick={() => setMode('all')} style={{ borderColor: mode === 'all' ? '#60A5FA' : undefined }}>
+            Todas
+          </button>
+        </div>
         <div className="search-bar" style={{ marginTop: 10 }}>
           <input
             value={query}
