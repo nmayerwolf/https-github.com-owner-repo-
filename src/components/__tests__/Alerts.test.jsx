@@ -27,6 +27,10 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
 vi.mock('../../api/apiClient', () => ({ api: apiMock }));
 vi.mock('../../api/claude', () => ({ generateInvestmentThesis: vi.fn(), askClaude: vi.fn() }));
 vi.mock('../../store/AppContext', () => ({ useApp: () => appCtxMock }));
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => vi.fn() };
+});
 
 import Alerts from '../Alerts';
 

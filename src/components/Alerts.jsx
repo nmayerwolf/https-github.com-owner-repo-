@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/apiClient';
 import { fetchCompanyOverview } from '../api/alphavantage';
 import { askClaude } from '../api/claude';
@@ -62,6 +63,7 @@ const buildLocalHint = (assets = [], query = '') => {
 };
 
 const Alerts = () => {
+  const navigate = useNavigate();
   const { state, actions } = useApp();
 
   const [mainTab, setMainTab] = useState('live');
@@ -400,6 +402,29 @@ const Alerts = () => {
           <button type="button" onClick={() => askAgent(agentQuery)} disabled={agentLoading}>
             {agentLoading ? 'Pensando...' : 'Enviar'}
           </button>
+        </div>
+      </section>
+
+      <section className="ai-card">
+        <div className="ai-card-title">Screener IA</div>
+        <div className="ai-card-sub">Lanzá búsquedas inteligentes con un clic.</div>
+        <div className="ai-suggestions">
+          {quickPrompts.map((prompt) => (
+            <button
+              key={`screener-${prompt}`}
+              type="button"
+              className="ai-sug"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  q: prompt,
+                  autorun: '1'
+                });
+                navigate(`/screener?${params.toString()}`);
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       </section>
 
