@@ -31,7 +31,7 @@ const AuthScreen = () => {
           <div className="auth-logo" aria-hidden="true">
             H
           </div>
-          <h1>Horsy</h1>
+          <h1>Horsai</h1>
         </div>
         <h2 style={{ marginTop: 8 }}>Iniciar sesión con Google</h2>
         <p className="muted" style={{ marginTop: 6 }}>

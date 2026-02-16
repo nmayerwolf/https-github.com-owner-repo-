@@ -61,7 +61,7 @@ const OnboardingModal = ({ step, state, onChange, onPrev, onNext, onComplete, sa
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
       <div className="row">
-        <h3>Bienvenido a Horsy</h3>
+        <h3>Bienvenido a Horsai</h3>
         <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
           Paso {step}/4
         </span>
@@ -367,7 +367,7 @@ const App = () => {
       <header className="header">
         <div className="top-header card">
           <div>
-            <h1 className="brand-title">Horsy</h1>
+            <h1 className="brand-title">Horsai</h1>
           </div>
           <div className="header-actions">
             <button type="button" className="icon-btn" aria-label="Notificaciones">

@@ -161,7 +161,7 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
     setMessage('');
     try {
       const out = await api.sendTestNotification({
-        title: 'Horsy test',
+        title: 'Horsai test',
         body: 'Push de prueba desde mobile settings.',
         respectQuietHours: true
       });
@@ -180,7 +180,7 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Ajustes</Text>
-      <Text style={[styles.status, { color: palette.muted }]}>Personalizá la experiencia de Horsy.</Text>
+      <Text style={[styles.status, { color: palette.muted }]}>Personalizá la experiencia de Horsai.</Text>
       <Text style={[styles.status, { color: palette.muted }]}>Push: {pushEnabled ? 'activo' : 'inactivo'}</Text>
       <Pressable style={[styles.button, { backgroundColor: palette.primary }]} disabled={loading} onPress={enablePush}>
         <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{loading ? 'Activando...' : 'Activar push nativo'}</Text>

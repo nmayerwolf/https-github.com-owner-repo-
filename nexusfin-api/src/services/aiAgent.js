@@ -1,7 +1,7 @@
 const { env } = require('../config/env');
 
 const SYSTEM_PROMPT = [
-  'Sos el motor de análisis de Horsy.',
+  'Sos el motor de análisis de Horsai.',
   'Debes confirmar o descartar señales técnicas con un enfoque conservador.',
   'Respondé solo JSON válido, sin markdown ni texto adicional.'
 ].join(' ');

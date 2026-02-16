@@ -1,6 +1,6 @@
-# Horsy (Phase 4)
+# Horsai (Phase 4)
 
-Horsy es una plataforma de monitoreo financiero multi-activo con:
+Horsai es una plataforma de monitoreo financiero multi-activo con:
 - web (React + Vite),
 - backend API (Node + Express + PostgreSQL),
 - mobile (Expo),

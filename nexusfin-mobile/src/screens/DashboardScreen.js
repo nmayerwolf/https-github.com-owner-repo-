@@ -9,7 +9,7 @@ const DashboardScreen = ({ user, theme = 'dark' }) => {
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Inicio</Text>
       <Text style={[styles.card, { color: palette.text, backgroundColor: palette.surface, borderColor: palette.border }]}>Sesión activa: {user?.email}</Text>
-      <Text style={[styles.muted, { color: palette.muted }]}>Aplicación móvil de Horsy.</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>Aplicación móvil de Horsai.</Text>
     </View>
   );
 };

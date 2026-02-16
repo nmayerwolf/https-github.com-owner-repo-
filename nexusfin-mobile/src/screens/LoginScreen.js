@@ -8,7 +8,7 @@ const LoginScreen = ({ onOAuth, loading, error, oauthProviders, oauthLoading = f
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
-      <Text style={[styles.title, { color: palette.text }]}>Horsy</Text>
+      <Text style={[styles.title, { color: palette.text }]}>Horsai</Text>
       <Text style={[styles.subtitle, { color: palette.muted }]}>Iniciar sesión con Google</Text>
 
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
