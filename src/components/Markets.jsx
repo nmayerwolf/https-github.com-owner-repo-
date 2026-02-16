@@ -5,6 +5,7 @@ import { fetchCompanyProfile } from '../api/finnhub';
 import { useApp } from '../store/AppContext';
 import { formatUSD } from '../utils/format';
 import AssetRow from './common/AssetRow';
+import Sparkline from './common/Sparkline';
 import { CATEGORY_OPTIONS, WATCHLIST_CATALOG } from '../utils/constants';
 
 const categoryLabel = {
@@ -52,6 +53,10 @@ const Markets = () => {
 
   const sessionOpen = Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]);
   const sessionClose = Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]);
+  const selectedSeries = selectedAsset?.candles?.c?.slice(-45) || [];
+  const trendStart = Number(selectedSeries?.[0]);
+  const trendEnd = Number(selectedSeries?.[selectedSeries.length - 1]);
+  const trendDeltaPct = Number.isFinite(trendStart) && trendStart !== 0 && Number.isFinite(trendEnd) ? ((trendEnd - trendStart) / trendStart) * 100 : null;
 
   useEffect(() => {
     setVisibleCount(8);
@@ -180,6 +185,15 @@ const Markets = () => {
             </div>
 
             <div className="ind-grid markets-selected-grid">
+              <div className="ind-cell trend-panel">
+                <div className="ind-label">Evolución (45 velas)</div>
+                <div className="trend-chart">
+                  <Sparkline values={selectedSeries} color={Number(trendDeltaPct || 0) >= 0 ? '#00E08E' : '#FF4757'} height={56} />
+                </div>
+                <div className={`trend-meta mono ${Number(trendDeltaPct || 0) >= 0 ? 'up' : 'down'}`}>
+                  {trendDeltaPct == null ? '-' : `${trendDeltaPct.toFixed(2)}%`}
+                </div>
+              </div>
               <div className="ind-cell">
                 <div className="ind-label">Precio</div>
                 <div className="ind-val mono">{formatUSD(selectedAsset.price)}</div>
