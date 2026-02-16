@@ -378,19 +378,34 @@ const App = () => {
       )}
 
       <header className="header">
-        <div className="row" style={{ alignItems: 'flex-end' }}>
+        <div className="top-header card">
           <div>
-            <h1>Horsy</h1>
+            <h1 className="brand-title">Horsy</h1>
             <p className="muted">Monitoreo financiero en tiempo real ({state.sourceMode})</p>
           </div>
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <span className="badge" style={{ background: wsBadge.background, color: wsBadge.color }}>
+          <div className="header-actions">
+            <button type="button" className="icon-btn" aria-label="Notificaciones">
+              <svg viewBox="0 0 24 24">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+            </button>
+            <button type="button" className="icon-btn" aria-label="Buscar">
+              <svg viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.8-3.8" />
+              </svg>
+            </button>
+            <span className="user-avatar" aria-label="Usuario">
+              {String(user?.email || 'U').slice(0, 1).toUpperCase()}
+            </span>
+            <span className="badge ws-badge mono" style={{ background: wsBadge.background, color: wsBadge.color }}>
               {wsBadge.text}
             </span>
-            <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+            <span className="badge mono" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
               {user?.email || 'usuario'}
             </span>
-            <button type="button" onClick={logout}>
+            <button type="button" onClick={logout} className="logout-btn">
               Logout
             </button>
           </div>
