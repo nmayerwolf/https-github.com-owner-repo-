@@ -627,6 +627,12 @@ a:focus-visible {
   max-width: 120px;
 }
 
+.a-mini-chart {
+  margin-top: 3px;
+  width: 92px;
+  height: 20px;
+}
+
 .a-price-col {
   text-align: right;
   flex-shrink: 0;
