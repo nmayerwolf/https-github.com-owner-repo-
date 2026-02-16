@@ -10,6 +10,7 @@ import { formatPct, formatUSD, shortDate } from '../utils/format';
 import { ALERT_OUTCOMES, ALERT_TYPES } from '../../packages/nexusfin-core/contracts.js';
 import AIThesis from './AIThesis';
 import ConfluenceBar from './common/ConfluenceBar';
+import Sparkline from './common/Sparkline';
 
 const MAIN_TABS = ['live', 'history', 'performance'];
 const LIVE_TABS = ['all', 'compra', 'venta', 'stoploss'];
@@ -97,6 +98,10 @@ const Alerts = () => {
     if (!symbol) return null;
     return (state.assets || []).find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
   }, [selectedLiveAlert, state.assets]);
+  const selectedSeries = selectedAsset?.candles?.c?.slice(-45) || [];
+  const trendStart = Number(selectedSeries?.[0]);
+  const trendEnd = Number(selectedSeries?.[selectedSeries.length - 1]);
+  const trendDeltaPct = Number.isFinite(trendStart) && trendStart !== 0 && Number.isFinite(trendEnd) ? ((trendEnd - trendStart) / trendStart) * 100 : null;
 
   const historyList = historyData.alerts || [];
   const performanceList = useMemo(
@@ -403,6 +408,15 @@ const Alerts = () => {
               </button>
             </div>
             <div className="grid" style={{ marginTop: 10 }}>
+              <div className="ind-cell trend-panel">
+                <div className="ind-label">Evolución (45 velas)</div>
+                <div className="trend-chart">
+                  <Sparkline values={selectedSeries} color={Number(trendDeltaPct || 0) >= 0 ? '#00E08E' : '#FF4757'} height={56} />
+                </div>
+                <div className={`trend-meta mono ${Number(trendDeltaPct || 0) >= 0 ? 'up' : 'down'}`}>
+                  {trendDeltaPct == null ? '-' : `${trendDeltaPct.toFixed(2)}%`}
+                </div>
+              </div>
               <div className="ind-cell">
                 <div className="ind-label">Confluencia</div>
                 <div className="ind-val mono">

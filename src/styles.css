@@ -641,8 +641,9 @@ a:focus-visible {
 
 .a-mini-chart {
   margin-top: 3px;
-  width: 92px;
-  height: 20px;
+  width: 136px;
+  height: 24px;
+  opacity: 0.95;
 }
 
 .a-price-col {
@@ -1160,6 +1161,24 @@ a:focus-visible {
   border-radius: 12px;
   background: var(--bg-card);
   padding: 12px;
+}
+
+.trend-panel {
+  grid-column: 1 / -1;
+}
+
+.trend-chart {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 8px;
+  min-height: 72px;
+}
+
+.trend-meta {
+  margin-top: 6px;
+  font-size: 0.76rem;
 }
 
 /* Bottom nav */

@@ -8,6 +8,7 @@ import { formatPct, formatUSD, shortDate } from '../utils/format';
 import AssetRow from './common/AssetRow';
 import AlertCard from './common/AlertCard';
 import NewsSection from './NewsSection';
+import Sparkline from './common/Sparkline';
 
 const Dashboard = () => {
   const { state } = useApp();
@@ -61,6 +62,10 @@ const Dashboard = () => {
     const symbol = String(selectedAlert.symbol).toUpperCase();
     return state.assets.find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
   }, [selectedAlert, state.assets]);
+  const selectedSeries = selectedAsset?.candles?.c?.slice(-45) || [];
+  const trendStart = Number(selectedSeries?.[0]);
+  const trendEnd = Number(selectedSeries?.[selectedSeries.length - 1]);
+  const trendDeltaPct = Number.isFinite(trendStart) && trendStart !== 0 && Number.isFinite(trendEnd) ? ((trendEnd - trendStart) / trendStart) * 100 : null;
 
   useEffect(() => {
     setAlertVisibleCount(3);
@@ -227,6 +232,15 @@ const Dashboard = () => {
               </button>
             </div>
             <div className="grid" style={{ marginTop: 10 }}>
+              <div className="ind-cell trend-panel">
+                <div className="ind-label">Evolución (45 velas)</div>
+                <div className="trend-chart">
+                  <Sparkline values={selectedSeries} color={Number(trendDeltaPct || 0) >= 0 ? '#00E08E' : '#FF4757'} height={56} />
+                </div>
+                <div className={`trend-meta mono ${Number(trendDeltaPct || 0) >= 0 ? 'up' : 'down'}`}>
+                  {trendDeltaPct == null ? '-' : `${trendDeltaPct.toFixed(2)}%`}
+                </div>
+              </div>
               <div className="ind-cell">
                 <div className="ind-label">Confluencia</div>
                 <div className="ind-val mono">
