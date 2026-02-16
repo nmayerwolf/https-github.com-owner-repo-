@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/apiClient';
 import { fetchCompanyOverview } from '../api/alphavantage';
 import { askClaude } from '../api/claude';
@@ -62,6 +63,7 @@ const buildLocalHint = (assets = [], query = '') => {
 };
 
 const Alerts = () => {
+  const navigate = useNavigate();
   const { state, actions } = useApp();
 
   const [mainTab, setMainTab] = useState('live');
@@ -336,10 +338,34 @@ const Alerts = () => {
 
   const renderLive = () => (
     <>
+      <section className="ai-card">
+        <div className="ai-card-title">Screener IA</div>
+        <div className="ai-card-sub">Lanzá búsquedas inteligentes con un clic.</div>
+        <div className="ai-suggestions">
+          {quickPrompts.map((prompt) => (
+            <button
+              key={`screener-${prompt}`}
+              type="button"
+              className="ai-sug"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  q: prompt,
+                  autorun: '1'
+                });
+                navigate(`/screener?${params.toString()}`);
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Señales activas</h3>
+          <h3 className="section-title">Recomendaciones del agente</h3>
         </div>
+        <div className="muted" style={{ marginBottom: 8 }}>Filtrá por tipo para ver oportunidades activas.</div>
         <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
           {LIVE_TABS.map((t) => (
             <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
