@@ -291,6 +291,19 @@ const saveAssetCache = (assets) => {
   }
 };
 
+const formatCacheTimestamp = (ts) => {
+  const value = Number(ts);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  try {
+    return new Date(value).toLocaleString('es-AR', {
+      dateStyle: 'short',
+      timeStyle: 'short'
+    });
+  } catch {
+    return null;
+  }
+};
+
 export const AppProvider = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const assetsRef = useRef([]);
@@ -439,10 +452,16 @@ export const AppProvider = ({ children }) => {
 
     if (!loaded.length) {
       if (cached?.assets?.length) {
+        const cacheStamp = formatCacheTimestamp(cached.ts);
         dispatch({ type: 'SET_ASSETS', payload: cached.assets });
         dispatch({
           type: 'PUSH_UI_ERROR',
-          payload: makeUiError('Offline', 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.')
+          payload: makeUiError(
+            'Offline',
+            cacheStamp
+              ? `Sin conexión al mercado en tiempo real. Mostrando cache de ${cacheStamp}.`
+              : 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.'
+          )
         });
       }
     }
