@@ -1,6 +1,8 @@
 import React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fetchCompanyOverview } from '../api/alphavantage';
+import { fetchCompanyProfile } from '../api/finnhub';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 import AssetRow from './common/AssetRow';
@@ -12,6 +14,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [alertVisibleCount, setAlertVisibleCount] = useState(3);
   const [selectedAlert, setSelectedAlert] = useState(null);
+  const [selectedFundamentals, setSelectedFundamentals] = useState({ loading: false, pe: '-', marketCap: '-' });
   const screenerSuggestions = [
     { label: 'Acciones oversold', query: 'Acciones con RSI bajo y confluencia alcista', category: 'equity' },
     { label: 'Crypto momentum', query: 'Cryptos con momentum positivo y volumen creciente', category: 'crypto' },
@@ -53,10 +56,52 @@ const Dashboard = () => {
   );
   const visibleAlerts = useMemo(() => state.alerts.slice(0, alertVisibleCount), [state.alerts, alertVisibleCount]);
   const hasMoreAlerts = visibleAlerts.length < state.alerts.length;
+  const selectedAsset = useMemo(() => {
+    if (!selectedAlert?.symbol) return null;
+    const symbol = String(selectedAlert.symbol).toUpperCase();
+    return state.assets.find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
+  }, [selectedAlert, state.assets]);
 
   useEffect(() => {
     setAlertVisibleCount(3);
   }, [state.alerts.length]);
+
+  useEffect(() => {
+    let active = true;
+    const symbol = String(selectedAlert?.symbol || '').toUpperCase();
+    if (!symbol) {
+      setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      return () => {
+        active = false;
+      };
+    }
+
+    if (selectedAsset?.category !== 'equity') {
+      setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      return () => {
+        active = false;
+      };
+    }
+
+    setSelectedFundamentals({ loading: true, pe: '-', marketCap: '-' });
+    Promise.all([fetchCompanyOverview(symbol), fetchCompanyProfile(symbol)])
+      .then(([overview, profile]) => {
+        if (!active) return;
+        setSelectedFundamentals({
+          loading: false,
+          pe: overview?.PERatio || '-',
+          marketCap: overview?.MarketCapitalization || profile?.marketCapitalization || '-'
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedAlert, selectedAsset?.category]);
 
   return (
     <div className="dashboard-page">
@@ -174,6 +219,22 @@ const Dashboard = () => {
                 <div className="muted" style={{ marginTop: 6 }}>
                   Confluencia = puntos alcistas - puntos bajistas. Un valor negativo (ej. -4) indica sesgo bajista.
                 </div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Apertura</div>
+                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]))}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Cierre</div>
+                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]))}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">P/E</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Market Cap</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.marketCap}</div>
               </div>
               <div className="ind-cell">
                 <div className="ind-label">Stop Loss</div>
