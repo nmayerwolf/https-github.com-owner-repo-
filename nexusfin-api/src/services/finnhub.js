@@ -3,7 +3,9 @@ const { env } = require('../config/env');
 const BASE = 'https://finnhub.io/api/v1';
 
 const fetchFinnhub = async (path, params = {}) => {
-  const qs = new URLSearchParams({ ...params, token: env.finnhubKey });
+  const token = String(env.finnhubKey || '').trim();
+  if (!token) throw new Error('Missing FINNHUB_KEY');
+  const qs = new URLSearchParams({ ...params, token });
   const res = await fetch(`${BASE}${path}?${qs}`);
   if (!res.ok) throw new Error(`Finnhub HTTP ${res.status}`);
   return res.json();
