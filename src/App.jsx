@@ -23,6 +23,20 @@ const HealthBadge = ({ label, ok, detail }) => (
   </span>
 );
 
+const getWsBadge = (status, { fallbackActive = false } = {}) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'connected') {
+    return { text: 'WS: EN VIVO', background: '#00E08E22', color: '#00E08E' };
+  }
+  if (normalized === 'auth_error') {
+    return { text: 'WS: SESION EXPIRADA', background: '#FF475722', color: '#FF4757' };
+  }
+  if (fallbackActive) {
+    return { text: 'WS: DEGRADADO (FALLBACK)', background: '#FBBF2422', color: '#FBBF24' };
+  }
+  return { text: 'WS: DESCONECTADO', background: '#60A5FA22', color: '#60A5FA' };
+};
+
 const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
@@ -334,9 +348,13 @@ const App = () => {
   }
 
   const finnhubFallback = Number(state.apiHealth.finnhub.fallbacks || 0);
+  const wsBadge = getWsBadge(state.wsStatus, { fallbackActive: finnhubFallback > 0 });
   const finnhubOk = finnhubFallback === 0 && (state.apiHealth.finnhub.errors === 0 || state.apiHealth.finnhub.calls > state.apiHealth.finnhub.errors);
   const alphaOk = state.apiHealth.alphavantage.errors === 0 || state.apiHealth.alphavantage.calls > state.apiHealth.alphavantage.errors;
   const claudeOk = state.apiHealth.claude.errors === 0;
+  const lastUpdatedLabel = state.lastUpdated
+    ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
+    : 'sin datos';
 
   return (
     <div className="app">
@@ -366,8 +384,8 @@ const App = () => {
             <p className="muted">Monitoreo financiero en tiempo real ({state.sourceMode})</p>
           </div>
           <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
-              WS: {state.wsStatus}
+            <span className="badge" style={{ background: wsBadge.background, color: wsBadge.color }}>
+              {wsBadge.text}
             </span>
             <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
               {user?.email || 'usuario'}
@@ -379,6 +397,9 @@ const App = () => {
         </div>
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+          <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+            Actualizado: {lastUpdatedLabel}
+          </span>
           <HealthBadge
             label={`Finnhub ${state.apiHealth.finnhub.calls}/${state.apiHealth.finnhub.errors} f:${finnhubFallback}`}
             ok={finnhubOk}
