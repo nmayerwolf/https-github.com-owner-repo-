@@ -104,9 +104,10 @@ textarea {
 
 .top-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
+  width: 100%;
 }
 
 .brand-title {
@@ -123,7 +124,7 @@ textarea {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .icon-btn {
@@ -147,6 +148,7 @@ textarea {
 .user-avatar {
   width: 34px;
   height: 34px;
+  padding: 0;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -157,12 +159,35 @@ textarea {
   background: linear-gradient(135deg, var(--blue), var(--purple));
 }
 
+.user-menu-wrap {
+  position: relative;
+}
+
+.user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: max-content;
+  min-width: 220px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.user-menu-email {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .ws-badge {
   letter-spacing: 0.03em;
 }
 
 .logout-btn {
   background: transparent;
+  width: 100%;
 }
 
 .container {
@@ -1014,6 +1039,45 @@ a:focus-visible {
   min-height: 100vh;
   display: grid;
   place-items: center;
+}
+
+.auth-card {
+  display: grid;
+  gap: 2px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue), var(--purple));
+}
+
+.google-btn {
+  width: 100%;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  color: #111827;
+  border-color: #d1d5db;
+  font-weight: 600;
+}
+
+.google-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 .modal-backdrop {

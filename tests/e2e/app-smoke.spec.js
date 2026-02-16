@@ -4,7 +4,13 @@ test('app boot smoke renders a primary screen', async ({ page }) => {
   await page.goto('/');
 
   const loading = page.getByRole('heading', { name: 'Cargando mercado...' });
-  const auth = page.getByRole('heading', { name: 'Continuar con Google' });
+  const auth = page.getByRole('heading', { name: 'Iniciar sesión con Google' });
   const dashboard = page.getByRole('heading', { name: 'Horsy' });
-  await expect(loading.or(auth).or(dashboard)).toBeVisible({ timeout: 15_000 });
+
+  await expect(async () => {
+    const hasLoading = await loading.isVisible().catch(() => false);
+    const hasAuth = await auth.isVisible().catch(() => false);
+    const hasDashboard = await dashboard.isVisible().catch(() => false);
+    expect(hasLoading || hasAuth || hasDashboard).toBe(true);
+  }).toPass({ timeout: 15_000 });
 });

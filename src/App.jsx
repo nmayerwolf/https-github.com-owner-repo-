@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
@@ -185,6 +185,8 @@ const App = () => {
   const [onboardingPushLoading, setOnboardingPushLoading] = useState(false);
   const [onboardingPushMessage, setOnboardingPushMessage] = useState('');
   const [onboardingPushError, setOnboardingPushError] = useState('');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
   const [onboardingDraft, setOnboardingDraft] = useState({
     riskProfile: 'moderado',
     sectors: ['tech', 'crypto', 'metals'],
@@ -303,6 +305,16 @@ const App = () => {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (!userMenuRef.current) return;
+      if (userMenuRef.current.contains(event.target)) return;
+      setUserMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, []);
+
   const finishOnboarding = async () => {
     setOnboardingSaving(true);
     try {
@@ -398,7 +410,6 @@ const App = () => {
         <div className="top-header card">
           <div>
             <h1 className="brand-title">Horsy</h1>
-            <p className="muted app-subtitle">Monitoreo financiero en tiempo real</p>
           </div>
           <div className="header-actions">
             <button type="button" className="icon-btn" aria-label="Notificaciones">
@@ -413,18 +424,36 @@ const App = () => {
                 <path d="M20 20l-3.8-3.8" />
               </svg>
             </button>
-            <span className="user-avatar" aria-label="Usuario">
-              {String(user?.email || 'U').slice(0, 1).toUpperCase()}
-            </span>
             <span className="badge ws-badge mono" style={{ background: wsBadge.background, color: wsBadge.color }}>
               {wsBadge.text}
             </span>
-            <span className="badge mono" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
-              {user?.email || 'usuario'}
-            </span>
-            <button type="button" onClick={logout} className="logout-btn" aria-label="Cerrar sesión">
-              Cerrar sesión
-            </button>
+            <div className="user-menu-wrap" ref={userMenuRef}>
+              <button
+                type="button"
+                className="user-avatar"
+                aria-label="Menú de usuario"
+                aria-expanded={userMenuOpen}
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+              >
+                {String(user?.email || 'U').slice(0, 1).toUpperCase()}
+              </button>
+              {userMenuOpen ? (
+                <div className="user-menu card">
+                  <div className="user-menu-email mono">{user?.email || 'usuario'}</div>
+                  <button
+                    type="button"
+                    className="logout-btn"
+                    aria-label="Cerrar sesión"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                    }}
+                  >
+                    Cerrar sesión
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
