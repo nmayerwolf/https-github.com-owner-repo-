@@ -1,6 +1,5 @@
 import React, { memo } from 'react';
 import { Link } from 'react-router-dom';
-import Sparkline from './Sparkline';
 import { formatPct, formatUSD } from '../../utils/format';
 
 const iconClassByCategory = (category) => {
@@ -18,13 +17,12 @@ const AssetRow = ({ asset, to = null, action = null, actionLabel = null }) => {
   const up = Number(asset.changePercent || 0) >= 0;
   const content = (
     <>
-      <div className={`a-icon ${iconClassByCategory(asset.category)}`}>{String(asset.symbol || '').slice(0, 3)}</div>
-      <div className="a-info">
-        <div className="a-sym">{asset.symbol}</div>
-        <div className="a-name">{asset.name}</div>
-      </div>
-      <div className="a-spark">
-        <Sparkline values={asset.candles?.c?.slice(-30) || []} color={up ? '#00DC82' : '#FF4757'} />
+      <div className="asset-left">
+        <div className={`a-icon ${iconClassByCategory(asset.category)}`}>{String(asset.symbol || '').slice(0, 3)}</div>
+        <div className="a-info">
+          <div className="a-sym">{asset.symbol}</div>
+          <div className="a-name">{asset.name}</div>
+        </div>
       </div>
       <div className="a-price-col">
         <div className="a-price mono">{formatUSD(asset.price)}</div>

@@ -553,7 +553,8 @@ a:focus-visible {
 }
 
 .asset-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border-bottom: 1px solid var(--border);
@@ -565,18 +566,27 @@ a:focus-visible {
 }
 
 .asset-row-main {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   text-decoration: none;
   color: inherit;
   min-width: 0;
   flex: 1;
 }
 
+.asset-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .asset-row-action {
   padding: 4px 8px;
   font-size: 0.72rem;
+  justify-self: end;
 }
 
 .a-icon {
@@ -617,16 +627,10 @@ a:focus-visible {
   max-width: 120px;
 }
 
-.a-spark {
-  width: 64px;
-  height: 30px;
-  flex-shrink: 0;
-}
-
 .a-price-col {
   text-align: right;
   flex-shrink: 0;
-  width: 96px;
+  width: 110px;
 }
 
 .a-price {
