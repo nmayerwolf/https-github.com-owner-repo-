@@ -461,7 +461,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
       try {
         snapshot = options.assetSnapshotsOverride?.[symbol] || (await fetchAssetSnapshot(symbol, item.category));
       } catch (error) {
-        logger.warn?.(`[alertEngine] symbol ${symbol} skipped`, error?.message || error);
+        if (!error?.silent) logger.warn?.(`[alertEngine] symbol ${symbol} skipped`, error?.message || error);
         continue;
       }
 

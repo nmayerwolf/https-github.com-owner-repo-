@@ -217,8 +217,11 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
   const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
   const avMinPollMs = 65 * 1000;
   const errorCooldownMs = 30 * 1000;
+  const finnhubBackoffMaxMs = 5 * 60 * 1000;
   const heartbeatMs = 60 * 1000;
   let inFlight = false;
+  let finnhubBlockedUntil = 0;
+  let lastFinnhubBlockedLogAt = 0;
   const stateBySymbol = new Map();
   const metrics = {
     cycles: 0,
@@ -254,6 +257,10 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
         const upper = String(symbol || '').toUpperCase();
         const provider = providerForRealtimeSymbol(upper);
         const symbolState = stateBySymbol.get(upper) || {};
+        if (provider === 'finnhub' && now < finnhubBlockedUntil) {
+          metrics.cooldownSkips += 1;
+          continue;
+        }
         const minPollMs = provider === 'alphavantage' ? Math.max(intervalMs, avMinPollMs) : intervalMs;
         const nextAllowedAt = Number(symbolState.nextAllowedAt || 0);
         if (now < nextAllowedAt) {
@@ -290,6 +297,15 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
           stateBySymbol.set(upper, nextState);
         } catch (error) {
           metrics.quotesFailed += 1;
+          if (provider === 'finnhub' && (error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' || error?.code === 'FINNHUB_RATE_LIMIT')) {
+            const retryAfterMs = Number(error?.retryAfterMs);
+            const backoffMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? Math.min(retryAfterMs, finnhubBackoffMaxMs) : errorCooldownMs;
+            finnhubBlockedUntil = Math.max(finnhubBlockedUntil, now + backoffMs);
+            if (now - lastFinnhubBlockedLogAt > 30 * 1000) {
+              logger.warn?.(`[ws-price] finnhub backoff ${Math.ceil(backoffMs / 1000)}s`, error?.message || error);
+              lastFinnhubBlockedLogAt = now;
+            }
+          }
           const errorCount = Number(symbolState.errorCount || 0) + 1;
           stateBySymbol.set(upper, {
             ...symbolState,
@@ -297,7 +313,7 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
             errorCount,
             nextAllowedAt: now + errorCooldownMs
           });
-          logger.warn?.(`[ws-price] quote failed (${upper})`, error?.message || error);
+          if (!error?.silent) logger.warn?.(`[ws-price] quote failed (${upper})`, error?.message || error);
         }
       }
     } finally {

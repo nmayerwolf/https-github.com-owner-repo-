@@ -46,6 +46,7 @@ const createFinnhubService = (options = {}) => {
         err.status = 403;
         err.path = path;
         err.retryAfterMs = endpointCooldownUntil - current;
+        err.silent = true;
         throw err;
       }
 
@@ -55,6 +56,7 @@ const createFinnhubService = (options = {}) => {
         err.status = 429;
         err.path = path;
         err.retryAfterMs = providerBlockedUntil - current;
+        err.silent = true;
         throw err;
       }
 
@@ -82,6 +84,7 @@ const createFinnhubService = (options = {}) => {
           err.code = 'FINNHUB_ENDPOINT_FORBIDDEN';
           err.retryAfterMs = endpointForbiddenTtlMs;
         }
+        if (err.code) err.silent = true;
 
         throw err;
       }
