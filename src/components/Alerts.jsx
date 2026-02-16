@@ -103,6 +103,11 @@ const Alerts = () => {
   const [macroRefreshing, setMacroRefreshing] = useState(false);
   const [macroError, setMacroError] = useState('');
   const [macroInsight, setMacroInsight] = useState(null);
+  const [portfolioAdviceLoading, setPortfolioAdviceLoading] = useState(false);
+  const [portfolioAdviceRefreshing, setPortfolioAdviceRefreshing] = useState(false);
+  const [portfolioAdviceError, setPortfolioAdviceError] = useState('');
+  const [portfolioAdvice, setPortfolioAdvice] = useState(null);
+  const [portfolioAdviceSkipped, setPortfolioAdviceSkipped] = useState(null);
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
@@ -208,15 +213,25 @@ const Alerts = () => {
     const loadMacro = async () => {
       setMacroLoading(true);
       setMacroError('');
+      setPortfolioAdviceLoading(true);
+      setPortfolioAdviceError('');
       try {
-        const out = await api.getMacroInsight();
+        const [macroOut, adviceOut] = await Promise.all([
+          api.getMacroInsight(),
+          api.getPortfolioAdvice().catch(() => ({ advice: null }))
+        ]);
         if (!active) return;
-        setMacroInsight(out?.insight || null);
+        setMacroInsight(macroOut?.insight || null);
+        setPortfolioAdvice(adviceOut?.advice || null);
+        setPortfolioAdviceSkipped(adviceOut?.skipped ? adviceOut : null);
       } catch {
         if (!active) return;
         setMacroError('No se pudo cargar el Macro Radar.');
       } finally {
-        if (active) setMacroLoading(false);
+        if (active) {
+          setMacroLoading(false);
+          setPortfolioAdviceLoading(false);
+        }
       }
     };
 
@@ -692,6 +707,25 @@ const Alerts = () => {
     }
   };
 
+  const refreshPortfolioAdvice = async () => {
+    setPortfolioAdviceRefreshing(true);
+    setPortfolioAdviceError('');
+    try {
+      const out = await api.refreshPortfolioAdvice();
+      if (out?.skipped) {
+        setPortfolioAdvice(null);
+        setPortfolioAdviceSkipped(out);
+      } else {
+        setPortfolioAdvice(out?.advice || null);
+        setPortfolioAdviceSkipped(null);
+      }
+    } catch {
+      setPortfolioAdviceError('No se pudo recalcular el análisis de portfolio.');
+    } finally {
+      setPortfolioAdviceRefreshing(false);
+    }
+  };
+
   const renderMacro = () => {
     const insight = macroInsight;
 
@@ -760,6 +794,51 @@ const Alerts = () => {
                 </div>
               </section>
             ) : null}
+
+            <section className="card">
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ marginBottom: 6 }}>Portfolio Advisor</h3>
+                  <div className="muted">Recomendaciones de rebalanceo basadas en tu cartera y macro.</div>
+                </div>
+                <button type="button" onClick={refreshPortfolioAdvice} disabled={portfolioAdviceRefreshing}>
+                  {portfolioAdviceRefreshing ? 'Analizando...' : 'Pedir análisis AI'}
+                </button>
+              </div>
+
+              {portfolioAdviceLoading ? <div className="muted" style={{ marginTop: 8 }}>Cargando análisis de portfolio...</div> : null}
+              {portfolioAdviceError ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{portfolioAdviceError}</div> : null}
+              {portfolioAdviceSkipped ? (
+                <div className="card muted" style={{ marginTop: 8 }}>
+                  Necesitás al menos {portfolioAdviceSkipped.minimumPositions || 2} posiciones activas para habilitar Portfolio Advisor.
+                </div>
+              ) : null}
+
+              {portfolioAdvice ? (
+                <div className="grid" style={{ marginTop: 8 }}>
+                  <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+                    <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+                      Health score: {Number(portfolioAdvice.healthScore || 0)}/10
+                    </span>
+                    <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
+                      Riesgo: {portfolioAdvice.concentrationRisk || 'medium'}
+                    </span>
+                  </div>
+                  <div className="muted">{portfolioAdvice.healthSummary}</div>
+                  <div className="grid">
+                    {(portfolioAdvice.recommendations || []).map((rec, idx) => (
+                      <article key={`${rec.asset || 'asset'}-${idx}`} className="card">
+                        <div className="row" style={{ justifyContent: 'space-between' }}>
+                          <strong>{rec.asset}</strong>
+                          <span className="muted">{rec.priority || 'medium'}</span>
+                        </div>
+                        <div className="muted" style={{ marginTop: 6 }}>{rec.detail}</div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </section>
           </>
         ) : null}
       </>

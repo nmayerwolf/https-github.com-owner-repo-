@@ -83,6 +83,12 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
       schedule: String(config.cronMacroDailySchedule || '0 8 * * *'),
       shouldRun: () => true,
       run: runners.macroDaily || (async () => ({ generated: 0 }))
+    },
+    {
+      name: 'portfolio-daily',
+      schedule: String(config.cronPortfolioDailySchedule || '15 8 * * *'),
+      shouldRun: () => true,
+      run: runners.portfolioDaily || (async () => ({ generated: 0 }))
     }
   ];
 };
@@ -107,6 +113,7 @@ const startMarketCron = (options = {}) => {
     alertsGenerated: 0,
     stopLossChecked: 0,
     macroRuns: 0,
+    portfolioRuns: 0,
     nextRun: null,
     errors: [],
     lastTask: null
@@ -172,6 +179,9 @@ const startMarketCron = (options = {}) => {
           status.stopLossChecked = Number.isFinite(stopLossChecked) ? stopLossChecked : 0;
           if (task.name === 'macro-daily') {
             status.macroRuns = Number(out?.generated || 0);
+          }
+          if (task.name === 'portfolio-daily') {
+            status.portfolioRuns = Number(out?.generated || 0);
           }
           status.errors = [];
 

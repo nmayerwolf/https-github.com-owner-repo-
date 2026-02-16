@@ -17,10 +17,11 @@ const { query } = require('../src/config/db');
 const alertsRoutes = require('../src/routes/alerts');
 const { errorHandler } = require('../src/middleware/errorHandler');
 
-const makeApp = (userId = 'u1', macroRadar = null) => {
+const makeApp = (userId = 'u1', macroRadar = null, portfolioAdvisor = null) => {
   const app = express();
   app.use(express.json());
   app.locals.macroRadar = macroRadar;
+  app.locals.portfolioAdvisor = portfolioAdvisor;
   app.use((req, _res, next) => {
     req.user = { id: userId, email: 'user@mail.com' };
     next();
@@ -124,6 +125,49 @@ describe('alerts routes', () => {
     expect(res.status).toBe(201);
     expect(macroRadar.generateForUser).toHaveBeenCalledWith('u1');
     expect(res.body.insight.source).toBe('fallback');
+  });
+
+  it('returns latest portfolio advice for user', async () => {
+    const portfolioAdvisor = {
+      getLatestForUser: jest.fn(async () => ({
+        id: 'p1',
+        health_score: 7,
+        health_summary: 'Buena diversificación',
+        concentration_risk: 'medium',
+        allocation_analysis: { by_class: { current: { equity: 60 } } },
+        recommendations: [{ asset: 'GLD', detail: 'Agregar cobertura' }],
+        ai_model: 'claude-haiku',
+        created_at: '2026-02-16T10:00:00.000Z'
+      }))
+    };
+    const app = makeApp('u1', null, portfolioAdvisor);
+    const res = await request(app).get('/api/alerts/portfolio-advice');
+
+    expect(res.status).toBe(200);
+    expect(portfolioAdvisor.getLatestForUser).toHaveBeenCalledWith('u1');
+    expect(res.body.advice.healthScore).toBe(7);
+  });
+
+  it('refreshes portfolio advice for user', async () => {
+    const portfolioAdvisor = {
+      generateForUser: jest.fn(async () => ({
+        id: 'p2',
+        health_score: 8,
+        health_summary: 'Portfolio sólido',
+        concentration_risk: 'low',
+        allocation_analysis: {},
+        recommendations: [],
+        ai_model: null,
+        created_at: '2026-02-16T11:00:00.000Z',
+        source: 'fallback'
+      }))
+    };
+    const app = makeApp('u1', null, portfolioAdvisor);
+    const res = await request(app).post('/api/alerts/portfolio-advice/refresh').send({});
+
+    expect(res.status).toBe(201);
+    expect(portfolioAdvisor.generateForUser).toHaveBeenCalledWith('u1');
+    expect(res.body.advice.source).toBe('fallback');
   });
 
   it('shares alert to group when membership exists', async () => {
