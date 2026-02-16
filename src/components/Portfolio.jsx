@@ -252,9 +252,6 @@ const Portfolio = () => {
         <button type="button" onClick={() => setTab('sold')} style={{ borderColor: tab === 'sold' ? '#00E08E' : undefined }}>
           Cerradas
         </button>
-        <button type="button" onClick={() => setTab('summary')} style={{ borderColor: tab === 'summary' ? '#00E08E' : undefined }}>
-          Resumen
-        </button>
         <label className="label" style={{ maxWidth: 240 }}>
           <span className="muted">Exportar</span>
           <select className="select-field" aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
@@ -268,43 +265,15 @@ const Portfolio = () => {
         </button>
       </section>
 
-      {tab !== 'summary'
-        ? visibleRows.map((p) => <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} />)
-        : (
-          <section className="card">
-            <h3>Resumen de posiciones</h3>
-            <div className="ind-grid" style={{ marginTop: 8 }}>
-              <div className="ind-cell">
-                <div className="ind-label">Posiciones activas</div>
-                <div className="ind-val mono">{activeRows.length}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Posiciones cerradas</div>
-                <div className="ind-val mono">{soldRows.length}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Promedio P&L activa</div>
-                <div className="ind-val mono">
-                  {activeRows.length ? formatPct(activeRows.reduce((acc, p) => acc + p.pnlPctPos, 0) / activeRows.length) : '-'}
-                </div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Promedio P&L cerrada</div>
-                <div className="ind-val mono">
-                  {soldRows.length ? formatPct(soldRows.reduce((acc, p) => acc + p.pnlPctPos, 0) / soldRows.length) : '-'}
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-      {tab !== 'summary' && hasMoreRows ? (
+      {visibleRows.map((p) => <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} />)}
+      {hasMoreRows ? (
         <div className="card portfolio-more">
           <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + PORTFOLIO_PAGE_SIZE, rows.length))}>
             Ver más posiciones
           </button>
         </div>
       ) : null}
-      {tab !== 'summary' && !rows.length && <div className="card muted">No hay posiciones en esta pestaña.</div>}
+      {!rows.length && <div className="card muted">No hay posiciones en esta pestaña.</div>}
 
       {sellModal.id && (
         <div className="modal-backdrop" role="presentation" onClick={() => setSellModal(emptySell)}>
