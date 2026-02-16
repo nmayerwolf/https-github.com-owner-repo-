@@ -537,6 +537,73 @@ textarea {
   margin-top: 4px;
 }
 
+/* Portfolio */
+.portfolio-page .portfolio-hero .portfolio-value {
+  font-size: 1.8rem;
+}
+
+.alloc-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  gap: 2px;
+}
+
+.alloc-seg {
+  height: 100%;
+  display: block;
+}
+
+.pos-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pos-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--blue-dim);
+  color: var(--blue);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.pos-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.pos-sym {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.pos-detail {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
+.pos-vals {
+  text-align: right;
+}
+
+.pos-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pos-pnl {
+  font-size: 0.68rem;
+}
+
 /* AI chat */
 .chat-area {
   display: grid;
