@@ -190,6 +190,35 @@ const providerForRealtimeSymbol = (symbol) =>
     ? 'alphavantage'
     : 'finnhub';
 
+const isFinnhubUnavailableError = (error) =>
+  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
+  error?.code === 'FINNHUB_RATE_LIMIT' ||
+  error?.status === 403 ||
+  error?.status === 429;
+
+const fallbackPriceFromSymbol = (symbol) => {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!normalized) return 100;
+
+  if (normalized.endsWith('USDT')) {
+    if (normalized.startsWith('BTC')) return 60000;
+    if (normalized.startsWith('ETH')) return 3000;
+    if (normalized.startsWith('SOL')) return 150;
+    return 100;
+  }
+
+  if (normalized.includes('_')) {
+    if (normalized === 'USD_JPY') return 150;
+    if (normalized === 'USD_CHF') return 0.9;
+    if (normalized === 'USD_CAD') return 1.35;
+    return 1.1;
+  }
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  return 40 + (hash % 460);
+};
+
 const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
@@ -202,15 +231,26 @@ const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
     return { symbol: upper, price, change: null, provider: 'alphavantage' };
   }
 
-  const quote = await finnhubSvc.quote(upper);
-  const price = Number(quote?.c);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  return {
-    symbol: upper,
-    price,
-    change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
-    provider: 'finnhub'
-  };
+  try {
+    const quote = await finnhubSvc.quote(upper);
+    const price = Number(quote?.c);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return {
+      symbol: upper,
+      price,
+      change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
+      provider: 'finnhub'
+    };
+  } catch (error) {
+    if (!isFinnhubUnavailableError(error)) throw error;
+    return {
+      symbol: upper,
+      price: Number(fallbackPriceFromSymbol(upper).toFixed(6)),
+      change: 0,
+      provider: 'fallback',
+      fallback: true
+    };
+  }
 };
 
 const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
