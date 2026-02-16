@@ -55,6 +55,51 @@ const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
   };
 };
 
+const isFinnhubUnavailable = (error) =>
+  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
+  error?.code === 'FINNHUB_RATE_LIMIT' ||
+  error?.status === 403 ||
+  error?.status === 429;
+
+const symbolBasePrice = (symbol) => {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!normalized) return 100;
+
+  if (normalized.endsWith('USDT')) {
+    if (normalized.startsWith('BTC')) return 60000;
+    if (normalized.startsWith('ETH')) return 3000;
+    if (normalized.startsWith('SOL')) return 150;
+    return 100;
+  }
+
+  if (normalized.includes('_')) {
+    if (normalized === 'USD_JPY') return 150;
+    if (normalized === 'USD_CHF') return 0.9;
+    if (normalized === 'USD_CAD') return 1.35;
+    return 1.1;
+  }
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  return 40 + (hash % 460);
+};
+
+const syntheticQuote = (symbol, retryAfterMs = 0) => {
+  const c = Number(symbolBasePrice(symbol).toFixed(6));
+  return {
+    c,
+    pc: c,
+    d: 0,
+    dp: 0,
+    h: c,
+    l: c,
+    o: c,
+    t: Math.floor(Date.now() / 1000),
+    fallback: true,
+    retryAfterMs: Number(retryAfterMs) || 0
+  };
+};
+
 const resolveRealtimeQuoteSymbol = (symbol) => {
   const normalized = String(symbol || '').trim().toUpperCase();
   if (!normalized) return { quoteSymbol: null, market: null };
@@ -344,52 +389,27 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
   };
 
   const fetchAssetSnapshot = async (symbol, category = null) => {
-    const to = nowEpoch();
-    const from = to - 60 * 60 * 24 * 260;
     const normalizedCategory = String(category || '').toLowerCase();
     let quoteSymbol = symbol;
     let quoteData = null;
-    let candlesData = null;
 
     if (normalizedCategory === 'crypto' || /USDT$/.test(String(symbol || '').toUpperCase())) {
       quoteSymbol = `BINANCE:${symbol}`;
-      quoteData = await finnhub.quote(quoteSymbol);
-      try {
-        candlesData = await finnhub.cryptoCandles(symbol, 'D', from, to);
-      } catch (error) {
-        if (error?.status === 403 || error?.status === 429 || error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' || error?.code === 'FINNHUB_RATE_LIMIT') {
-          candlesData = buildSyntheticCandles(quoteData?.c, quoteData?.pc);
-        } else {
-          throw error;
-        }
-      }
     } else if (normalizedCategory === 'fx' || String(symbol || '').includes('_')) {
       const [base, quote] = String(symbol || '').split('_');
       if (!base || !quote) return null;
       quoteSymbol = `OANDA:${base}_${quote}`;
-      quoteData = await finnhub.quote(quoteSymbol);
-      try {
-        candlesData = await finnhub.forexCandles(base, quote, 'D', from, to);
-      } catch (error) {
-        if (error?.status === 403 || error?.status === 429 || error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' || error?.code === 'FINNHUB_RATE_LIMIT') {
-          candlesData = buildSyntheticCandles(quoteData?.c, quoteData?.pc);
-        } else {
-          throw error;
-        }
-      }
-    } else {
-      quoteData = await finnhub.quote(quoteSymbol);
-      try {
-        candlesData = await finnhub.candles(symbol, 'D', from, to);
-      } catch (error) {
-        if (error?.status === 403 || error?.status === 429 || error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' || error?.code === 'FINNHUB_RATE_LIMIT') {
-          candlesData = buildSyntheticCandles(quoteData?.c, quoteData?.pc);
-        } else {
-          throw error;
-        }
-      }
     }
-    if (candlesData?.s !== 'ok') return null;
+
+    try {
+      quoteData = await finnhub.quote(quoteSymbol);
+    } catch (error) {
+      if (!isFinnhubUnavailable(error)) throw error;
+      quoteData = syntheticQuote(symbol, error?.retryAfterMs);
+    }
+
+    const candlesData = buildSyntheticCandles(quoteData?.c, quoteData?.pc);
+    if (!candlesData?.c?.length) return null;
 
     return buildAssetFromMarketData(symbol, quoteData, candlesData);
   };

@@ -198,38 +198,14 @@ const normalizePosition = (row) => ({
 
 const fetchSnapshotViaProxy = async (meta) => {
   try {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const fromSec = nowSec - 60 * 60 * 24 * 90;
-
-    if (meta.source === 'finnhub_stock') {
-      const quote = await api.quote(meta.symbol);
-      const candles = await api.candles(meta.symbol, fromSec, nowSec).catch(() => null);
-      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
-      recordFinnhubProxyStats({ calls: 1, fallbacks: quote?.fallback ? 1 : 0 });
-      if (!safeCandles) return null;
-      return { quote, candles: safeCandles };
+    const out = await api.snapshot([meta.symbol]);
+    const item = (out?.items || []).find((x) => String(x?.symbol || '').toUpperCase() === String(meta.symbol || '').toUpperCase());
+    if (!item?.quote || !item?.candles?.c?.length) {
+      recordFinnhubProxyStats({ calls: 1, errors: 1, lastError: 'snapshot missing item' });
+      return null;
     }
-
-    if (meta.source === 'finnhub_crypto') {
-      const quote = await api.quote(`BINANCE:${meta.symbol}`);
-      const candles = await api.cryptoCandles(meta.symbol, fromSec, nowSec).catch(() => null);
-      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
-      recordFinnhubProxyStats({ calls: 1, fallbacks: quote?.fallback ? 1 : 0 });
-      if (!safeCandles) return null;
-      return { quote, candles: safeCandles };
-    }
-
-    if (meta.source === 'finnhub_fx') {
-      const [base, quote] = meta.symbol.split('_');
-      const fxQuote = await api.quote(`OANDA:${meta.symbol}`);
-      const fxCandles = await api.forexCandles(base, quote, fromSec, nowSec).catch(() => null);
-      const safeCandles = fxCandles?.c?.length ? fxCandles : buildSyntheticCandles(fxQuote?.c, fxQuote?.pc);
-      recordFinnhubProxyStats({ calls: 1, fallbacks: fxQuote?.fallback ? 1 : 0 });
-      if (!safeCandles) return null;
-      return { quote: fxQuote, candles: safeCandles };
-    }
-
-    return null;
+    recordFinnhubProxyStats({ calls: 1, fallbacks: item?.quote?.fallback ? 1 : 0 });
+    return { quote: item.quote, candles: item.candles };
   } catch (error) {
     recordFinnhubProxyStats({ calls: 1, errors: 1, lastError: error?.message || 'snapshot proxy failed' });
     return null;
