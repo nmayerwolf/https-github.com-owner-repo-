@@ -1,5 +1,6 @@
 const { calculateIndicators } = require('../engine/analysis');
 const { calculateConfluence } = require('../engine/confluence');
+const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
 
 const DEFAULT_CONFIG = {
   rsiOS: 30,
@@ -135,6 +136,45 @@ const evaluateOutcome = ({ type, priceAtAlert, stopLoss, takeProfit, currentPric
   }
 
   return { outcome: 'open', shouldUpdate: false };
+};
+
+const uniqUpper = (list = []) => Array.from(new Set(list.map((item) => String(item || '').trim().toUpperCase()).filter(Boolean)));
+
+const mapUserSectorsToCategories = (sectors = []) => {
+  const values = Array.isArray(sectors) ? sectors.map((x) => String(x || '').toLowerCase()) : [];
+  const out = new Set(['equity', 'etf']);
+  if (values.includes('crypto')) out.add('crypto');
+  if (values.includes('metals')) out.add('metal');
+  if (values.includes('bonds')) out.add('bond');
+  if (values.includes('fx')) out.add('fx');
+  if (values.includes('energy')) out.add('commodity');
+  return out;
+};
+
+const buildDiscoverySymbols = ({
+  sectors = [],
+  skip = [],
+  categories = [],
+  limit = 12
+}) => {
+  const skipSet = new Set(skip.map((x) => String(x || '').toUpperCase()));
+  const allowedByUser = mapUserSectorsToCategories(sectors);
+  const forced = new Set(categories.map((x) => String(x || '').toLowerCase()));
+  const source = MARKET_UNIVERSE.filter((asset) => {
+    const category = String(asset?.category || '').toLowerCase();
+    if (forced.size && !forced.has(category)) return false;
+    if (!allowedByUser.has(category)) return false;
+    return true;
+  });
+
+  const picks = [];
+  for (const item of source) {
+    const symbol = String(item?.symbol || '').toUpperCase();
+    if (!symbol || skipSet.has(symbol)) continue;
+    picks.push(symbol);
+    if (picks.length >= limit) break;
+  }
+  return picks;
 };
 
 const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent = null, logger = console }) => {
@@ -434,7 +474,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
       options.configOverride ||
       (
         await query(
-          'SELECT sectors, rsi_os, rsi_ob, vol_thresh, min_confluence FROM user_configs WHERE user_id = $1',
+          'SELECT sectors, risk_profile, horizon, rsi_os, rsi_ob, vol_thresh, min_confluence FROM user_configs WHERE user_id = $1',
           [userId]
         )
       ).rows?.[0] ||
@@ -458,7 +498,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
         : options.positionsOverride ||
           (
             await query(
-              'SELECT id, symbol, name, buy_price, quantity FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL',
+              'SELECT id, symbol, name, category, buy_price, quantity FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL',
               [userId]
             )
           ).rows ||
@@ -466,13 +506,139 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
 
     const config = mergeConfig(configRow);
     const snapshotsBySymbol = new Map();
+    const latestSignalBySymbol = new Map();
+    const similarStatsCache = new Map();
+    const recentNews =
+      options.newsOverride ||
+      (typeof finnhub.generalNews === 'function' ? await finnhub.generalNews('general', 0).catch(() => []) : []);
     const created = [];
     let dailyCount = await getDailyCount(userId);
     const maxDailyAlerts = Number(options.maxAlertsPerUserPerDay || 10);
     const rejectionCooldownHours = Number(options.rejectionCooldownHours || 24);
     const rejectionThreshold = Number(options.rejectionThreshold || 3);
 
-    for (const item of watchlistRows) {
+    const watchlistBySymbol = new Map();
+    for (const row of watchlistRows) {
+      const symbol = String(row?.symbol || '').toUpperCase();
+      if (!symbol) continue;
+      watchlistBySymbol.set(symbol, row);
+    }
+
+    const positionBySymbol = new Map();
+    for (const row of activePositions) {
+      const symbol = String(row?.symbol || '').toUpperCase();
+      if (!symbol || positionBySymbol.has(symbol)) continue;
+      positionBySymbol.set(symbol, row);
+    }
+
+    const knownSymbols = uniqUpper([...watchlistBySymbol.keys(), ...positionBySymbol.keys()]);
+    const discoveryEnabled = options.enableDiscoverySignals === true;
+    const discoveryLimit = Number(options.discoverySymbolsLimit || 10);
+    const discoveredSymbols = discoveryEnabled
+      ? buildDiscoverySymbols({
+          sectors: config.sectors,
+          skip: knownSymbols,
+          categories: categoryFilter ? [...categoryFilter] : [],
+          limit: discoveryLimit
+        })
+      : [];
+
+    const scanList = [];
+    const pushScan = (symbol, source) => {
+      const upper = String(symbol || '').toUpperCase();
+      if (!upper || scanList.some((item) => item.symbol === upper)) return;
+      const watch = watchlistBySymbol.get(upper);
+      const pos = positionBySymbol.get(upper);
+      const marketRef = MARKET_UNIVERSE.find((item) => String(item?.symbol || '').toUpperCase() === upper);
+      const category = String(watch?.category || pos?.category || marketRef?.category || '').toLowerCase();
+      if (categoryFilter && category && !categoryFilter.has(category)) return;
+      scanList.push({
+        symbol: upper,
+        name: watch?.name || pos?.name || marketRef?.name || upper,
+        category: category || null,
+        source
+      });
+    };
+
+    [...positionBySymbol.keys()].forEach((symbol) => pushScan(symbol, 'position'));
+    [...watchlistBySymbol.keys()].forEach((symbol) => pushScan(symbol, 'watchlist'));
+    discoveredSymbols.forEach((symbol) => pushScan(symbol, 'discovery'));
+
+    const portfolioSummary = activePositions.reduce(
+      (acc, row) => {
+        const qty = Number(row?.quantity || 0);
+        const buyPrice = Number(row?.buy_price || 0);
+        if (!Number.isFinite(qty) || !Number.isFinite(buyPrice)) return acc;
+        acc.positionsCount += 1;
+        acc.totalValue += qty * buyPrice;
+        acc.totalCost += qty * buyPrice;
+        return acc;
+      },
+      { positionsCount: 0, totalValue: 0, totalCost: 0, totalPnlPct: 0 }
+    );
+    portfolioSummary.totalPnlPct = 0;
+
+    const loadPreviousSimilar = async (symbol, type) => {
+      const key = `${symbol}:${type}`;
+      if (similarStatsCache.has(key)) return similarStatsCache.get(key);
+      const out = await query(
+        `SELECT
+           COUNT(*)::int AS count,
+           COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+           COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
+         FROM alerts
+         WHERE user_id = $1 AND symbol = $2 AND type = $3`,
+        [userId, symbol, type]
+      );
+      const row = out.rows?.[0] || {};
+      const wins = Number(row.wins || 0);
+      const losses = Number(row.losses || 0);
+      const stats = {
+        count: Number(row.count || 0),
+        winRatePct: wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0
+      };
+      similarStatsCache.set(key, stats);
+      return stats;
+    };
+
+    const loadLastSignalSummary = async (symbol) => {
+      if (latestSignalBySymbol.has(symbol)) return latestSignalBySymbol.get(symbol);
+      const out = await query(
+        `SELECT created_at, outcome, price_at_alert, outcome_price
+         FROM alerts
+         WHERE user_id = $1 AND symbol = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId, symbol]
+      );
+      if (!out.rows?.length) {
+        latestSignalBySymbol.set(symbol, 'sin historial');
+        return 'sin historial';
+      }
+      const row = out.rows[0];
+      const createdAt = new Date(row.created_at);
+      const daysAgo = Math.max(0, Math.round((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)));
+      const pct =
+        Number(row.price_at_alert) > 0 && Number.isFinite(Number(row.outcome_price))
+          ? (((Number(row.outcome_price) - Number(row.price_at_alert)) / Number(row.price_at_alert)) * 100).toFixed(2)
+          : null;
+      const summary = pct == null ? `hace ${daysAgo}d, outcome=${row.outcome || 'open'}` : `hace ${daysAgo}d, outcome=${row.outcome || 'open'}, variacion=${pct}%`;
+      latestSignalBySymbol.set(symbol, summary);
+      return summary;
+    };
+
+    const pickNewsForSymbol = (symbol) => {
+      const list = Array.isArray(recentNews) ? recentNews : [];
+      if (!symbol) return list.slice(0, 5);
+      const upper = String(symbol).toUpperCase();
+      const matching = list.filter((item) => {
+        const text = `${item?.headline || ''} ${item?.summary || ''} ${item?.related || ''}`.toUpperCase();
+        return text.includes(upper);
+      });
+      return (matching.length ? matching : list).slice(0, 5);
+    };
+
+    for (const item of scanList) {
       const symbol = String(item.symbol || '').toUpperCase();
       if (!symbol) continue;
       metrics.symbolsScanned += 1;
@@ -504,13 +670,34 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
       if (isInRejectionCooldown(cooldownRow)) continue;
 
       if (aiAgent?.validateSignal) {
+        const activePosition = positionBySymbol.get(symbol);
+        const previousSimilar = await loadPreviousSimilar(symbol, payload.type);
+        const lastSignalSummary = await loadLastSignalSummary(symbol);
         const aiOut = await aiAgent.validateSignal({
           candidate: payload,
           userConfig: {
             riskProfile: configRow.risk_profile || 'moderado',
-            horizon: configRow.horizon || 'mediano'
+            horizon: configRow.horizon || 'mediano',
+            sectors: Array.isArray(configRow.sectors) ? configRow.sectors : []
           },
-          context: {}
+          context: {
+            watchlistCount: watchlistRows.length,
+            watchlistSymbols: [...watchlistBySymbol.keys()],
+            positionForSymbol: activePosition
+              ? {
+                  quantity: Number(activePosition.quantity || 0),
+                  buyPrice: Number(activePosition.buy_price || 0),
+                  pnlPct:
+                    Number(payload.priceAtAlert) > 0
+                      ? (((Number(payload.priceAtAlert) - Number(activePosition.buy_price || 0)) / Number(activePosition.buy_price || 1)) * 100)
+                      : 0
+                }
+              : null,
+            portfolioSummary,
+            previousSimilar,
+            lastSignalSummary,
+            news: pickNewsForSymbol(symbol)
+          }
         });
 
         if (aiOut.mode === 'rejected' || aiOut.confirm === false) {
@@ -589,6 +776,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
     return {
       userId,
       watchlistScanned: watchlistRows.length,
+      discoveredScanned: discoveredSymbols.length,
       positionsScanned: activePositions.length,
       alertsCreated: created.length,
       metrics

@@ -172,6 +172,8 @@ export const api = {
   },
   getAlertDetail: (id) => request(`/alerts/${id}`),
   shareAlert: (alertId, groupId) => request(`/alerts/${alertId}/share`, { method: 'POST', body: JSON.stringify({ groupId }) }),
+  getMacroInsight: () => request('/alerts/macro'),
+  refreshMacroInsight: () => request('/alerts/macro/refresh', { method: 'POST', body: JSON.stringify({}) }),
 
   getNotificationPreferences: () => request('/notifications/preferences'),
   updateNotificationPreferences: (data) => request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),

@@ -9,6 +9,56 @@ const pushNotifier = createPushNotifier({ query, logger: console });
 
 const allowedTypes = new Set(ALERT_TYPES);
 
+router.get('/macro', async (req, res, next) => {
+  try {
+    const macroRadar = req.app?.locals?.macroRadar;
+    if (!macroRadar?.getLatestForUser) {
+      return res.status(503).json({ error: 'MACRO_RADAR_UNAVAILABLE', message: 'Macro Radar no disponible.' });
+    }
+    const latest = await macroRadar.getLatestForUser(req.user.id);
+    if (!latest) {
+      return res.json({ insight: null });
+    }
+    return res.json({
+      insight: {
+        id: latest.id,
+        marketSentiment: latest.market_sentiment,
+        sentimentReasoning: latest.sentiment_reasoning,
+        themes: Array.isArray(latest.themes) ? latest.themes : [],
+        keyEvents: Array.isArray(latest.key_events) ? latest.key_events : [],
+        aiModel: latest.ai_model,
+        createdAt: latest.created_at
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/macro/refresh', async (req, res, next) => {
+  try {
+    const macroRadar = req.app?.locals?.macroRadar;
+    if (!macroRadar?.generateForUser) {
+      return res.status(503).json({ error: 'MACRO_RADAR_UNAVAILABLE', message: 'Macro Radar no disponible.' });
+    }
+    const generated = await macroRadar.generateForUser(req.user.id);
+    return res.status(201).json({
+      insight: {
+        id: generated.id,
+        marketSentiment: generated.market_sentiment,
+        sentimentReasoning: generated.sentiment_reasoning,
+        themes: Array.isArray(generated.themes) ? generated.themes : [],
+        keyEvents: Array.isArray(generated.key_events) ? generated.key_events : [],
+        aiModel: generated.ai_model,
+        createdAt: generated.created_at,
+        source: generated.source || 'ai'
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page || 1));

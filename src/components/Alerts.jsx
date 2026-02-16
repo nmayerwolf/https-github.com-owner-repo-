@@ -13,13 +13,14 @@ import AIThesis from './AIThesis';
 import AlertCard from './common/AlertCard';
 import Sparkline from './common/Sparkline';
 
-const MAIN_TABS = ['live', 'history', 'performance'];
+const MAIN_TABS = ['live', 'macro', 'history', 'performance'];
 const LIVE_TABS = ['all', 'compra', 'venta', 'stoploss'];
 const HISTORY_TYPE_TABS = ['all', ...ALERT_TYPES];
 const OUTCOME_TABS = ['all', ...ALERT_OUTCOMES];
 
 const MAIN_LABEL = {
   live: 'En vivo',
+  macro: 'Macro',
   history: 'Historial',
   performance: 'Rendimiento'
 };
@@ -98,6 +99,10 @@ const Alerts = () => {
   const [agentQuery, setAgentQuery] = useState('');
   const [agentLoading, setAgentLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const [macroLoading, setMacroLoading] = useState(false);
+  const [macroRefreshing, setMacroRefreshing] = useState(false);
+  const [macroError, setMacroError] = useState('');
+  const [macroInsight, setMacroInsight] = useState(null);
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
@@ -141,7 +146,7 @@ const Alerts = () => {
   );
 
   useEffect(() => {
-    if (mainTab === 'live') return;
+    if (mainTab === 'live' || mainTab === 'macro') return;
 
     let active = true;
 
@@ -170,7 +175,7 @@ const Alerts = () => {
   }, [mainTab, historyType, historyPage, historyLimit]);
 
   useEffect(() => {
-    if (mainTab === 'live') return;
+    if (mainTab === 'live' || mainTab === 'macro') return;
 
     let active = true;
 
@@ -191,6 +196,31 @@ const Alerts = () => {
 
     fetchGroups();
 
+    return () => {
+      active = false;
+    };
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab !== 'macro') return;
+
+    let active = true;
+    const loadMacro = async () => {
+      setMacroLoading(true);
+      setMacroError('');
+      try {
+        const out = await api.getMacroInsight();
+        if (!active) return;
+        setMacroInsight(out?.insight || null);
+      } catch {
+        if (!active) return;
+        setMacroError('No se pudo cargar el Macro Radar.');
+      } finally {
+        if (active) setMacroLoading(false);
+      }
+    };
+
+    loadMacro();
     return () => {
       active = false;
     };
@@ -649,6 +679,93 @@ const Alerts = () => {
     );
   };
 
+  const refreshMacroInsight = async () => {
+    setMacroRefreshing(true);
+    setMacroError('');
+    try {
+      const out = await api.refreshMacroInsight();
+      setMacroInsight(out?.insight || null);
+    } catch {
+      setMacroError('No se pudo recalcular el Macro Radar.');
+    } finally {
+      setMacroRefreshing(false);
+    }
+  };
+
+  const renderMacro = () => {
+    const insight = macroInsight;
+
+    return (
+      <>
+        <section className="card row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ marginBottom: 6 }}>Macro Radar</h3>
+            <div className="muted">Lectura top-down de mercado con temas y activos sugeridos.</div>
+          </div>
+          <button type="button" onClick={refreshMacroInsight} disabled={macroRefreshing}>
+            {macroRefreshing ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </section>
+
+        {macroLoading ? <section className="card muted">Cargando Macro Radar...</section> : null}
+        {macroError ? <section className="card" style={{ borderColor: '#FF4757AA' }}>{macroError}</section> : null}
+        {!macroLoading && !macroError && !insight ? <section className="card muted">Todavía no hay insight macro para este usuario.</section> : null}
+
+        {!macroLoading && !macroError && insight ? (
+          <>
+            <section className="card">
+              <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+                <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
+                  Sentimiento: {insight.marketSentiment || 'neutral'}
+                </span>
+                <span className="muted">{shortDate(insight.createdAt)}</span>
+              </div>
+              <div className="muted" style={{ marginTop: 8 }}>{insight.sentimentReasoning || 'Sin resumen disponible.'}</div>
+            </section>
+
+            <section className="grid">
+              {(insight.themes || []).map((theme, idx) => (
+                <article key={`${theme.theme || 'theme'}-${idx}`} className="card">
+                  <div className="row" style={{ justifyContent: 'space-between' }}>
+                    <strong>{theme.theme}</strong>
+                    <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
+                      Convicción {Number(theme.conviction || 0)}/10
+                    </span>
+                  </div>
+                  <div className="muted" style={{ marginTop: 8 }}>{theme.reasoning}</div>
+                  {(theme.suggested_assets || []).length ? (
+                    <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                      {theme.suggested_assets.map((asset) => (
+                        <span key={`${theme.theme}-${asset.symbol}`} className="badge" style={{ background: '#00E08E22', color: '#00E08E' }}>
+                          {asset.symbol}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </section>
+
+            {(insight.keyEvents || []).length ? (
+              <section className="card">
+                <h3 style={{ marginBottom: 8 }}>Eventos próximos</h3>
+                <div className="grid">
+                  {insight.keyEvents.map((event) => (
+                    <article key={`${event.event}-${event.date}`} className="card">
+                      <strong>{event.event}</strong>
+                      <div className="muted">{event.date}</div>
+                      <div className="muted" style={{ marginTop: 6 }}>{event.potential_impact}</div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
+        ) : null}
+      </>
+    );
+  };
+
   return (
     <div className="grid">
       {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
@@ -672,6 +789,7 @@ const Alerts = () => {
       </section>
 
       {mainTab === 'history' && renderHistory()}
+      {mainTab === 'macro' && renderMacro()}
       {mainTab === 'performance' && renderPerformance()}
     </div>
   );

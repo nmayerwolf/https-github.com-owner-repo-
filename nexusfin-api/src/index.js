@@ -15,6 +15,7 @@ const av = require('./services/alphavantage');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
 const { createPushNotifier } = require('./services/push');
+const { createMacroRadar } = require('./services/macroRadar');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -70,7 +71,8 @@ app.locals.getCronStatus = () => ({
   stopLossChecked: 0,
   nextRun: null,
   errors: [],
-  lastTask: null
+  lastTask: null,
+  macroRuns: 0
 });
 app.locals.getMobileHealthStatus = () => ({
   ok: true,
@@ -156,7 +158,8 @@ app.get('/api/health/cron', (_req, res) => {
       stopLossChecked: 0,
       nextRun: null,
       errors: [],
-      lastTask: null
+      lastTask: null,
+      macroRuns: 0
     }
   );
 });
@@ -381,11 +384,14 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const wsHub = startWSHub(server);
   const pushNotifier = createPushNotifier({ query, logger: console });
   const aiAgent = createAiAgent();
+  const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
+  app.locals.macroRadar = macroRadar;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
     const cycle = await alertEngine.runGlobalCycle({
       ...options,
+      enableDiscoverySignals: true,
       maxAlertsPerUserPerDay: env.aiAgentMaxAlertsPerUserPerDay,
       rejectionCooldownHours: env.aiAgentRejectionCooldownHours,
       rejectionThreshold: 3
@@ -402,7 +408,8 @@ const startHttpServer = ({ port = env.port } = {}) => {
     us: () => runMarketCycleWithOutcome({ categories: ['equity', 'etf', 'bond', 'metal', 'commodity'], includeStopLoss: true }),
     crypto: () => runMarketCycleWithOutcome({ categories: ['crypto'], includeStopLoss: false }),
     forex: () => runMarketCycleWithOutcome({ categories: ['fx'], includeStopLoss: false }),
-    commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false })
+    commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false }),
+    macroDaily: () => macroRadar.runGlobalDaily()
   });
   const logCronRun = async ({
     event,
@@ -511,7 +518,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  return { server, wsHub, cronRuntime, wsPriceRuntime, alertEngine, pushNotifier };
+  return { server, wsHub, cronRuntime, wsPriceRuntime, alertEngine, pushNotifier, macroRadar };
 };
 
 if (require.main === module) {

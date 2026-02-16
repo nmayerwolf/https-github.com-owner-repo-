@@ -77,6 +77,12 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
       schedule: `*/${Math.max(1, config.cronCommodityIntervalMinutes)} * * * *`,
       shouldRun: inUsHours,
       run: runners.commodity || (async () => ({ scanned: 0, generated: 0, market: 'commodity' }))
+    },
+    {
+      name: 'macro-daily',
+      schedule: String(config.cronMacroDailySchedule || '0 8 * * *'),
+      shouldRun: () => true,
+      run: runners.macroDaily || (async () => ({ generated: 0 }))
     }
   ];
 };
@@ -100,6 +106,7 @@ const startMarketCron = (options = {}) => {
     aiFailures: 0,
     alertsGenerated: 0,
     stopLossChecked: 0,
+    macroRuns: 0,
     nextRun: null,
     errors: [],
     lastTask: null
@@ -163,6 +170,9 @@ const startMarketCron = (options = {}) => {
           status.aiFailures = aiFailures;
           status.alertsGenerated = Number.isFinite(alertsGenerated) ? alertsGenerated : 0;
           status.stopLossChecked = Number.isFinite(stopLossChecked) ? stopLossChecked : 0;
+          if (task.name === 'macro-daily') {
+            status.macroRuns = Number(out?.generated || 0);
+          }
           status.errors = [];
 
           if (typeof logRun === 'function') {
