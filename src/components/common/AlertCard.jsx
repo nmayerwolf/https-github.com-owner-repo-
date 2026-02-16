@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import ConfluenceBar from './ConfluenceBar';
 import { formatUSD } from '../../utils/format';
 
@@ -44,4 +44,24 @@ const AlertCard = ({ alert }) => {
   );
 };
 
-export default AlertCard;
+const areEqualAlertCard = (prevProps, nextProps) => {
+  const prev = prevProps.alert;
+  const next = nextProps.alert;
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  return (
+    prev.id === next.id &&
+    prev.type === next.type &&
+    prev.symbol === next.symbol &&
+    prev.title === next.title &&
+    prev.recommendation === next.recommendation &&
+    prev.stopLoss === next.stopLoss &&
+    prev.takeProfit === next.takeProfit &&
+    prev.confidence === next.confidence &&
+    prev.net === next.net &&
+    prev.confluenceBull === next.confluenceBull &&
+    prev.confluenceBear === next.confluenceBear
+  );
+};
+
+export default memo(AlertCard, areEqualAlertCard);

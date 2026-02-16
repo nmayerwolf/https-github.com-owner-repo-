@@ -27,15 +27,24 @@ const Dashboard = () => {
     return { invested, value, pnl, pnlPct };
   }, [state.positions, state.assets]);
 
-  const tickerAssets = ['AAPL', 'NVDA', 'BTCUSDT', 'ETHUSDT', 'GLD', 'EUR_USD', 'SPY'].map((s) => state.assets.find((a) => a.symbol === s)).filter(Boolean);
-  const watchlistAssets = state.assets.slice(0, 10);
-  const performance = {
-    hitRate: Number(state.alerts.length ? (state.alerts.filter((a) => String(a.type).includes('compra')).length / state.alerts.length) * 100 : 0),
-    avgReturn: portfolio.invested ? (portfolio.pnl / portfolio.invested) * 100 : 0,
-    drawdown: Math.min(0, portfolio.pnlPct - 5),
-    rr: 2.5
-  };
-  const visibleAlerts = state.alerts.slice(0, alertVisibleCount);
+  const tickerAssets = useMemo(
+    () =>
+      ['AAPL', 'NVDA', 'BTCUSDT', 'ETHUSDT', 'GLD', 'EUR_USD', 'SPY']
+        .map((s) => state.assets.find((a) => a.symbol === s))
+        .filter(Boolean),
+    [state.assets]
+  );
+  const watchlistAssets = useMemo(() => state.assets.slice(0, 10), [state.assets]);
+  const performance = useMemo(
+    () => ({
+      hitRate: Number(state.alerts.length ? (state.alerts.filter((a) => String(a.type).includes('compra')).length / state.alerts.length) * 100 : 0),
+      avgReturn: portfolio.invested ? (portfolio.pnl / portfolio.invested) * 100 : 0,
+      drawdown: Math.min(0, portfolio.pnlPct - 5),
+      rr: 2.5
+    }),
+    [state.alerts, portfolio.invested, portfolio.pnl, portfolio.pnlPct]
+  );
+  const visibleAlerts = useMemo(() => state.alerts.slice(0, alertVisibleCount), [state.alerts, alertVisibleCount]);
   const hasMoreAlerts = visibleAlerts.length < state.alerts.length;
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Link } from 'react-router-dom';
 import Sparkline from './Sparkline';
 import { formatPct, formatUSD } from '../../utils/format';
@@ -51,4 +51,28 @@ const AssetRow = ({ asset, to = null, action = null, actionLabel = null }) => {
   );
 };
 
-export default AssetRow;
+const areEqualAssetRow = (prevProps, nextProps) => {
+  const prev = prevProps.asset;
+  const next = nextProps.asset;
+  if (prev === next) {
+    return prevProps.to === nextProps.to && prevProps.action === nextProps.action && prevProps.actionLabel === nextProps.actionLabel;
+  }
+  if (!prev || !next) return false;
+  const prevSpark = prev.candles?.c || [];
+  const nextSpark = next.candles?.c || [];
+  const prevSparkTail = prevSpark.slice(-30).join(',');
+  const nextSparkTail = nextSpark.slice(-30).join(',');
+  return (
+    prev.symbol === next.symbol &&
+    prev.name === next.name &&
+    prev.category === next.category &&
+    prev.price === next.price &&
+    prev.changePercent === next.changePercent &&
+    prevSparkTail === nextSparkTail &&
+    prevProps.to === nextProps.to &&
+    prevProps.actionLabel === nextProps.actionLabel &&
+    prevProps.action === nextProps.action
+  );
+};
+
+export default memo(AssetRow, areEqualAssetRow);
