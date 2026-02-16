@@ -849,6 +849,45 @@ textarea {
   color: var(--text-primary);
 }
 
+.markets-loading-note {
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.skeleton {
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  background-size: 220% 100%;
+  animation: skeleton-pulse 1.3s ease-in-out infinite;
+}
+
+.skeleton-asset {
+  height: 54px;
+  margin: 6px 0;
+}
+
+.skeleton-group {
+  height: 122px;
+}
+
+.skeleton-line {
+  height: 16px;
+}
+
+.skeleton-line-short {
+  width: 70%;
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
 @media (max-width: 720px) {
   .group-tools {
     grid-template-columns: 1fr;

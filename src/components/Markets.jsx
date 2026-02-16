@@ -19,6 +19,7 @@ const Markets = () => {
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
+  const isStreamingLoad = state.progress.loaded < state.progress.total;
 
   const filtered = useMemo(() => {
     return state.assets.filter((a) => {
@@ -77,7 +78,15 @@ const Markets = () => {
       </section>
 
       <section className="card">
+        {isStreamingLoad && (
+          <div className="markets-loading-note">
+            Cargando mercado en segundo plano: {state.progress.loaded}/{state.progress.total}
+          </div>
+        )}
         <div className="asset-list">
+          {isStreamingLoad && !filtered.length
+            ? Array.from({ length: 6 }).map((_, idx) => <div key={`mk-skeleton-${idx}`} className="skeleton skeleton-asset" />)
+            : null}
           {filtered.map((a) => (
             <AssetRow
               key={a.symbol}
@@ -87,7 +96,7 @@ const Markets = () => {
               actionLabel={state.watchlistSymbols.includes(a.symbol) ? 'Quitar' : null}
             />
           ))}
-          {!filtered.length ? <div className="muted">No hay activos para este filtro.</div> : null}
+          {!filtered.length && !isStreamingLoad ? <div className="muted">No hay activos para este filtro.</div> : null}
         </div>
       </section>
     </div>

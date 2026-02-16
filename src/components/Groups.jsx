@@ -54,6 +54,7 @@ const Groups = () => {
   const [feedLimit] = useState(20);
   const [feedLoading, setFeedLoading] = useState(false);
   const [feedData, setFeedData] = useState({ events: [], pagination: { page: 1, limit: 20, total: 0 } });
+  const isInitialLoading = loading && !groups.length;
 
   const load = async () => {
     setLoading(true);
@@ -277,6 +278,9 @@ const Groups = () => {
           </button>
         </div>
         <div className="grid group-list">
+          {isInitialLoading
+            ? Array.from({ length: 3 }).map((_, idx) => <div key={`group-skeleton-${idx}`} className="skeleton skeleton-group" />)
+            : null}
           {groups.map((g) => (
             <article key={g.id} className="group-card">
               <div className="row group-card-head">
@@ -325,7 +329,7 @@ const Groups = () => {
               </div>
             </article>
           ))}
-          {!groups.length && <div className="muted">No estás en grupos todavía.</div>}
+          {!groups.length && !isInitialLoading && <div className="muted">No estás en grupos todavía.</div>}
         </div>
       </section>
 

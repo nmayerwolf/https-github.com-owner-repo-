@@ -34,6 +34,7 @@ const Screener = () => {
     () => state.assets.filter((a) => category === 'all' || a.category === category),
     [state.assets, category]
   );
+  const isStreamingLoad = state.progress.loaded < state.progress.total;
 
   const run = async (value) => {
     if (!value.trim()) return;
@@ -71,6 +72,11 @@ const Screener = () => {
       </section>
 
       <section className="card">
+        {isStreamingLoad && (
+          <div className="markets-loading-note">
+            Sincronizando activos para screener: {state.progress.loaded}/{state.progress.total}
+          </div>
+        )}
         <div className="screener-quick">
           {quick.map((q) => (
             <button key={q} type="button" className="ai-sug" onClick={() => run(q)}>
@@ -85,6 +91,13 @@ const Screener = () => {
           </button>
         </div>
       </section>
+
+      {isStreamingLoad && !messages.length ? (
+        <section className="card screener-msg-card">
+          <div className="skeleton skeleton-line" />
+          <div className="skeleton skeleton-line skeleton-line-short" />
+        </section>
+      ) : null}
 
       {messages.map((m, idx) => (
         <article key={`${m.q}-${idx}`} className="card screener-msg-card">
