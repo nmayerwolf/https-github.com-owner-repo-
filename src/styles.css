@@ -87,6 +87,8 @@ textarea {
 
 .mono {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
 }
 
 .app {
@@ -613,15 +615,18 @@ a:focus-visible {
 .a-price-col {
   text-align: right;
   flex-shrink: 0;
+  width: 86px;
 }
 
 .a-price {
   font-size: 0.82rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .a-chg {
   font-size: 0.68rem;
+  white-space: nowrap;
 }
 
 .ind-grid {
