@@ -36,7 +36,7 @@ const Dashboard = () => {
 
     const pnl = value - invested;
     const pnlPct = invested ? (pnl / invested) * 100 : 0;
-    return { invested, value, pnl, pnlPct };
+    return { invested, value, pnl, pnlPct, activeCount: active.length };
   }, [state.positions, state.assets]);
 
   const watchlistAssets = useMemo(() => {
@@ -111,6 +111,20 @@ const Dashboard = () => {
         <div className={`portfolio-change ${portfolio.pnl >= 0 ? 'up' : 'down'} mono`}>
           {formatUSD(portfolio.pnl)} ({formatPct(portfolio.pnlPct)})
         </div>
+        <div className="portfolio-stats-grid">
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Capital invertido</div>
+            <div className="portfolio-stat-value mono">{formatUSD(portfolio.invested)}</div>
+          </div>
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Posiciones activas</div>
+            <div className="portfolio-stat-value mono">{portfolio.activeCount}</div>
+          </div>
+          <div className="portfolio-stat">
+            <div className="portfolio-stat-label">Activos en watchlist</div>
+            <div className="portfolio-stat-value mono">{state.watchlistSymbols.length}</div>
+          </div>
+        </div>
         <div className="muted">Actualizado {state.lastUpdated ? shortDate(new Date(state.lastUpdated).toISOString()) : '-'}</div>
       </section>
 
@@ -176,6 +190,9 @@ const Dashboard = () => {
       <section className="card">
         <div className="section-header-inline">
           <h3 className="section-title">Performance del Agente</h3>
+        </div>
+        <div className="muted" style={{ marginBottom: 8 }}>
+          Métricas agregadas sobre señales activas y resultado del portfolio actual.
         </div>
         <div className="ind-grid">
           <div className="ind-cell">
