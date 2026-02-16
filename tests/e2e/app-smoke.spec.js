@@ -5,7 +5,7 @@ test('app boot smoke renders a primary screen', async ({ page }) => {
 
   const loading = page.getByRole('heading', { name: 'Cargando mercado...' });
   const auth = page.getByRole('heading', { name: 'Iniciar sesión con Google' });
-  const dashboard = page.getByRole('heading', { name: 'Horsy' });
+  const dashboard = page.getByRole('heading', { name: 'Horsai' });
 
   await expect(async () => {
     const hasLoading = await loading.isVisible().catch(() => false);

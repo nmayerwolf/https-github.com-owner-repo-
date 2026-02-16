@@ -216,7 +216,7 @@ router.delete('/subscribe/:id', async (req, res, next) => {
 
 router.post('/test', async (req, res, next) => {
   try {
-    const title = asTrimmed(req.body?.title) || 'Horsy test';
+    const title = asTrimmed(req.body?.title) || 'Horsai test';
     const body = asTrimmed(req.body?.body) || 'Push de prueba desde Settings.';
     const respectQuietHours = req.body?.respectQuietHours === undefined ? true : req.body?.respectQuietHours;
 

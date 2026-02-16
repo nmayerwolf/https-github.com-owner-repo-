@@ -159,7 +159,7 @@ describe('notifications routes', () => {
 
     const app = makeApp();
     const res = await request(app).post('/api/notifications/test').send({
-      title: 'Horsy test',
+      title: 'Horsai test',
       body: 'Push de prueba',
       respectQuietHours: true
     });

@@ -133,7 +133,7 @@ test('login and add position in portfolio', async ({ page }) => {
 
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Horsy' })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole('heading', { name: 'Horsai' })).toBeVisible({ timeout: 45_000 });
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();

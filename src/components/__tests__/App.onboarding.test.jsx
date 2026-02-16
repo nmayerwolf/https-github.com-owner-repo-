@@ -93,7 +93,7 @@ describe('App onboarding flow', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Bienvenido a Horsy')).toBeTruthy();
+    expect(await screen.findByText('Bienvenido a Horsai')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
