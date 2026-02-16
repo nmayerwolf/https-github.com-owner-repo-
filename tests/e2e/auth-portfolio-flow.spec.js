@@ -127,6 +127,51 @@ test('login and add position in portfolio', async ({ page }) => {
     if (isPath('/api/market/crypto-candles') && method === 'GET') return json(200, sampleCandles(30000));
     if (isPath('/api/market/forex-candles') && method === 'GET') return json(200, sampleCandles(1));
     if (isPath('/api/market/commodity') && method === 'GET') return json(200, { prices: Array.from({ length: 90 }, (_, i) => 80 + i * 0.1) });
+    if (isPath('/api/market/news/recommended') && method === 'GET') {
+      return json(200, {
+        mode: 'ai',
+        minScore: 6,
+        total: 2,
+        count: 2,
+        items: [
+          {
+            id: 1,
+            headline: 'Fed signals inflation risk for markets',
+            summary: 'Macro update with broad impact.',
+            source: 'Reuters',
+            related: 'AAPL,MSFT',
+            datetime: Math.floor(Date.now() / 1000) - 120,
+            aiScore: 12,
+            aiReasons: ['high:inflation', 'fresh:1h'],
+            url: 'https://example.com/news-1'
+          },
+          {
+            id: 2,
+            headline: 'AAPL announces product launch',
+            summary: 'New launch may impact growth outlook.',
+            source: 'Bloomberg',
+            related: 'AAPL',
+            datetime: Math.floor(Date.now() / 1000) - 60,
+            aiScore: 11,
+            aiReasons: ['high:launch', 'watchlist:AAPL'],
+            url: 'https://example.com/news-2'
+          }
+        ]
+      });
+    }
+    if (isPath('/api/market/news') && method === 'GET') {
+      return json(200, [
+        {
+          id: 3,
+          headline: 'General market update',
+          summary: 'Broad market context.',
+          source: 'WSJ',
+          related: '',
+          datetime: Math.floor(Date.now() / 1000) - 300,
+          url: 'https://example.com/news-3'
+        }
+      ]);
+    }
 
     return json(200, {});
   });
@@ -148,6 +193,10 @@ test('login and add position in portfolio', async ({ page }) => {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();
     await expect(migrationHeading).toBeHidden();
   }
+  await page.locator('a.nav-item[href="/news"]').click();
+  await expect(page.getByRole('heading', { name: 'Noticias' })).toBeVisible();
+  await expect(page.getByText('AAPL announces product launch')).toBeVisible();
+
   await page.locator('a.nav-item[href="/portfolio"]').click();
   await expect(page.getByRole('heading', { name: 'Nueva posición' })).toBeVisible();
 
