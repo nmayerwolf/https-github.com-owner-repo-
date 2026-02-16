@@ -422,8 +422,8 @@ const App = () => {
             <span className="badge mono" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
               {user?.email || 'usuario'}
             </span>
-            <button type="button" onClick={logout} className="logout-btn">
-              Logout
+            <button type="button" onClick={logout} className="logout-btn" aria-label="Cerrar sesión">
+              Cerrar sesión
             </button>
           </div>
         </div>
@@ -442,7 +442,7 @@ const App = () => {
         </div>
 
         {(backendOffline || networkOffline) && (
-          <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }}>
+          <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }} role="status" aria-live="polite">
             <strong>{networkOffline ? 'Sin conexión' : 'Modo offline'}</strong>
             <div className="muted">
               {networkOffline
@@ -453,7 +453,7 @@ const App = () => {
         )}
 
         {!!state.uiErrors.length && (
-          <section className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>
+          <section className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }} role="alert" aria-live="assertive">
             {state.uiErrors.map((e) => (
               <div key={e.id} className="row" style={{ marginBottom: 6 }}>
                 <span>

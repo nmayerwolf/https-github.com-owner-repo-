@@ -274,7 +274,7 @@ const Groups = () => {
             <div className="muted">Seguimiento de membresía y roles.</div>
           </div>
           <button type="button" onClick={load} disabled={loading}>
-            Refresh
+            Actualizar
           </button>
         </div>
         <div className="grid group-list">
@@ -396,7 +396,7 @@ const Groups = () => {
               <div className="row group-feed-head">
                 <span className="muted">Eventos del grupo</span>
                 <button type="button" onClick={() => loadFeed(selectedGroupId, feedPage)} disabled={feedLoading}>
-                  Refresh feed
+                  Actualizar feed
                 </button>
               </div>
 

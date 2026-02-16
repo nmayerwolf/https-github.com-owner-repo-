@@ -241,6 +241,15 @@ textarea {
   background: rgba(255, 255, 255, 0.03);
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
 /* Dashboard */
 .dashboard-page {
   display: grid;

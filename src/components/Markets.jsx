@@ -127,7 +127,7 @@ const Markets = () => {
           ))}
           {hasMore ? (
             <div className="markets-load-more">
-              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, filtered.length))}>
+              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, filtered.length))} aria-label="Cargar más activos">
                 Cargar más
               </button>
               <div ref={loadMoreRef} className="markets-load-sentinel" aria-hidden="true" />
