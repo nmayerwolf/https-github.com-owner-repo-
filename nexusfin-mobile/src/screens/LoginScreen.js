@@ -9,7 +9,7 @@ const LoginScreen = ({ onSubmit, onOAuth, loading, error, oauthProviders, oauthL
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
-      <Text style={[styles.title, { color: palette.text }]}>NexusFin Mobile</Text>
+      <Text style={[styles.title, { color: palette.text }]}>Horsy</Text>
       <Text style={[styles.subtitle, { color: palette.muted }]}>Ingresá con tu cuenta</Text>
 
       <TextInput
