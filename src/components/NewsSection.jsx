@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
 
 const timeAgoEs = (unixSeconds) => {
@@ -13,13 +13,17 @@ const timeAgoEs = (unixSeconds) => {
   return `hace ${days}d`;
 };
 
-const NewsSection = ({ symbol = '', title = 'Noticias', limit = 6 }) => {
+const NewsSection = ({ symbol = '', title = 'Noticias', limit = 12 }) => {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
+  const [visibleCount, setVisibleCount] = useState(4);
+  const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
+  const hasMore = visibleItems.length < items.length;
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setVisibleCount(4);
     const fetchNews = async () => {
       try {
         const out = symbol ? await api.marketNews({ symbol }) : await api.marketNews({ category: 'general', minId: 0 });
@@ -49,7 +53,7 @@ const NewsSection = ({ symbol = '', title = 'Noticias', limit = 6 }) => {
 
       {!loading && !!items.length ? (
         <div className="news-list">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <button
               key={item.id || item.url}
               type="button"
@@ -65,6 +69,13 @@ const NewsSection = ({ symbol = '', title = 'Noticias', limit = 6 }) => {
               </div>
             </button>
           ))}
+          {hasMore ? (
+            <div className="news-load-more">
+              <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + 4, items.length))}>
+                Ver más noticias
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

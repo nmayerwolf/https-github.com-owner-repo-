@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 import AssetRow from './common/AssetRow';
@@ -8,6 +8,7 @@ import NewsSection from './NewsSection';
 
 const Dashboard = () => {
   const { state } = useApp();
+  const [alertVisibleCount, setAlertVisibleCount] = useState(3);
 
   const portfolio = useMemo(() => {
     const assetsBySymbol = Object.fromEntries(state.assets.map((a) => [a.symbol, a]));
@@ -34,6 +35,12 @@ const Dashboard = () => {
     drawdown: Math.min(0, portfolio.pnlPct - 5),
     rr: 2.5
   };
+  const visibleAlerts = state.alerts.slice(0, alertVisibleCount);
+  const hasMoreAlerts = visibleAlerts.length < state.alerts.length;
+
+  useEffect(() => {
+    setAlertVisibleCount(3);
+  }, [state.alerts.length]);
 
   return (
     <div className="dashboard-page">
@@ -61,13 +68,20 @@ const Dashboard = () => {
       <section>
         <div className="section-header-inline">
           <h3 className="section-title">Señales del AI Agent</h3>
-          <span className="live-indicator">
-            <span className="live-dot" />
-            Live
-          </span>
+          <div className="row" style={{ justifyContent: 'flex-end' }}>
+            <span className="live-indicator">
+              <span className="live-dot" />
+              Live
+            </span>
+            {hasMoreAlerts ? (
+              <button type="button" className="inline-link-btn" onClick={() => setAlertVisibleCount((prev) => prev + 3)}>
+                Ver más
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="alerts-scroll">
-          {state.alerts.slice(0, 6).map((a) => (
+          {visibleAlerts.map((a) => (
             <AlertCard key={a.id} alert={a} />
           ))}
           {!state.alerts.length ? <div className="card muted">Sin señales activas.</div> : null}
