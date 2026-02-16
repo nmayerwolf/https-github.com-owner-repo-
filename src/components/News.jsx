@@ -99,6 +99,7 @@ const News = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
+  const [query, setQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(15);
 
   const watchlistSymbols = state.watchlistSymbols || [];
@@ -106,6 +107,14 @@ const News = () => {
     () => Object.fromEntries((state.assets || []).map((a) => [String(a.symbol || '').toUpperCase(), a])),
     [state.assets]
   );
+  const filteredItems = useMemo(() => {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => {
+      const haystack = [item?.headline, item?.summary, item?.source, item?.related].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, query]);
 
   useEffect(() => {
     let active = true;
@@ -125,7 +134,6 @@ const News = () => {
         const ranked = merged
           .map((item) => ({ ...item, _score: scoreNews(item, watchlistSymbols) }))
           .sort((a, b) => {
-            if (b._score !== a._score) return b._score - a._score;
             return Number(b.datetime || 0) - Number(a.datetime || 0);
           })
           .slice(0, MAX_ITEMS);
@@ -149,6 +157,10 @@ const News = () => {
     };
   }, [watchlistSymbols.join(',')]);
 
+  useEffect(() => {
+    setVisibleCount(15);
+  }, [query]);
+
   return (
     <div className="grid">
       <section className="card">
@@ -156,16 +168,23 @@ const News = () => {
           <h2 className="screen-title">Noticias</h2>
         </div>
         <div className="muted">Feed en tiempo real con impacto potencial en mercados globales y activos de tu watchlist.</div>
+        <div className="search-bar" style={{ marginTop: 10 }}>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar por palabra clave (ej: inflación, OPEP, Apple, earnings...)"
+          />
+        </div>
       </section>
 
       {loading ? <section className="card muted">Cargando noticias relevantes...</section> : null}
       {error ? <section className="card" style={{ borderColor: '#FF4757AA' }}>{error}</section> : null}
-      {!loading && !items.length && !error ? <section className="card muted">Sin noticias recientes.</section> : null}
+      {!loading && !filteredItems.length && !error ? <section className="card muted">Sin noticias para este filtro.</section> : null}
 
-      {!loading && !!items.length ? (
+      {!loading && !!filteredItems.length ? (
         <section className="card">
           <div className="news-list">
-            {items.slice(0, visibleCount).map((item) => {
+            {filteredItems.slice(0, visibleCount).map((item) => {
               const relatedSymbols = String(item.related || '')
                 .split(',')
                 .map((s) => s.trim().toUpperCase())
@@ -201,9 +220,9 @@ const News = () => {
               );
             })}
           </div>
-          {visibleCount < items.length ? (
+          {visibleCount < filteredItems.length ? (
             <div className="news-load-more">
-              <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + 15, items.length))}>
+              <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + 15, filteredItems.length))}>
                 Ver más noticias
               </button>
             </div>
