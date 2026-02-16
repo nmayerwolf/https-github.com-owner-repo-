@@ -17,9 +17,10 @@ const { query } = require('../src/config/db');
 const alertsRoutes = require('../src/routes/alerts');
 const { errorHandler } = require('../src/middleware/errorHandler');
 
-const makeApp = (userId = 'u1') => {
+const makeApp = (userId = 'u1', macroRadar = null) => {
   const app = express();
   app.use(express.json());
+  app.locals.macroRadar = macroRadar;
   app.use((req, _res, next) => {
     req.user = { id: userId, email: 'user@mail.com' };
     next();
@@ -81,6 +82,48 @@ describe('alerts routes', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('ALERT_NOT_FOUND');
+  });
+
+  it('returns latest macro insight for user', async () => {
+    const macroRadar = {
+      getLatestForUser: jest.fn(async () => ({
+        id: 'm1',
+        market_sentiment: 'bullish',
+        sentiment_reasoning: 'Momentum favorable',
+        themes: [{ theme: 'AI', conviction: 8 }],
+        key_events: [{ event: 'FOMC', date: '2026-02-18' }],
+        ai_model: 'claude-haiku',
+        created_at: '2026-02-16T10:00:00.000Z'
+      }))
+    };
+    const app = makeApp('u1', macroRadar);
+    const res = await request(app).get('/api/alerts/macro');
+
+    expect(res.status).toBe(200);
+    expect(macroRadar.getLatestForUser).toHaveBeenCalledWith('u1');
+    expect(res.body.insight.marketSentiment).toBe('bullish');
+    expect(Array.isArray(res.body.insight.themes)).toBe(true);
+  });
+
+  it('refreshes macro insight for user', async () => {
+    const macroRadar = {
+      generateForUser: jest.fn(async () => ({
+        id: 'm2',
+        market_sentiment: 'neutral',
+        sentiment_reasoning: 'Sin cambios',
+        themes: [],
+        key_events: [],
+        ai_model: null,
+        created_at: '2026-02-16T11:00:00.000Z',
+        source: 'fallback'
+      }))
+    };
+    const app = makeApp('u1', macroRadar);
+    const res = await request(app).post('/api/alerts/macro/refresh').send({});
+
+    expect(res.status).toBe(201);
+    expect(macroRadar.generateForUser).toHaveBeenCalledWith('u1');
+    expect(res.body.insight.source).toBe('fallback');
   });
 
   it('shares alert to group when membership exists', async () => {
