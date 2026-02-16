@@ -40,7 +40,7 @@ const cookieOptions = () => ({
   httpOnly: true,
   sameSite: 'strict',
   secure: env.nodeEnv === 'production',
-  path: '/api',
+  path: '/',
   maxAge: 7 * 24 * 60 * 60 * 1000,
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
 });
@@ -49,7 +49,7 @@ const clearCookieOptions = () => ({
   httpOnly: true,
   sameSite: 'strict',
   secure: env.nodeEnv === 'production',
-  path: '/api',
+  path: '/',
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
 });
 
