@@ -55,11 +55,15 @@ const Screener = () => {
   };
 
   return (
-    <div className="grid">
-      <section className="card">
-        <div className="row" style={{ flexWrap: 'wrap' }}>
+    <div className="grid screener-page">
+      <section className="card screener-hero">
+        <div>
+          <h2 className="screen-title">AI Screener</h2>
+          <p className="muted">Detectá oportunidades por categoría con prompts y contexto del mercado actual.</p>
+        </div>
+        <div className="row screener-categories">
           {CATEGORY_OPTIONS.map((x) => (
-            <button key={x} type="button" onClick={() => setCategory(x)} style={{ borderColor: category === x ? '#00E08E' : undefined }}>
+            <button key={x} type="button" className={`pill ${category === x ? 'active' : ''}`} onClick={() => setCategory(x)}>
               {x}
             </button>
           ))}
@@ -67,14 +71,14 @@ const Screener = () => {
       </section>
 
       <section className="card">
-        <div className="row" style={{ flexWrap: 'wrap' }}>
+        <div className="screener-quick">
           {quick.map((q) => (
-            <button key={q} type="button" onClick={() => run(q)}>
+            <button key={q} type="button" className="ai-sug" onClick={() => run(q)}>
               {q}
             </button>
           ))}
         </div>
-        <div className="row" style={{ marginTop: 8 }}>
+        <div className="row screener-input">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Escribí tu consulta..." />
           <button type="button" onClick={() => run(query)} disabled={loading}>
             {loading ? 'Analizando...' : 'Enviar'}
@@ -83,9 +87,9 @@ const Screener = () => {
       </section>
 
       {messages.map((m, idx) => (
-        <article key={`${m.q}-${idx}`} className="card">
-          <strong>Q: {m.q}</strong>
-          <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'IBM Plex Mono, monospace', color: '#E0E7F0' }}>{m.a}</pre>
+        <article key={`${m.q}-${idx}`} className="card screener-msg-card">
+          <div className="chat-bubble chat-user">Q: {m.q}</div>
+          <pre className="chat-bubble chat-ai screener-answer">{m.a}</pre>
         </article>
       ))}
     </div>

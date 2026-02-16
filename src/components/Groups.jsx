@@ -239,56 +239,63 @@ const Groups = () => {
   };
 
   return (
-    <div className="grid">
-      {error && <div className="card" style={{ borderColor: '#FF4757AA' }}>{error}</div>}
+    <div className="grid groups-page">
+      {error && <div className="card groups-error">{error}</div>}
 
-      <section className="card">
-        <h2>Crear grupo</h2>
-        <form onSubmit={createGroup} className="row" style={{ marginTop: 8 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mi grupo de inversión" />
-          <button type="submit" disabled={loading}>
-            Crear
-          </button>
-        </form>
+      <section className="grid group-tools">
+        <article className="card">
+          <div className="section-title">Crear grupo</div>
+          <div className="muted">Armá una comunidad privada para compartir señales y posiciones.</div>
+          <form onSubmit={createGroup} className="group-form">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mi grupo de inversión" />
+            <button type="submit" disabled={loading}>
+              Crear
+            </button>
+          </form>
+        </article>
+
+        <article className="card">
+          <div className="section-title">Unirme con código</div>
+          <div className="muted">Ingresá el código invitación para entrar a un grupo existente.</div>
+          <form onSubmit={joinGroup} className="group-form">
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="NXF-A7K2M" />
+            <button type="submit" disabled={loading}>
+              Unirme
+            </button>
+          </form>
+        </article>
       </section>
 
       <section className="card">
-        <h2>Unirme con código</h2>
-        <form onSubmit={joinGroup} className="row" style={{ marginTop: 8 }}>
-          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="NXF-A7K2M" />
-          <button type="submit" disabled={loading}>
-            Unirme
-          </button>
-        </form>
-      </section>
-
-      <section className="card">
-        <div className="row">
-          <h2>Mis grupos</h2>
+        <div className="section-header-inline">
+          <div>
+            <div className="section-title">Mis grupos</div>
+            <div className="muted">Seguimiento de membresía y roles.</div>
+          </div>
           <button type="button" onClick={load} disabled={loading}>
             Refresh
           </button>
         </div>
-        <div className="grid" style={{ marginTop: 8 }}>
+        <div className="grid group-list">
           {groups.map((g) => (
-            <article key={g.id} className="card" style={{ padding: 10 }}>
-              <div className="row">
+            <article key={g.id} className="group-card">
+              <div className="row group-card-head">
                 <div>
-                  <strong>{g.name}</strong>
+                  <strong className="group-card-name">{g.name}</strong>
                   <div className="muted">Código: {g.code}</div>
                 </div>
                 <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
                   {g.role}
                 </span>
               </div>
-              <div className="row" style={{ marginTop: 8 }}>
+              <div className="row group-card-meta">
                 <span className="muted">Miembros: {g.members}</span>
                 <button type="button" onClick={() => loadDetail(g.id)} disabled={detailLoading}>
                   Ver detalle
                 </button>
               </div>
               {g.role === 'admin' && (
-                <div className="row" style={{ marginTop: 8 }}>
+                <div className="row group-card-actions">
                   {editingId === g.id ? (
                     <>
                       <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nuevo nombre del grupo" />
@@ -311,7 +318,7 @@ const Groups = () => {
                   )}
                 </div>
               )}
-              <div className="row" style={{ marginTop: 8 }}>
+              <div className="row group-card-actions">
                 <button type="button" onClick={() => leave(g.id)} disabled={loading}>
                   Salir
                 </button>
@@ -324,12 +331,18 @@ const Groups = () => {
 
       {selectedGroupId && (
         <section className="card">
-          <h2>Detalle de grupo</h2>
-          <section className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
-            <button type="button" onClick={() => setGroupTab('members')} style={{ borderColor: groupTab === 'members' ? '#00E08E' : undefined }}>
+          <div className="section-header-inline">
+            <div>
+              <div className="section-title">Detalle de grupo</div>
+              <div className="muted">Actividad colaborativa y posiciones de miembros.</div>
+            </div>
+          </div>
+
+          <section className="pills group-tabs">
+            <button type="button" className={`pill ${groupTab === 'members' ? 'active' : ''}`} onClick={() => setGroupTab('members')}>
               Miembros
             </button>
-            <button type="button" onClick={() => setGroupTab('feed')} style={{ borderColor: groupTab === 'feed' ? '#00E08E' : undefined }}>
+            <button type="button" className={`pill ${groupTab === 'feed' ? 'active' : ''}`} onClick={() => setGroupTab('feed')}>
               Feed
             </button>
           </section>
@@ -337,23 +350,23 @@ const Groups = () => {
           {(detailLoading || feedLoading) && <div className="muted">Cargando detalle...</div>}
 
           {!detailLoading && groupDetail && groupTab === 'members' && (
-            <div className="grid" style={{ marginTop: 8 }}>
-              <div>
-                <strong>{groupDetail.name}</strong>
+            <div className="grid group-detail-grid">
+              <div className="group-detail-header">
+                <strong className="group-card-name">{groupDetail.name}</strong>
                 <div className="muted">Código: {groupDetail.code}</div>
                 <div className="muted">Miembros: {groupDetail.memberCount ?? groupDetail.members?.length ?? 0}</div>
               </div>
               {(groupDetail.members || []).map((member) => (
-                <article key={member.userId} className="card" style={{ padding: 10 }}>
-                  <div className="row">
+                <article key={member.userId} className="group-member-card">
+                  <div className="row group-card-head">
                     <strong>{member.displayName}</strong>
                     <span className="badge" style={{ background: '#C084FC22', color: '#C084FC' }}>
                       {member.role}
                     </span>
                   </div>
-                  <div className="grid" style={{ marginTop: 8 }}>
+                  <div className="grid group-positions">
                     {(member.positions || []).map((position) => (
-                      <div key={`${member.userId}-${position.symbol}`} className="row">
+                      <div key={`${member.userId}-${position.symbol}`} className="row group-position-row">
                         <span>{position.symbol}</span>
                         <span className="muted">Qty: {position.quantity}</span>
                         <span className="muted">P&L: {formatPercent(position.plPercent)}</span>
@@ -362,7 +375,7 @@ const Groups = () => {
                     {!member.positions?.length && <div className="muted">Sin posiciones activas.</div>}
                   </div>
                   {groupDetail.role === 'admin' && member.role === 'member' && (
-                    <div className="row" style={{ marginTop: 8 }}>
+                    <div className="row group-card-actions">
                       <button type="button" onClick={() => removeMember(member.userId)} disabled={detailLoading || loading}>
                         Expulsar
                       </button>
@@ -375,8 +388,8 @@ const Groups = () => {
           )}
 
           {!feedLoading && groupDetail && groupTab === 'feed' && (
-            <div className="grid" style={{ marginTop: 8 }}>
-              <div className="row">
+            <div className="grid group-feed-grid">
+              <div className="row group-feed-head">
                 <span className="muted">Eventos del grupo</span>
                 <button type="button" onClick={() => loadFeed(selectedGroupId, feedPage)} disabled={feedLoading}>
                   Refresh feed
@@ -384,14 +397,14 @@ const Groups = () => {
               </div>
 
               {(feedData.events || []).map((event) => (
-                <article key={event.id} className="card" style={{ padding: 10 }}>
-                  <div className="row">
+                <article key={event.id} className="group-event-card">
+                  <div className="row group-card-head">
                     <strong>{eventLabel(event)}</strong>
                     <span className="muted">{formatDateTime(event.createdAt)}</span>
                   </div>
                   {event.data?.recommendation && <div className="muted">{event.data.recommendation}</div>}
 
-                  <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
+                  <div className="row group-reactions">
                     <button
                       type="button"
                       onClick={() => reactToEvent(event.id, event.reactions?.userReaction === 'agree' ? null : 'agree')}
@@ -418,7 +431,7 @@ const Groups = () => {
                 <span className="muted">
                   Página {feedData.pagination?.page || 1} · Total eventos {feedData.pagination?.total || 0}
                 </span>
-                <div className="row" style={{ gap: 8 }}>
+                <div className="row group-feed-pager">
                   <button
                     type="button"
                     onClick={() => loadFeed(selectedGroupId, Math.max(1, (feedData.pagination?.page || 1) - 1))}
