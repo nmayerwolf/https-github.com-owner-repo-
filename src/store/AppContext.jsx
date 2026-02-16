@@ -61,6 +61,12 @@ export const appReducer = (state, action) => {
     case 'SET_API_HEALTH':
       return { ...state, apiHealth: action.payload };
     case 'PUSH_UI_ERROR':
+      if (!action.payload?.module || !action.payload?.message) {
+        return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
+      }
+      if (state.uiErrors.some((e) => e.module === action.payload.module && e.message === action.payload.message)) {
+        return state;
+      }
       return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
     case 'DISMISS_UI_ERROR':
       return { ...state, uiErrors: state.uiErrors.filter((e) => e.id !== action.payload) };
