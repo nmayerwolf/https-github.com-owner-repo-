@@ -121,10 +121,10 @@ const AssetDetail = () => {
       <section className="card">
         <h3>Niveles ATR adaptativos</h3>
         <div className="ind-grid" style={{ marginTop: 8 }}>
-          <Item label="Stop Loss" value={formatUSD(levels.stopLoss)} />
-          <Item label="Take Profit" value={formatUSD(levels.takeProfit)} />
+          <Item label="Stop loss" value={formatUSD(levels.stopLoss)} />
+          <Item label="Take profit" value={formatUSD(levels.takeProfit)} />
           <Item label="Multiplicador ATR" value={levels.multiplier ?? '-'} />
-          <Item label="Risk/Reward" value="1:2.5" />
+          <Item label="Riesgo/Beneficio" value="1:2.5" />
         </div>
       </section>
 
@@ -134,8 +134,8 @@ const AssetDetail = () => {
           <Item label="Apertura" value={formatUSD(Number.isFinite(sessionOpen) ? sessionOpen : null)} />
           <Item label="Cierre" value={formatUSD(Number.isFinite(sessionClose) ? sessionClose : null)} />
           <Item label="P/E" value={overview?.PERatio || '-'} />
-          <Item label="Dividend Yield" value={overview?.DividendYield || '-'} />
-          <Item label="Market Cap" value={formatLargeNumber(overview?.MarketCapitalization || profile?.marketCapitalization || '-')} />
+          <Item label="Rendimiento por dividendo" value={overview?.DividendYield || '-'} />
+          <Item label="Capitalización" value={formatLargeNumber(overview?.MarketCapitalization || profile?.marketCapitalization || '-')} />
           <Item label="Sector" value={overview?.Sector || profile?.finnhubIndustry || asset.sector} />
         </div>
       </section>

@@ -152,8 +152,8 @@ const Settings = () => {
   return (
     <div className="grid settings-page" style={{ gap: 12 }}>
       <section className="card">
-        <h2 className="screen-title" style={{ marginBottom: 0 }}>Config</h2>
-        <p className="muted">Preferencias de AI Agent, perfil, notificaciones y cuenta.</p>
+        <h2 className="screen-title" style={{ marginBottom: 0 }}>Ajustes</h2>
+        <p className="muted">Preferencias de Agente IA, perfil, notificaciones y cuenta.</p>
       </section>
 
       <div className="card">
@@ -227,7 +227,7 @@ const Settings = () => {
       </div>
 
       <div className="card">
-        <h2>AI Agent</h2>
+        <h2>Agente IA</h2>
         <p className="muted" style={{ marginTop: 6 }}>Controlá intensidad y costo operativo del agente.</p>
         <div className="ind-grid" style={{ marginTop: 8 }}>
           <div className="ind-cell">

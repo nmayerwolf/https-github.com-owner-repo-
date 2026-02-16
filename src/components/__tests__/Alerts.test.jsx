@@ -105,10 +105,10 @@ describe('Alerts', () => {
   it('shows performance metrics from backend stats', async () => {
     render(<Alerts />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Performance' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rendimiento' }));
 
     await waitFor(() => expect(apiMock.getAlerts).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('Hit Rate')).toBeTruthy();
+    expect(screen.getByText('Tasa de acierto')).toBeTruthy();
     expect(screen.getByText('+63.00%')).toBeTruthy();
     expect(screen.getByText('+8.20%')).toBeTruthy();
   });

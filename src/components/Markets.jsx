@@ -1,6 +1,9 @@
 import React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchCompanyOverview } from '../api/alphavantage';
+import { fetchCompanyProfile } from '../api/finnhub';
 import { useApp } from '../store/AppContext';
+import { formatUSD } from '../utils/format';
 import AssetRow from './common/AssetRow';
 import { CATEGORY_OPTIONS, WATCHLIST_CATALOG } from '../utils/constants';
 
@@ -19,6 +22,8 @@ const Markets = () => {
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
+  const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [selectedFundamentals, setSelectedFundamentals] = useState({ loading: false, pe: '-', marketCap: '-' });
   const [visibleCount, setVisibleCount] = useState(8);
   const loadMoreRef = useRef(null);
   const isStreamingLoad = state.progress.loaded < state.progress.total;
@@ -39,10 +44,54 @@ const Markets = () => {
 
   const visibleAssets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   const hasMore = visibleAssets.length < filtered.length;
+  const selectedAsset = useMemo(() => {
+    const symbol = String(selectedSymbol || '').toUpperCase();
+    if (!symbol) return null;
+    return state.assets.find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
+  }, [state.assets, selectedSymbol]);
+
+  const sessionOpen = Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]);
+  const sessionClose = Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]);
 
   useEffect(() => {
     setVisibleCount(8);
   }, [category, query, state.watchlistSymbols.length]);
+
+  useEffect(() => {
+    if (selectedSymbol) return;
+    const first = filtered[0]?.symbol;
+    if (first) setSelectedSymbol(first);
+  }, [selectedSymbol, filtered]);
+
+  useEffect(() => {
+    let active = true;
+    const symbol = String(selectedSymbol || '').toUpperCase();
+    if (!symbol || selectedAsset?.category !== 'equity') {
+      setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      return () => {
+        active = false;
+      };
+    }
+
+    setSelectedFundamentals({ loading: true, pe: '-', marketCap: '-' });
+    Promise.all([fetchCompanyOverview(symbol), fetchCompanyProfile(symbol)])
+      .then(([overview, profile]) => {
+        if (!active) return;
+        setSelectedFundamentals({
+          loading: false,
+          pe: overview?.PERatio || '-',
+          marketCap: overview?.MarketCapitalization || profile?.marketCapitalization || '-'
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedSymbol, selectedAsset?.category]);
 
   useEffect(() => {
     if (!hasMore) return undefined;
@@ -81,7 +130,7 @@ const Markets = () => {
           ))}
         </div>
 
-        <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
+        <div className="markets-tools">
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Agregar a watchlist</span>
             <select className="select-field" aria-label="Activo para agregar a watchlist" value={candidate} onChange={(e) => setCandidate(e.target.value)}>
@@ -95,6 +144,7 @@ const Markets = () => {
           </label>
           <button
             type="button"
+            className="markets-tools-btn"
             onClick={() => {
               actions.addToWatchlist(candidate);
               setCandidate('');
@@ -104,6 +154,61 @@ const Markets = () => {
             Agregar
           </button>
         </div>
+
+        <div className="markets-selected-pick">
+          <label className="label" style={{ margin: 0, flex: 1 }}>
+            <span className="muted">Activo seleccionado</span>
+            <select className="select-field" aria-label="Activo seleccionado para resumen rápido" value={selectedSymbol} onChange={(e) => setSelectedSymbol(e.target.value)}>
+              {filtered.map((item) => (
+                <option key={item.symbol} value={item.symbol}>
+                  {item.symbol} - {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {selectedAsset ? (
+          <div className="markets-selected-summary">
+            <div className="markets-selected-header">
+              <div>
+                <div className="ind-label">Resumen rápido</div>
+                <div className="markets-selected-title mono">
+                  {selectedAsset.symbol} <span className="muted">{selectedAsset.name}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="ind-grid markets-selected-grid">
+              <div className="ind-cell">
+                <div className="ind-label">Precio</div>
+                <div className="ind-val mono">{formatUSD(selectedAsset.price)}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">Apertura</div>
+                <div className="ind-val mono">{formatUSD(Number.isFinite(sessionOpen) ? sessionOpen : null)}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">Cierre</div>
+                <div className="ind-val mono">{formatUSD(Number.isFinite(sessionClose) ? sessionClose : null)}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">P/E</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
+              </div>
+
+              <div className="ind-cell">
+                <div className="ind-label">Capitalización</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.marketCap}</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="markets-selected-empty muted">Seleccioná un activo para ver su resumen.</div>
+        )}
       </section>
 
       <section className="card">

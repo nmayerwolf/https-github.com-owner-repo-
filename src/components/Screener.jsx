@@ -78,7 +78,7 @@ const Screener = () => {
     <div className="grid screener-page">
       <section className="card screener-hero">
         <div>
-          <h2 className="screen-title">AI Screener</h2>
+          <h2 className="screen-title">Screener IA</h2>
           <p className="muted">Detectá oportunidades por categoría con prompts y contexto del mercado actual.</p>
         </div>
         <div className="row screener-categories">

@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
+import { fetchCompanyOverview } from '../api/alphavantage';
 import { askClaude } from '../api/claude';
 import { generateInvestmentThesis } from '../api/claude';
+import { fetchCompanyProfile } from '../api/finnhub';
 import { calculateConfluence } from '../engine/confluence';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
@@ -17,24 +19,29 @@ const OUTCOME_TABS = ['all', ...ALERT_OUTCOMES];
 const MAIN_LABEL = {
   live: 'En vivo',
   history: 'Historial',
-  performance: 'Performance'
+  performance: 'Rendimiento'
 };
 
 const HISTORY_TYPE_LABEL = {
   all: 'Todos',
   opportunity: 'Compra',
   bearish: 'Venta',
-  stop_loss: 'Stop Loss'
+  stop_loss: 'Stop loss'
 };
 
 const OUTCOME_LABEL = {
   all: 'Todos',
-  win: 'Win',
-  loss: 'Loss',
-  open: 'Open'
+  win: 'Ganada',
+  loss: 'Perdida',
+  open: 'Abierta'
 };
 
 const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Riesgo en watchlist'];
+const formatLargeNumber = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value || '-';
+  return n.toLocaleString('en-US');
+};
 
 const buildLocalHint = (assets = [], query = '') => {
   const q = String(query || '').toLowerCase();
@@ -56,6 +63,8 @@ const Alerts = () => {
   const [loadingId, setLoadingId] = useState('');
   const [thesis, setThesis] = useState(null);
   const [thesisSymbol, setThesisSymbol] = useState('');
+  const [selectedLiveAlert, setSelectedLiveAlert] = useState(null);
+  const [selectedFundamentals, setSelectedFundamentals] = useState({ loading: false, pe: '-', marketCap: '-' });
 
   const [historyType, setHistoryType] = useState('all');
   const [historyPage, setHistoryPage] = useState(1);
@@ -83,6 +92,11 @@ const Alerts = () => {
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
+  const selectedAsset = useMemo(() => {
+    const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
+    if (!symbol) return null;
+    return (state.assets || []).find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
+  }, [selectedLiveAlert, state.assets]);
 
   const historyList = historyData.alerts || [];
   const performanceList = useMemo(
@@ -145,6 +159,36 @@ const Alerts = () => {
       active = false;
     };
   }, [mainTab]);
+
+  useEffect(() => {
+    let active = true;
+    const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
+    if (!symbol || selectedAsset?.category !== 'equity') {
+      setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      return () => {
+        active = false;
+      };
+    }
+
+    setSelectedFundamentals({ loading: true, pe: '-', marketCap: '-' });
+    Promise.all([fetchCompanyOverview(symbol), fetchCompanyProfile(symbol)])
+      .then(([overview, profile]) => {
+        if (!active) return;
+        setSelectedFundamentals({
+          loading: false,
+          pe: overview?.PERatio || '-',
+          marketCap: overview?.MarketCapitalization || profile?.marketCapitalization || '-'
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedLiveAlert, selectedAsset?.category]);
 
   const openThesis = async (alert) => {
     const asset = actions.getAssetBySymbol(alert.symbol);
@@ -258,7 +302,7 @@ const Alerts = () => {
 
   const renderLive = () => (
     <>
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card alerts-toolbar">
         {LIVE_TABS.map((t) => (
           <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
             {t}
@@ -267,7 +311,8 @@ const Alerts = () => {
       </section>
 
       <section className="card">
-        <h2 style={{ marginBottom: 8 }}>AI Agent</h2>
+        <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
+        <div className="muted" style={{ marginBottom: 8 }}>Preguntá por oportunidades, riesgo o activos puntuales.</div>
         <div className="chat-area">
           {!chatMessages.length ? (
             <div className="muted">Preguntale al agente sobre activos, señales o riesgo de portfolio.</div>
@@ -303,7 +348,19 @@ const Alerts = () => {
       </section>
 
       {liveList.map((a) => (
-        <article key={a.id} className="card">
+        <article
+          key={a.id}
+          className="card card-clickable"
+          onClick={() => setSelectedLiveAlert(a)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setSelectedLiveAlert(a);
+            }
+          }}
+        >
           <div className="row">
             <strong>{a.title}</strong>
             <span className="muted">{a.confidence || 'high'}</span>
@@ -317,19 +374,82 @@ const Alerts = () => {
             </div>
           )}
           {(a.type === 'compra' || a.type === 'venta') && (
-            <button type="button" style={{ marginTop: 8 }} onClick={() => openThesis(a)} disabled={loadingId === a.id}>
+            <button
+              type="button"
+              style={{ marginTop: 8 }}
+              onClick={(event) => {
+                event.stopPropagation();
+                openThesis(a);
+              }}
+              disabled={loadingId === a.id}
+            >
               {loadingId === a.id ? 'Generando...' : 'Ver tesis de inversión AI'}
             </button>
           )}
         </article>
       ))}
       {!liveList.length && <div className="card muted">No hay alertas para este filtro.</div>}
+
+      {selectedLiveAlert ? (
+        <section className="modal-backdrop" role="presentation" onClick={() => setSelectedLiveAlert(null)}>
+          <article className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="row" style={{ alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Señal'}</h3>
+                <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del Agente IA'}</div>
+              </div>
+              <button type="button" onClick={() => setSelectedLiveAlert(null)}>
+                Cerrar
+              </button>
+            </div>
+            <div className="grid" style={{ marginTop: 10 }}>
+              <div className="ind-cell">
+                <div className="ind-label">Confluencia</div>
+                <div className="ind-val mono">
+                  {Number(selectedLiveAlert.net ?? selectedLiveAlert.confluenceBull ?? 0) - Number(selectedLiveAlert.confluenceBear ?? 0)}
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Confluencia = puntos alcistas - puntos bajistas. Valor negativo implica sesgo bajista.
+                </div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Apertura</div>
+                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]))}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Cierre</div>
+                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]))}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">P/E</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Capitalización</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : formatLargeNumber(selectedFundamentals.marketCap)}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Stop loss</div>
+                <div className="ind-val mono">{selectedLiveAlert.stopLoss ? formatUSD(selectedLiveAlert.stopLoss) : '-'}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Take profit</div>
+                <div className="ind-val mono">{selectedLiveAlert.takeProfit ? formatUSD(selectedLiveAlert.takeProfit) : '-'}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Confianza</div>
+                <div className="ind-val mono">{String(selectedLiveAlert.confidence || 'high')}</div>
+              </div>
+            </div>
+          </article>
+        </section>
+      ) : null}
     </>
   );
 
   const renderHistory = () => (
     <>
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card alerts-toolbar">
         {HISTORY_TYPE_TABS.map((type) => (
           <button
             key={type}
@@ -353,7 +473,7 @@ const Alerts = () => {
       {!historyLoading && !historyError && (
         <>
           {historyList.map((a) => (
-            <article key={a.id} className="card">
+            <article key={a.id} className="card alerts-history-card">
               <div className="row">
                 <strong>
                   {a.symbol} · {a.recommendation}
@@ -411,7 +531,7 @@ const Alerts = () => {
       <>
         <section className="grid grid-2">
           <article className="card">
-            <h3>Hit Rate</h3>
+            <h3>Tasa de acierto</h3>
             <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRatePct)}</div>
           </article>
           <article className="card">
@@ -423,9 +543,9 @@ const Alerts = () => {
             <div style={{ fontSize: 22, marginTop: 6 }}>{Number(stats.total || 0)}</div>
           </article>
           <article className="card">
-            <h3>Breakdown</h3>
+            <h3>Desglose</h3>
             <div className="muted" style={{ marginTop: 6 }}>
-              Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · StopLoss: {Number(stats.stopLoss || 0)}
+              Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · Stop loss: {Number(stats.stopLoss || 0)}
             </div>
           </article>
         </section>
@@ -443,7 +563,7 @@ const Alerts = () => {
           ))}
         </section>
 
-        {historyLoading && <div className="card muted">Cargando performance...</div>}
+        {historyLoading && <div className="card muted">Cargando rendimiento...</div>}
         {!!historyError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{historyError}</div>}
 
         {!historyLoading && !historyError && (
@@ -453,12 +573,12 @@ const Alerts = () => {
                 <strong>{a.symbol}</strong>
                 <span className="muted">{a.recommendation}</span>
                 <span className="muted">{shortDate(a.createdAt)}</span>
-                <span className="muted">Outcome: {a.outcome}</span>
+                <span className="muted">Resultado: {a.outcome}</span>
                 <span className="muted mono" style={{ minWidth: 108, textAlign: 'right' }}>Precio: {formatUSD(a.priceAtAlert)}</span>
               </article>
             ))}
 
-            {!performanceList.length && <div className="card muted">No hay alertas para este filtro de outcome.</div>}
+            {!performanceList.length && <div className="card muted">No hay alertas para este filtro de resultado.</div>}
           </div>
         )}
       </>
@@ -469,7 +589,7 @@ const Alerts = () => {
     <div className="grid">
       {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
 
-      <section className="card row" style={{ flexWrap: 'wrap' }}>
+      <section className="card alerts-toolbar">
         {MAIN_TABS.map((t) => (
           <button
             key={t}

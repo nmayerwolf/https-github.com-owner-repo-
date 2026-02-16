@@ -30,11 +30,11 @@ const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
           <strong>{stats.positions}</strong>
         </div>
         <div className="row">
-          <span>Watchlist</span>
+          <span>Seguimiento</span>
           <strong>{stats.watchlist}</strong>
         </div>
         <div className="row">
-          <span>Config</span>
+          <span>Ajustes</span>
           <strong>{stats.hasConfig ? 'Sí' : 'No'}</strong>
         </div>
       </div>
@@ -468,7 +468,7 @@ const App = () => {
           <Route
             path="/portfolio"
             element={
-              <RouteBoundary moduleName="Portfolio">
+              <RouteBoundary moduleName="Cartera">
                 <Portfolio />
               </RouteBoundary>
             }

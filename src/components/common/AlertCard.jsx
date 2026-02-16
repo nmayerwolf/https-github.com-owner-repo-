@@ -3,12 +3,12 @@ import ConfluenceBar from './ConfluenceBar';
 import { formatUSD } from '../../utils/format';
 
 const labelByType = {
-  compra: 'Strong Buy',
-  venta: 'Sell',
-  stoploss: 'Stop Loss',
-  opportunity: 'Strong Buy',
-  bearish: 'Sell',
-  stop_loss: 'Stop Loss'
+  compra: 'Compra fuerte',
+  venta: 'Venta',
+  stoploss: 'Stop loss',
+  opportunity: 'Compra fuerte',
+  bearish: 'Venta',
+  stop_loss: 'Stop loss'
 };
 
 const toneByType = {
