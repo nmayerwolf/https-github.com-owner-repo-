@@ -177,18 +177,18 @@ const Settings = () => {
         <div className="grid grid-2" style={{ marginTop: 8 }}>
           <label className="label">
             <span className="muted">Perfil de riesgo</span>
-            <select value={local.riskProfile} onChange={(e) => setLocal({ ...local, riskProfile: e.target.value })}>
-              <option value="conservador">conservador</option>
-              <option value="moderado">moderado</option>
-              <option value="agresivo">agresivo</option>
+            <select className="select-field" aria-label="Perfil de riesgo" value={local.riskProfile} onChange={(e) => setLocal({ ...local, riskProfile: e.target.value })}>
+              <option value="conservador">Conservador</option>
+              <option value="moderado">Moderado</option>
+              <option value="agresivo">Agresivo</option>
             </select>
           </label>
           <label className="label">
             <span className="muted">Horizonte</span>
-            <select value={local.horizon} onChange={(e) => setLocal({ ...local, horizon: e.target.value })}>
-              <option value="corto">corto</option>
-              <option value="mediano">mediano</option>
-              <option value="largo">largo</option>
+            <select className="select-field" aria-label="Horizonte de inversión" value={local.horizon} onChange={(e) => setLocal({ ...local, horizon: e.target.value })}>
+              <option value="corto">Corto</option>
+              <option value="mediano">Mediano</option>
+              <option value="largo">Largo</option>
             </select>
           </label>
           <label className="label">

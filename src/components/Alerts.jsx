@@ -236,12 +236,13 @@ const Alerts = () => {
     return (
       <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8 }}>
         <select
+          className="select-field"
           aria-label={`Grupo para compartir ${alertId}`}
           value={shareGroupByAlert[alertId] || ''}
           onChange={(e) => setShareGroupByAlert((prev) => ({ ...prev, [alertId]: e.target.value }))}
           style={{ width: 220 }}
         >
-          <option value="">Seleccionar grupo</option>
+          <option value="">Seleccioná un grupo</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}

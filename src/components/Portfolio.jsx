@@ -219,13 +219,13 @@ const Portfolio = () => {
           </label>
           <label className="label">
             <span className="muted">Categoría</span>
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="equity">equity</option>
-              <option value="crypto">crypto</option>
-              <option value="fx">fx</option>
-              <option value="metal">metal</option>
-              <option value="commodity">commodity</option>
-              <option value="bond">bond</option>
+            <select className="select-field" aria-label="Categoría de activo" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <option value="equity">Equity</option>
+              <option value="crypto">Crypto</option>
+              <option value="fx">FX</option>
+              <option value="metal">Metal</option>
+              <option value="commodity">Commodity</option>
+              <option value="bond">Bond</option>
             </select>
           </label>
           <label className="label">
@@ -256,10 +256,10 @@ const Portfolio = () => {
         </button>
         <label className="label" style={{ maxWidth: 240 }}>
           <span className="muted">Exportar</span>
-          <select aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
-            <option value="all">Todas</option>
+          <select className="select-field" aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
+            <option value="all">Todas las posiciones</option>
             <option value="active">Solo activas</option>
-            <option value="sold">Solo vendidas</option>
+            <option value="sold">Solo cerradas</option>
           </select>
         </label>
         <button type="button" onClick={exportCsv} disabled={exporting}>

@@ -84,8 +84,8 @@ const Markets = () => {
         <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Agregar a watchlist</span>
-            <select value={candidate} onChange={(e) => setCandidate(e.target.value)}>
-              <option value="">Seleccionar activo...</option>
+            <select className="select-field" aria-label="Activo para agregar a watchlist" value={candidate} onChange={(e) => setCandidate(e.target.value)}>
+              <option value="">Seleccioná un activo...</option>
               {options.map((x) => (
                 <option key={x.symbol} value={x.symbol}>
                   {x.symbol} - {x.name}
