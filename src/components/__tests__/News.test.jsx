@@ -59,8 +59,8 @@ describe('News', () => {
     apiMock.marketNews.mockReset();
     apiMock.marketNewsRecommended.mockResolvedValue({
       items: [
-        { ...baseItems[0], aiScore: 12 },
-        { ...baseItems[2], aiScore: 10 }
+        { ...baseItems[0], aiScore: 12, aiReasons: ['high:inflation', 'watchlist:AAPL', 'fresh:1h'] },
+        { ...baseItems[2], aiScore: 10, aiReasons: ['high:opec', 'fresh:1h'] }
       ]
     });
     apiMock.marketNews.mockResolvedValueOnce(baseItems).mockResolvedValueOnce([]);
@@ -78,6 +78,7 @@ describe('News', () => {
     await waitFor(() => expect(apiMock.marketNewsRecommended).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('button', { name: 'Recomendadas por IA' })).toBeTruthy();
     expect(screen.getByText('Fed signals inflation risk for global markets')).toBeTruthy();
+    expect(screen.getByText(/IA: Impacto alto: inflation/i)).toBeTruthy();
     expect(screen.queryByText('Minor local event with low financial impact')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Todas' }));

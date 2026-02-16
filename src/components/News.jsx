@@ -7,6 +7,17 @@ const WATCHLIST_SYMBOL_LIMIT = 8;
 const REFRESH_MS = 45000;
 const AI_RELEVANCE_MIN = 6;
 
+const reasonLabel = (reason) => {
+  const raw = String(reason || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('watchlist:')) return `Watchlist (${raw.replace('watchlist:', '')})`;
+  if (raw.startsWith('high:')) return `Impacto alto: ${raw.replace('high:', '')}`;
+  if (raw.startsWith('medium:')) return `Impacto medio: ${raw.replace('medium:', '')}`;
+  if (raw.startsWith('fresh:1h')) return 'Última hora';
+  if (raw.startsWith('fresh:4h')) return 'Últimas 4h';
+  return raw;
+};
+
 const timeAgoEs = (unixSeconds) => {
   const ts = Number(unixSeconds || 0) * 1000;
   if (!Number.isFinite(ts) || ts <= 0) return 'hace un rato';
@@ -159,6 +170,15 @@ const News = () => {
                     <div className="news-meta mono">
                       {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · relevancia {Number(item.aiScore || 0)}
                     </div>
+                    {mode === 'ai' && Array.isArray(item.aiReasons) && item.aiReasons.length ? (
+                      <div className="row" style={{ marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                        {item.aiReasons.slice(0, 3).map((reason) => (
+                          <span key={`${item.id || item.url}-reason-${reason}`} className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+                            IA: {reasonLabel(reason)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="row" style={{ marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                       {leadSymbol ? <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{leadSymbol}{leadName ? ` · ${leadName}` : ''}</span> : null}
                       {matched.map((symbol) => (
