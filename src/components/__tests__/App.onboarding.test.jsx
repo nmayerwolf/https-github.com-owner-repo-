@@ -58,7 +58,6 @@ vi.mock('../../lib/notifications', () => ({
 }));
 
 vi.mock('../Navigation', () => ({ default: () => <div>Navigation</div> }));
-vi.mock('../Dashboard', () => ({ default: () => <div>Dashboard</div> }));
 vi.mock('../Markets', () => ({ default: () => <div>Markets</div> }));
 vi.mock('../Alerts', () => ({ default: () => <div>Alerts</div> }));
 vi.mock('../Portfolio', () => ({ default: () => <div>Portfolio</div> }));

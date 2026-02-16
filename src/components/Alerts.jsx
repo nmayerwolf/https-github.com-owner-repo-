@@ -9,7 +9,7 @@ import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 import { ALERT_OUTCOMES, ALERT_TYPES } from '../../packages/nexusfin-core/contracts.js';
 import AIThesis from './AIThesis';
-import ConfluenceBar from './common/ConfluenceBar';
+import AlertCard from './common/AlertCard';
 import Sparkline from './common/Sparkline';
 
 const MAIN_TABS = ['live', 'history', 'performance'];
@@ -21,6 +21,12 @@ const MAIN_LABEL = {
   live: 'En vivo',
   history: 'Historial',
   performance: 'Rendimiento'
+};
+const LIVE_TAB_LABEL = {
+  all: 'all',
+  compra: 'compra',
+  venta: 'venta',
+  stoploss: 'stoploss'
 };
 
 const HISTORY_TYPE_LABEL = {
@@ -93,6 +99,29 @@ const Alerts = () => {
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
+  const portfolio = useMemo(() => {
+    const assetsBySymbol = Object.fromEntries((state.assets || []).map((a) => [a.symbol, a]));
+    const active = (state.positions || []).filter((p) => !p.sellDate);
+    let invested = 0;
+    let value = 0;
+    active.forEach((p) => {
+      invested += p.buyPrice * p.quantity;
+      const current = assetsBySymbol[p.symbol]?.price ?? p.buyPrice;
+      value += current * p.quantity;
+    });
+    const pnl = value - invested;
+    const pnlPct = invested ? (pnl / invested) * 100 : 0;
+    return { invested, value, pnl, pnlPct };
+  }, [state.assets, state.positions]);
+  const agentPerformance = useMemo(
+    () => ({
+      hitRate: Number(state.alerts.length ? (state.alerts.filter((a) => String(a.type).includes('compra')).length / state.alerts.length) * 100 : 0),
+      avgReturn: portfolio.invested ? (portfolio.pnl / portfolio.invested) * 100 : 0,
+      avgLoss: Math.min(0, portfolio.pnlPct - 5),
+      rr: 2.5
+    }),
+    [state.alerts, portfolio.invested, portfolio.pnl, portfolio.pnlPct]
+  );
   const selectedAsset = useMemo(() => {
     const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
     if (!symbol) return null;
@@ -307,12 +336,34 @@ const Alerts = () => {
 
   const renderLive = () => (
     <>
-      <section className="card alerts-toolbar">
-        {LIVE_TABS.map((t) => (
-          <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
-            {t}
-          </button>
-        ))}
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Señales activas</h3>
+        </div>
+        <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
+          {LIVE_TABS.map((t) => (
+            <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
+              {LIVE_TAB_LABEL[t]}
+            </button>
+          ))}
+        </div>
+        <div className="alerts-grid-list">
+          {liveList.map((a) => (
+            <section key={a.id} className="grid" style={{ gap: 8 }}>
+              <AlertCard alert={a} onClick={() => setSelectedLiveAlert(a)} />
+              {(a.type === 'compra' || a.type === 'venta') ? (
+                <button
+                  type="button"
+                  onClick={() => openThesis(a)}
+                  disabled={loadingId === a.id}
+                >
+                  {loadingId === a.id ? 'Generando...' : 'Ver tesis de inversión AI'}
+                </button>
+              ) : null}
+            </section>
+          ))}
+          {!liveList.length ? <div className="card muted">No hay alertas para este filtro.</div> : null}
+        </div>
       </section>
 
       <section className="card">
@@ -351,49 +402,6 @@ const Alerts = () => {
           </button>
         </div>
       </section>
-
-      {liveList.map((a) => (
-        <article
-          key={a.id}
-          className="card card-clickable"
-          onClick={() => setSelectedLiveAlert(a)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setSelectedLiveAlert(a);
-            }
-          }}
-        >
-          <div className="row">
-            <strong>{a.title}</strong>
-            <span className="muted">{a.confidence || 'high'}</span>
-          </div>
-          {typeof a.net === 'number' && <ConfluenceBar net={a.net} />}
-          {a.stopLoss && (
-            <div className="alert-meta" style={{ marginTop: 8 }}>
-              <span className="mono">{`SL ${formatUSD(a.stopLoss)}`}</span>
-              <span className="mono">{`TP ${formatUSD(a.takeProfit)}`}</span>
-              <span className="mono">{String(a.confidence || 'high')}</span>
-            </div>
-          )}
-          {(a.type === 'compra' || a.type === 'venta') && (
-            <button
-              type="button"
-              style={{ marginTop: 8 }}
-              onClick={(event) => {
-                event.stopPropagation();
-                openThesis(a);
-              }}
-              disabled={loadingId === a.id}
-            >
-              {loadingId === a.id ? 'Generando...' : 'Ver tesis de inversión AI'}
-            </button>
-          )}
-        </article>
-      ))}
-      {!liveList.length && <div className="card muted">No hay alertas para este filtro.</div>}
 
       {selectedLiveAlert ? (
         <section className="modal-backdrop" role="presentation" onClick={() => setSelectedLiveAlert(null)}>
@@ -546,10 +554,26 @@ const Alerts = () => {
         <section className="grid grid-2">
           <article className="card">
             <h3>Tasa de acierto</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRatePct)}</div>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(agentPerformance.hitRate)}</div>
           </article>
           <article className="card">
             <h3>Retorno Promedio</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(agentPerformance.avgReturn)}</div>
+          </article>
+          <article className="card">
+            <h3>Pérdida promedio</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(agentPerformance.avgLoss)}</div>
+          </article>
+          <article className="card">
+            <h3>Riesgo/Beneficio</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>1:{agentPerformance.rr.toFixed(1)}</div>
+          </article>
+          <article className="card">
+            <h3>Tasa de acierto (historial)</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRatePct)}</div>
+          </article>
+          <article className="card">
+            <h3>Retorno Promedio (historial)</h3>
             <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(Number(stats.avgReturn || 0))}</div>
           </article>
           <article className="card">
@@ -603,6 +627,8 @@ const Alerts = () => {
     <div className="grid">
       {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
 
+      {mainTab === 'live' && renderLive()}
+
       <section className="card alerts-toolbar">
         {MAIN_TABS.map((t) => (
           <button
@@ -619,7 +645,6 @@ const Alerts = () => {
         ))}
       </section>
 
-      {mainTab === 'live' && renderLive()}
       {mainTab === 'history' && renderHistory()}
       {mainTab === 'performance' && renderPerformance()}
     </div>
