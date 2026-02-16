@@ -21,6 +21,7 @@ const createFinnhubSocketMock = vi.fn();
 vi.mock('../../api/finnhub', () => ({
   fetchAssetSnapshot: (...args) => fetchAssetSnapshotMock(...args),
   createFinnhubSocket: (...args) => createFinnhubSocketMock(...args),
+  recordFinnhubProxyStats: vi.fn(),
   getFinnhubHealth: () => ({ calls: 0, errors: 0, rateLimited: 0, retries: 0, lastError: '', lastCallAt: 0 })
 }));
 

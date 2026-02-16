@@ -333,7 +333,8 @@ const App = () => {
     return <LoadingScreen loaded={state.progress.loaded} total={state.progress.total} />;
   }
 
-  const finnhubOk = state.apiHealth.finnhub.errors === 0 || state.apiHealth.finnhub.calls > state.apiHealth.finnhub.errors;
+  const finnhubFallback = Number(state.apiHealth.finnhub.fallbacks || 0);
+  const finnhubOk = finnhubFallback === 0 && (state.apiHealth.finnhub.errors === 0 || state.apiHealth.finnhub.calls > state.apiHealth.finnhub.errors);
   const alphaOk = state.apiHealth.alphavantage.errors === 0 || state.apiHealth.alphavantage.calls > state.apiHealth.alphavantage.errors;
   const claudeOk = state.apiHealth.claude.errors === 0;
 
@@ -378,7 +379,11 @@ const App = () => {
         </div>
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-          <HealthBadge label={`Finnhub ${state.apiHealth.finnhub.calls}/${state.apiHealth.finnhub.errors}`} ok={finnhubOk} detail={state.apiHealth.finnhub.lastError || 'OK'} />
+          <HealthBadge
+            label={`Finnhub ${state.apiHealth.finnhub.calls}/${state.apiHealth.finnhub.errors} f:${finnhubFallback}`}
+            ok={finnhubOk}
+            detail={finnhubFallback > 0 ? 'Modo fallback activo (datos sintéticos)' : state.apiHealth.finnhub.lastError || 'OK'}
+          />
           <HealthBadge label={`Alpha ${state.apiHealth.alphavantage.calls}/${state.apiHealth.alphavantage.errors}`} ok={alphaOk} detail={state.apiHealth.alphavantage.lastError || 'OK'} />
           <HealthBadge label={`Claude ${state.apiHealth.claude.calls}/${state.apiHealth.claude.errors}`} ok={claudeOk} detail={state.apiHealth.claude.lastError || 'OK'} />
         </div>

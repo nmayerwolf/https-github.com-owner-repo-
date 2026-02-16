@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer, useRe
 import { fetchMacroAssets, getAlphaHealth } from '../api/alphavantage';
 import { api } from '../api/apiClient';
 import { getClaudeHealth } from '../api/claude';
-import { createFinnhubSocket, fetchAssetSnapshot, getFinnhubHealth } from '../api/finnhub';
+import { createFinnhubSocket, fetchAssetSnapshot, getFinnhubHealth, recordFinnhubProxyStats } from '../api/finnhub';
 import { createBackendSocket } from '../api/realtime';
 import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
@@ -205,6 +205,7 @@ const fetchSnapshotViaProxy = async (meta) => {
       const quote = await api.quote(meta.symbol);
       const candles = await api.candles(meta.symbol, fromSec, nowSec).catch(() => null);
       const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      recordFinnhubProxyStats({ calls: 1, fallbacks: quote?.fallback ? 1 : 0 });
       if (!safeCandles) return null;
       return { quote, candles: safeCandles };
     }
@@ -213,6 +214,7 @@ const fetchSnapshotViaProxy = async (meta) => {
       const quote = await api.quote(`BINANCE:${meta.symbol}`);
       const candles = await api.cryptoCandles(meta.symbol, fromSec, nowSec).catch(() => null);
       const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      recordFinnhubProxyStats({ calls: 1, fallbacks: quote?.fallback ? 1 : 0 });
       if (!safeCandles) return null;
       return { quote, candles: safeCandles };
     }
@@ -222,12 +224,14 @@ const fetchSnapshotViaProxy = async (meta) => {
       const fxQuote = await api.quote(`OANDA:${meta.symbol}`);
       const fxCandles = await api.forexCandles(base, quote, fromSec, nowSec).catch(() => null);
       const safeCandles = fxCandles?.c?.length ? fxCandles : buildSyntheticCandles(fxQuote?.c, fxQuote?.pc);
+      recordFinnhubProxyStats({ calls: 1, fallbacks: fxQuote?.fallback ? 1 : 0 });
       if (!safeCandles) return null;
       return { quote: fxQuote, candles: safeCandles };
     }
 
     return null;
-  } catch {
+  } catch (error) {
+    recordFinnhubProxyStats({ calls: 1, errors: 1, lastError: error?.message || 'snapshot proxy failed' });
     return null;
   }
 };
@@ -241,11 +245,16 @@ const fetchSnapshotBatchViaProxy = async (metaBatch = []) => {
     for (const item of out?.items || []) {
       const symbol = String(item?.symbol || '').toUpperCase();
       if (!symbol) continue;
+      recordFinnhubProxyStats({ calls: 1, fallbacks: item?.quote?.fallback ? 1 : 0 });
       okBySymbol[symbol] = { quote: item.quote, candles: item.candles };
     }
     const failedSymbols = (out?.errors || []).map((x) => String(x?.symbol || '').toUpperCase()).filter(Boolean);
+    if (failedSymbols.length) {
+      recordFinnhubProxyStats({ errors: failedSymbols.length, lastError: out?.errors?.[0]?.message || 'snapshot symbols failed' });
+    }
     return { okBySymbol, failedSymbols };
   } catch {
+    recordFinnhubProxyStats({ errors: metaBatch.length, lastError: 'snapshot batch failed' });
     return { okBySymbol: {}, failedSymbols: metaBatch.map((x) => String(x?.symbol || '').toUpperCase()).filter(Boolean) };
   }
 };

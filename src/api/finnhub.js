@@ -5,6 +5,8 @@ const stats = {
   errors: 0,
   retries: 0,
   rateLimited: 0,
+  fallbacks: 0,
+  fallbackActive: false,
   lastError: '',
   lastCallAt: 0,
   source: 'backend_proxy'
@@ -35,6 +37,27 @@ const trackCall = () => {
 const trackError = (error, context = '') => {
   stats.errors += 1;
   stats.lastError = `${context}${error?.message ? `: ${error.message}` : ''}`.trim();
+};
+
+export const recordFinnhubProxyStats = ({ calls = 0, errors = 0, fallbacks = 0, lastError = '' } = {}) => {
+  const nextCalls = Number(calls);
+  const nextErrors = Number(errors);
+  const nextFallbacks = Number(fallbacks);
+
+  if (Number.isFinite(nextCalls) && nextCalls > 0) {
+    stats.calls += nextCalls;
+    stats.lastCallAt = Date.now();
+  }
+  if (Number.isFinite(nextErrors) && nextErrors > 0) {
+    stats.errors += nextErrors;
+  }
+  if (Number.isFinite(nextFallbacks) && nextFallbacks > 0) {
+    stats.fallbacks += nextFallbacks;
+    stats.fallbackActive = true;
+  }
+  if (lastError) {
+    stats.lastError = String(lastError);
+  }
 };
 
 export const fetchAssetSnapshot = async (asset) => {

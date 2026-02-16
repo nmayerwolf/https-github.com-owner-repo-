@@ -50,6 +50,7 @@ vi.mock('../../api/realtime', () => ({
 vi.mock('../../api/finnhub', () => ({
   fetchAssetSnapshot: vi.fn(),
   createFinnhubSocket: vi.fn(() => ({ close: () => {} })),
+  recordFinnhubProxyStats: vi.fn(),
   getFinnhubHealth: () => ({ calls: 0, errors: 0, rateLimited: 0, retries: 0, lastError: '', lastCallAt: 0 })
 }));
 
