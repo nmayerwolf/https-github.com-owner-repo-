@@ -140,7 +140,7 @@ describe('createPushNotifier', () => {
     const notifier = createPushNotifier({ query, logger: { warn: jest.fn() } });
     const result = await notifier.notifySystem({
       userId: 'u1',
-      title: 'NexusFin test',
+      title: 'Horsy test',
       body: 'Push de prueba'
     });
 
@@ -159,7 +159,7 @@ describe('createPushNotifier', () => {
     const notifier = createPushNotifier({ query, logger: { warn: jest.fn() } });
     const result = await notifier.notifySystem({
       userId: 'u1',
-      title: 'NexusFin test',
+      title: 'Horsy test',
       body: 'Push de prueba',
       respectQuietHours: true
     });

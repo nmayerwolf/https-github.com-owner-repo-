@@ -190,6 +190,35 @@ const providerForRealtimeSymbol = (symbol) =>
     ? 'alphavantage'
     : 'finnhub';
 
+const isFinnhubUnavailableError = (error) =>
+  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
+  error?.code === 'FINNHUB_RATE_LIMIT' ||
+  error?.status === 403 ||
+  error?.status === 429;
+
+const fallbackPriceFromSymbol = (symbol) => {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!normalized) return 100;
+
+  if (normalized.endsWith('USDT')) {
+    if (normalized.startsWith('BTC')) return 60000;
+    if (normalized.startsWith('ETH')) return 3000;
+    if (normalized.startsWith('SOL')) return 150;
+    return 100;
+  }
+
+  if (normalized.includes('_')) {
+    if (normalized === 'USD_JPY') return 150;
+    if (normalized === 'USD_CHF') return 0.9;
+    if (normalized === 'USD_CAD') return 1.35;
+    return 1.1;
+  }
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  return 40 + (hash % 460);
+};
+
 const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
@@ -202,23 +231,37 @@ const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
     return { symbol: upper, price, change: null, provider: 'alphavantage' };
   }
 
-  const quote = await finnhubSvc.quote(upper);
-  const price = Number(quote?.c);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  return {
-    symbol: upper,
-    price,
-    change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
-    provider: 'finnhub'
-  };
+  try {
+    const quote = await finnhubSvc.quote(upper);
+    const price = Number(quote?.c);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return {
+      symbol: upper,
+      price,
+      change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
+      provider: 'finnhub'
+    };
+  } catch (error) {
+    if (!isFinnhubUnavailableError(error)) throw error;
+    return {
+      symbol: upper,
+      price: Number(fallbackPriceFromSymbol(upper).toFixed(6)),
+      change: 0,
+      provider: 'fallback',
+      fallback: true
+    };
+  }
 };
 
 const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
   const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
   const avMinPollMs = 65 * 1000;
   const errorCooldownMs = 30 * 1000;
+  const finnhubBackoffMaxMs = 5 * 60 * 1000;
   const heartbeatMs = 60 * 1000;
   let inFlight = false;
+  let finnhubBlockedUntil = 0;
+  let lastFinnhubBlockedLogAt = 0;
   const stateBySymbol = new Map();
   const metrics = {
     cycles: 0,
@@ -254,6 +297,10 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
         const upper = String(symbol || '').toUpperCase();
         const provider = providerForRealtimeSymbol(upper);
         const symbolState = stateBySymbol.get(upper) || {};
+        if (provider === 'finnhub' && now < finnhubBlockedUntil) {
+          metrics.cooldownSkips += 1;
+          continue;
+        }
         const minPollMs = provider === 'alphavantage' ? Math.max(intervalMs, avMinPollMs) : intervalMs;
         const nextAllowedAt = Number(symbolState.nextAllowedAt || 0);
         if (now < nextAllowedAt) {
@@ -290,6 +337,15 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
           stateBySymbol.set(upper, nextState);
         } catch (error) {
           metrics.quotesFailed += 1;
+          if (provider === 'finnhub' && (error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' || error?.code === 'FINNHUB_RATE_LIMIT')) {
+            const retryAfterMs = Number(error?.retryAfterMs);
+            const backoffMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? Math.min(retryAfterMs, finnhubBackoffMaxMs) : errorCooldownMs;
+            finnhubBlockedUntil = Math.max(finnhubBlockedUntil, now + backoffMs);
+            if (now - lastFinnhubBlockedLogAt > 30 * 1000) {
+              logger.warn?.(`[ws-price] finnhub backoff ${Math.ceil(backoffMs / 1000)}s`, error?.message || error);
+              lastFinnhubBlockedLogAt = now;
+            }
+          }
           const errorCount = Number(symbolState.errorCount || 0) + 1;
           stateBySymbol.set(upper, {
             ...symbolState,
@@ -297,7 +353,7 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
             errorCount,
             nextAllowedAt: now + errorCooldownMs
           });
-          logger.warn?.(`[ws-price] quote failed (${upper})`, error?.message || error);
+          if (!error?.silent) logger.warn?.(`[ws-price] quote failed (${upper})`, error?.message || error);
         }
       }
     } finally {

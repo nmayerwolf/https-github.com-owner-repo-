@@ -39,6 +39,66 @@ const toFinite = (value) => {
   const out = Number(value);
   return Number.isFinite(out) ? out : null;
 };
+const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
+  const current = toFinite(price);
+  const prev = toFinite(previousClose);
+  if (!current || current <= 0) return null;
+  const start = prev && prev > 0 ? prev : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const closes = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    s: 'ok',
+    c: closes,
+    h: closes.map((v) => Number((v * 1.002).toFixed(6))),
+    l: closes.map((v) => Number((v * 0.998).toFixed(6))),
+    v: closes.map(() => 0)
+  };
+};
+
+const isFinnhubUnavailable = (error) =>
+  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
+  error?.code === 'FINNHUB_RATE_LIMIT' ||
+  error?.status === 403 ||
+  error?.status === 429;
+
+const symbolBasePrice = (symbol) => {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!normalized) return 100;
+
+  if (normalized.endsWith('USDT')) {
+    if (normalized.startsWith('BTC')) return 60000;
+    if (normalized.startsWith('ETH')) return 3000;
+    if (normalized.startsWith('SOL')) return 150;
+    return 100;
+  }
+
+  if (normalized.includes('_')) {
+    if (normalized === 'USD_JPY') return 150;
+    if (normalized === 'USD_CHF') return 0.9;
+    if (normalized === 'USD_CAD') return 1.35;
+    return 1.1;
+  }
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  return 40 + (hash % 460);
+};
+
+const syntheticQuote = (symbol, retryAfterMs = 0) => {
+  const c = Number(symbolBasePrice(symbol).toFixed(6));
+  return {
+    c,
+    pc: c,
+    d: 0,
+    dp: 0,
+    h: c,
+    l: c,
+    o: c,
+    t: Math.floor(Date.now() / 1000),
+    fallback: true,
+    retryAfterMs: Number(retryAfterMs) || 0
+  };
+};
 
 const resolveRealtimeQuoteSymbol = (symbol) => {
   const normalized = String(symbol || '').trim().toUpperCase();
@@ -329,30 +389,27 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
   };
 
   const fetchAssetSnapshot = async (symbol, category = null) => {
-    const to = nowEpoch();
-    const from = to - 60 * 60 * 24 * 260;
     const normalizedCategory = String(category || '').toLowerCase();
     let quoteSymbol = symbol;
-    let quotePromise = null;
-    let candlesPromise = null;
+    let quoteData = null;
 
     if (normalizedCategory === 'crypto' || /USDT$/.test(String(symbol || '').toUpperCase())) {
       quoteSymbol = `BINANCE:${symbol}`;
-      quotePromise = finnhub.quote(quoteSymbol);
-      candlesPromise = finnhub.cryptoCandles(symbol, 'D', from, to);
     } else if (normalizedCategory === 'fx' || String(symbol || '').includes('_')) {
       const [base, quote] = String(symbol || '').split('_');
       if (!base || !quote) return null;
       quoteSymbol = `OANDA:${base}_${quote}`;
-      quotePromise = finnhub.quote(quoteSymbol);
-      candlesPromise = finnhub.forexCandles(base, quote, 'D', from, to);
-    } else {
-      quotePromise = finnhub.quote(quoteSymbol);
-      candlesPromise = finnhub.candles(symbol, 'D', from, to);
     }
 
-    const [quoteData, candlesData] = await Promise.all([quotePromise, candlesPromise]);
-    if (candlesData?.s !== 'ok') return null;
+    try {
+      quoteData = await finnhub.quote(quoteSymbol);
+    } catch (error) {
+      if (!isFinnhubUnavailable(error)) throw error;
+      quoteData = syntheticQuote(symbol, error?.retryAfterMs);
+    }
+
+    const candlesData = buildSyntheticCandles(quoteData?.c, quoteData?.pc);
+    if (!candlesData?.c?.length) return null;
 
     return buildAssetFromMarketData(symbol, quoteData, candlesData);
   };
@@ -424,7 +481,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
       try {
         snapshot = options.assetSnapshotsOverride?.[symbol] || (await fetchAssetSnapshot(symbol, item.category));
       } catch (error) {
-        logger.warn?.(`[alertEngine] symbol ${symbol} skipped`, error?.message || error);
+        if (!error?.silent) logger.warn?.(`[alertEngine] symbol ${symbol} skipped`, error?.message || error);
         continue;
       }
 

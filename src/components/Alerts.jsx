@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
+import { askClaude } from '../api/claude';
 import { generateInvestmentThesis } from '../api/claude';
 import { calculateConfluence } from '../engine/confluence';
 import { useApp } from '../store/AppContext';
@@ -33,6 +34,19 @@ const OUTCOME_LABEL = {
   open: 'Open'
 };
 
+const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Riesgo en watchlist'];
+
+const buildLocalHint = (assets = [], query = '') => {
+  const q = String(query || '').toLowerCase();
+  if (!assets.length) return 'No hay activos cargados todavía.';
+  if (q.includes('crypto')) {
+    const rows = assets.filter((a) => a.category === 'crypto').slice(0, 4).map((a) => `${a.symbol}: ${formatPct(a.changePercent || 0)}`);
+    return `Crypto destacadas:\n${rows.join('\n')}`;
+  }
+  const byChange = [...assets].sort((a, b) => Number(b.changePercent || 0) - Number(a.changePercent || 0)).slice(0, 4);
+  return `Top movimiento:\n${byChange.map((a) => `${a.symbol}: ${formatPct(a.changePercent || 0)}`).join('\n')}`;
+};
+
 const Alerts = () => {
   const { state, actions } = useApp();
 
@@ -63,6 +77,10 @@ const Alerts = () => {
   const [shareMessage, setShareMessage] = useState('');
   const [exportLoadingId, setExportLoadingId] = useState('');
   const [exportMessage, setExportMessage] = useState('');
+  const [agentQuery, setAgentQuery] = useState('');
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
 
@@ -143,6 +161,26 @@ const Alerts = () => {
     }
   };
 
+  const askAgent = async (raw) => {
+    const text = String(raw || '').trim();
+    if (!text || agentLoading) return;
+    setAgentLoading(true);
+    setAgentQuery('');
+    setChatMessages((prev) => [...prev, { role: 'user', text }]);
+    try {
+      const context = (state.assets || [])
+        .slice(0, 16)
+        .map((a) => `${a.symbol} price=${a.price} change=${a.changePercent} rsi=${a?.indicators?.rsi ?? 'n/a'}`)
+        .join('\n');
+      const out = await askAgentFn(`Consulta usuario: ${text}\n\nContexto de mercado:\n${context}`);
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: out?.text || buildLocalHint(state.assets, text) }]);
+    } catch {
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: buildLocalHint(state.assets, text) }]);
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+
   const shareAlertToGroup = async (alertId) => {
     if (typeof api.shareAlert !== 'function') return;
     const groupId = shareGroupByAlert[alertId];
@@ -176,7 +214,7 @@ const Alerts = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `nexusfin-alert-${symbol || alertId}.pdf`;
+      link.download = `horsy-alert-${symbol || alertId}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -198,12 +236,13 @@ const Alerts = () => {
     return (
       <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start', gap: 8 }}>
         <select
+          className="select-field"
           aria-label={`Grupo para compartir ${alertId}`}
           value={shareGroupByAlert[alertId] || ''}
           onChange={(e) => setShareGroupByAlert((prev) => ({ ...prev, [alertId]: e.target.value }))}
           style={{ width: 220 }}
         >
-          <option value="">Seleccionar grupo</option>
+          <option value="">Seleccioná un grupo</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
@@ -227,6 +266,42 @@ const Alerts = () => {
         ))}
       </section>
 
+      <section className="card">
+        <h2 style={{ marginBottom: 8 }}>AI Agent</h2>
+        <div className="chat-area">
+          {!chatMessages.length ? (
+            <div className="muted">Preguntale al agente sobre activos, señales o riesgo de portfolio.</div>
+          ) : null}
+          {chatMessages.map((msg, idx) => (
+            <div key={`${msg.role}-${idx}`} className={`chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-ai'}`}>
+              {msg.text}
+            </div>
+          ))}
+        </div>
+        {!chatMessages.length ? (
+          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+            {quickPrompts.map((prompt) => (
+              <button key={prompt} type="button" onClick={() => askAgent(prompt)}>
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="row" style={{ marginTop: 8 }}>
+          <input
+            placeholder="Preguntale al agente..."
+            value={agentQuery}
+            onChange={(e) => setAgentQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') askAgent(agentQuery);
+            }}
+          />
+          <button type="button" onClick={() => askAgent(agentQuery)} disabled={agentLoading}>
+            {agentLoading ? 'Pensando...' : 'Enviar'}
+          </button>
+        </div>
+      </section>
+
       {liveList.map((a) => (
         <article key={a.id} className="card">
           <div className="row">
@@ -235,9 +310,10 @@ const Alerts = () => {
           </div>
           {typeof a.net === 'number' && <ConfluenceBar net={a.net} />}
           {a.stopLoss && (
-            <div className="row" style={{ marginTop: 8 }}>
-              <span className="muted">SL: {formatUSD(a.stopLoss)}</span>
-              <span className="muted">TP: {formatUSD(a.takeProfit)}</span>
+            <div className="alert-meta" style={{ marginTop: 8 }}>
+              <span className="mono">{`SL ${formatUSD(a.stopLoss)}`}</span>
+              <span className="mono">{`TP ${formatUSD(a.takeProfit)}`}</span>
+              <span className="mono">{String(a.confidence || 'high')}</span>
             </div>
           )}
           {(a.type === 'compra' || a.type === 'venta') && (
@@ -287,7 +363,7 @@ const Alerts = () => {
               <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                 <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{HISTORY_TYPE_LABEL[a.type] || a.type}</span>
                 <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>{a.outcome || 'open'}</span>
-                <span className="muted">Precio alerta: {formatUSD(a.priceAtAlert)}</span>
+                <span className="muted mono" style={{ minWidth: 128, textAlign: 'right' }}>Precio alerta: {formatUSD(a.priceAtAlert)}</span>
                 <span className="muted">Confianza: {a.confidence}</span>
               </div>
               {renderShareControls(a.id)}
@@ -378,7 +454,7 @@ const Alerts = () => {
                 <span className="muted">{a.recommendation}</span>
                 <span className="muted">{shortDate(a.createdAt)}</span>
                 <span className="muted">Outcome: {a.outcome}</span>
-                <span className="muted">Precio: {formatUSD(a.priceAtAlert)}</span>
+                <span className="muted mono" style={{ minWidth: 108, textAlign: 'right' }}>Precio: {formatUSD(a.priceAtAlert)}</span>
               </article>
             ))}
 

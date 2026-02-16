@@ -23,6 +23,20 @@ const HealthBadge = ({ label, ok, detail }) => (
   </span>
 );
 
+const getWsBadge = (status, { fallbackActive = false } = {}) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'connected') {
+    return { text: 'WS: EN VIVO', background: '#00E08E22', color: '#00E08E' };
+  }
+  if (normalized === 'auth_error') {
+    return { text: 'WS: SESION EXPIRADA', background: '#FF475722', color: '#FF4757' };
+  }
+  if (fallbackActive) {
+    return { text: 'WS: DEGRADADO (FALLBACK)', background: '#FBBF2422', color: '#FBBF24' };
+  }
+  return { text: 'WS: DESCONECTADO', background: '#60A5FA22', color: '#60A5FA' };
+};
+
 const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
@@ -67,7 +81,7 @@ const OnboardingModal = ({ step, state, onChange, onPrev, onNext, onComplete, sa
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
       <div className="row">
-        <h3>Bienvenido a NexusFin</h3>
+        <h3>Bienvenido a Horsy</h3>
         <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
           Paso {step}/4
         </span>
@@ -163,6 +177,7 @@ const App = () => {
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
   const [networkOffline, setNetworkOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [clock, setClock] = useState(Date.now());
 
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
@@ -283,6 +298,11 @@ const App = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const id = setInterval(() => setClock(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
   const finishOnboarding = async () => {
     setOnboardingSaving(true);
     try {
@@ -333,9 +353,25 @@ const App = () => {
     return <LoadingScreen loaded={state.progress.loaded} total={state.progress.total} />;
   }
 
-  const finnhubOk = state.apiHealth.finnhub.errors === 0 || state.apiHealth.finnhub.calls > state.apiHealth.finnhub.errors;
+  const finnhubFallback = Number(state.apiHealth.finnhub.fallbacks || 0);
+  const wsBadge = getWsBadge(state.wsStatus, { fallbackActive: finnhubFallback > 0 });
+  const finnhubOk = finnhubFallback === 0 && (state.apiHealth.finnhub.errors === 0 || state.apiHealth.finnhub.calls > state.apiHealth.finnhub.errors);
   const alphaOk = state.apiHealth.alphavantage.errors === 0 || state.apiHealth.alphavantage.calls > state.apiHealth.alphavantage.errors;
   const claudeOk = state.apiHealth.claude.errors === 0;
+  const lastUpdatedLabel = state.lastUpdated
+    ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
+    : 'sin datos';
+  const lastUpdatedAgoLabel = (() => {
+    if (!state.lastUpdated) return 'sin sincronizar';
+    const diffSec = Math.max(0, Math.floor((clock - state.lastUpdated) / 1000));
+    if (diffSec < 60) return 'hace segundos';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `hace ${diffHr} h`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `hace ${diffDay} d`;
+  })();
 
   return (
     <div className="app">
@@ -359,32 +395,54 @@ const App = () => {
       )}
 
       <header className="header">
-        <div className="row" style={{ alignItems: 'flex-end' }}>
+        <div className="top-header card">
           <div>
-            <h1>NexusFin</h1>
-            <p className="muted">Monitoreo financiero en tiempo real ({state.sourceMode})</p>
+            <h1 className="brand-title">Horsy</h1>
+            <p className="muted app-subtitle">Monitoreo financiero en tiempo real</p>
           </div>
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
-              WS: {state.wsStatus}
+          <div className="header-actions">
+            <button type="button" className="icon-btn" aria-label="Notificaciones">
+              <svg viewBox="0 0 24 24">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+            </button>
+            <button type="button" className="icon-btn" aria-label="Buscar">
+              <svg viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.8-3.8" />
+              </svg>
+            </button>
+            <span className="user-avatar" aria-label="Usuario">
+              {String(user?.email || 'U').slice(0, 1).toUpperCase()}
             </span>
-            <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+            <span className="badge ws-badge mono" style={{ background: wsBadge.background, color: wsBadge.color }}>
+              {wsBadge.text}
+            </span>
+            <span className="badge mono" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
               {user?.email || 'usuario'}
             </span>
-            <button type="button" onClick={logout}>
-              Logout
+            <button type="button" onClick={logout} className="logout-btn" aria-label="Cerrar sesión">
+              Cerrar sesión
             </button>
           </div>
         </div>
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-          <HealthBadge label={`Finnhub ${state.apiHealth.finnhub.calls}/${state.apiHealth.finnhub.errors}`} ok={finnhubOk} detail={state.apiHealth.finnhub.lastError || 'OK'} />
+          <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+            Actualizado: {lastUpdatedLabel} ({lastUpdatedAgoLabel})
+          </span>
+          <HealthBadge
+            label={`Finnhub ${state.apiHealth.finnhub.calls}/${state.apiHealth.finnhub.errors} f:${finnhubFallback}`}
+            ok={finnhubOk}
+            detail={finnhubFallback > 0 ? 'Modo fallback activo (datos sintéticos)' : state.apiHealth.finnhub.lastError || 'OK'}
+          />
           <HealthBadge label={`Alpha ${state.apiHealth.alphavantage.calls}/${state.apiHealth.alphavantage.errors}`} ok={alphaOk} detail={state.apiHealth.alphavantage.lastError || 'OK'} />
           <HealthBadge label={`Claude ${state.apiHealth.claude.calls}/${state.apiHealth.claude.errors}`} ok={claudeOk} detail={state.apiHealth.claude.lastError || 'OK'} />
         </div>
 
         {(backendOffline || networkOffline) && (
-          <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }}>
+          <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }} role="status" aria-live="polite">
             <strong>{networkOffline ? 'Sin conexión' : 'Modo offline'}</strong>
             <div className="muted">
               {networkOffline
@@ -395,7 +453,7 @@ const App = () => {
         )}
 
         {!!state.uiErrors.length && (
-          <section className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>
+          <section className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }} role="alert" aria-live="assertive">
             {state.uiErrors.map((e) => (
               <div key={e.id} className="row" style={{ marginBottom: 6 }}>
                 <span>

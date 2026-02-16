@@ -141,7 +141,7 @@ router.get('/portfolio', async (req, res, next) => {
     });
 
     const csv = [headers, ...rows].map((line) => line.map(escapeCsv).join(',')).join('\n');
-    const filename = `nexusfin-portfolio-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `horsy-portfolio-${new Date().toISOString().slice(0, 10)}.csv`;
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -172,13 +172,13 @@ const handleAlertPdfExport = async (req, res, next) => {
     }
 
     const row = out.rows[0];
-    const filename = `nexusfin-alert-${row.symbol}-${new Date(row.created_at).toISOString().slice(0, 10)}.pdf`;
+    const filename = `horsy-alert-${row.symbol}-${new Date(row.created_at).toISOString().slice(0, 10)}.pdf`;
 
     const aiSummary = row.ai_thesis && typeof row.ai_thesis === 'object' ? row.ai_thesis.summary : null;
     const snapshot = row.snapshot && typeof row.snapshot === 'object' ? row.snapshot : {};
 
     const lines = [
-      'NexusFin - Alert Report',
+      'Horsy - Alert Report',
       `Fecha exportacion: ${new Date().toISOString()}`,
       `Alerta ID: ${row.id}`,
       `Activo: ${row.symbol} - ${row.name || ''}`,

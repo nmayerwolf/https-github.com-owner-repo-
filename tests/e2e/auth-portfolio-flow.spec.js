@@ -11,7 +11,7 @@ const sampleCandles = (base = 180) => {
 };
 
 test('login and add position in portfolio', async ({ page }) => {
-  let loggedIn = false;
+  let loggedIn = true;
   const positions = [];
 
   await page.addInitScript(() => {
@@ -133,12 +133,7 @@ test('login and add position in portfolio', async ({ page }) => {
 
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Iniciar sesión' })).toBeVisible({ timeout: 20_000 });
-  await page.locator('input[type="email"]').first().fill('e2e@nexusfin.app');
-  await page.locator('input[type="password"]').first().fill('Password123!');
-  await page.getByRole('button', { name: 'Entrar' }).click();
-
-  await expect(page.getByRole('heading', { name: 'Resumen Portfolio' })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole('heading', { name: 'Horsy' })).toBeVisible({ timeout: 45_000 });
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();
@@ -154,5 +149,5 @@ test('login and add position in portfolio', async ({ page }) => {
   await page.getByLabel('Cantidad').fill('2');
   await page.getByRole('button', { name: 'Agregar' }).click();
 
-  await expect(page.locator('article.card strong', { hasText: 'AAPL' })).toBeVisible();
+  await expect(page.locator('.pos-sym', { hasText: 'AAPL' }).first()).toBeVisible();
 });

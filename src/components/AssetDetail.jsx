@@ -2,19 +2,20 @@ import React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { fetchCompanyOverview } from '../api/alphavantage';
-import { fetchCompanyNews, fetchCompanyProfile } from '../api/finnhub';
+import { fetchCompanyProfile } from '../api/finnhub';
 import { calculateConfluence } from '../engine/confluence';
 import { useApp } from '../store/AppContext';
 import CategoryBadge from './common/CategoryBadge';
 import SignalBadge from './common/SignalBadge';
 import ConfluenceBar from './common/ConfluenceBar';
 import Sparkline from './common/Sparkline';
+import NewsSection from './NewsSection';
 import { formatPct, formatUSD } from '../utils/format';
 
 const Item = ({ label, value }) => (
-  <div className="card" style={{ padding: 10 }}>
-    <div className="muted">{label}</div>
-    <strong>{value}</strong>
+  <div className="ind-cell">
+    <div className="ind-label">{label}</div>
+    <div className="ind-val mono">{value}</div>
   </div>
 );
 
@@ -33,7 +34,6 @@ const AssetDetail = () => {
   const { state, actions } = useApp();
   const [overview, setOverview] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [news, setNews] = useState([]);
 
   const asset = actions.getAssetBySymbol(symbol);
 
@@ -41,11 +41,10 @@ const AssetDetail = () => {
     if (!asset || asset.category !== 'equity') return;
     let mounted = true;
 
-    Promise.all([fetchCompanyOverview(asset.symbol), fetchCompanyProfile(asset.symbol), fetchCompanyNews(asset.symbol)]).then(([ov, pf, nw]) => {
+    Promise.all([fetchCompanyOverview(asset.symbol), fetchCompanyProfile(asset.symbol)]).then(([ov, pf]) => {
       if (!mounted) return;
       setOverview(ov);
       setProfile(pf);
-      setNews(nw);
     });
 
     return () => {
@@ -66,7 +65,7 @@ const AssetDetail = () => {
   }
 
   return (
-    <div className="grid">
+    <div className="grid asset-detail-page">
       <section className="card">
         <div className="row">
           <div>
@@ -81,13 +80,13 @@ const AssetDetail = () => {
           <Link to="/markets">Volver</Link>
         </div>
         <div className="row" style={{ marginTop: 8 }}>
-          <strong>{formatUSD(asset.price)}</strong>
-          <strong className={asset.changePercent >= 0 ? 'up' : 'down'}>{formatPct(asset.changePercent)}</strong>
+          <strong className="mono" style={{ fontSize: 22 }}>{formatUSD(asset.price)}</strong>
+          <strong className={`mono ${asset.changePercent >= 0 ? 'up' : 'down'}`}>{formatPct(asset.changePercent)}</strong>
         </div>
         <Sparkline values={asset.candles?.c?.slice(-60) || []} color={asset.changePercent >= 0 ? '#00E08E' : '#FF4757'} height={56} />
       </section>
 
-      <section className="grid grid-2">
+      <section className="ind-grid">
         <Item label="RSI" value={asset.indicators?.rsi?.toFixed(2) ?? '-'} />
         <Item label="MACD Hist" value={asset.indicators?.macd?.histogram?.toFixed(4) ?? '-'} />
         <Item label="ATR" value={asset.indicators?.atr?.toFixed(4) ?? '-'} />
@@ -113,7 +112,7 @@ const AssetDetail = () => {
 
       <section className="card">
         <h3>Niveles ATR adaptativos</h3>
-        <div className="grid grid-2" style={{ marginTop: 8 }}>
+        <div className="ind-grid" style={{ marginTop: 8 }}>
           <Item label="Stop Loss" value={formatUSD(levels.stopLoss)} />
           <Item label="Take Profit" value={formatUSD(levels.takeProfit)} />
           <Item label="Multiplicador ATR" value={levels.multiplier ?? '-'} />
@@ -123,7 +122,7 @@ const AssetDetail = () => {
 
       <section className="card">
         <h3>Fundamentales</h3>
-        <div className="grid grid-2" style={{ marginTop: 8 }}>
+        <div className="ind-grid" style={{ marginTop: 8 }}>
           <Item label="P/E" value={overview?.PERatio || '-'} />
           <Item label="Dividend Yield" value={overview?.DividendYield || '-'} />
           <Item label="Market Cap" value={overview?.MarketCapitalization || profile?.marketCapitalization || '-'} />
@@ -131,17 +130,7 @@ const AssetDetail = () => {
         </div>
       </section>
 
-      <section className="card">
-        <h3>Noticias</h3>
-        <div className="grid" style={{ marginTop: 8 }}>
-          {news.slice(0, 5).map((n) => (
-            <a key={n.id || n.url} href={n.url} target="_blank" rel="noreferrer" className="muted">
-              {n.headline}
-            </a>
-          ))}
-          {!news.length && <div className="muted">Sin noticias recientes.</div>}
-        </div>
-      </section>
+      <NewsSection title={`Noticias: ${asset.symbol}`} symbol={asset.symbol} limit={8} />
     </div>
   );
 };

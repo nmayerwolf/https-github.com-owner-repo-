@@ -1,25 +1,27 @@
 import React from 'react';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../store/AppContext';
-import { calculateConfluence } from '../engine/confluence';
-import Sparkline from './common/Sparkline';
-import CategoryBadge from './common/CategoryBadge';
-import { formatPct, formatUSD } from '../utils/format';
+import AssetRow from './common/AssetRow';
 import { CATEGORY_OPTIONS, WATCHLIST_CATALOG } from '../utils/constants';
 
-const sourceLabel = (source) => {
-  if (source === 'alphavantage_macro') return 'Alpha';
-  return 'Finnhub';
+const categoryLabel = {
+  all: 'Todos',
+  equity: 'Equity',
+  crypto: 'Crypto',
+  metal: 'Metal',
+  commodity: 'Commodity',
+  fx: 'FX',
+  bond: 'Bond'
 };
-
-const sourceColor = (source) => (source === 'alphavantage_macro' ? '#FBBF24' : '#60A5FA');
 
 const Markets = () => {
   const { state, actions } = useApp();
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
+  const [visibleCount, setVisibleCount] = useState(8);
+  const loadMoreRef = useRef(null);
+  const isStreamingLoad = state.progress.loaded < state.progress.total;
 
   const filtered = useMemo(() => {
     return state.assets.filter((a) => {
@@ -35,25 +37,55 @@ const Markets = () => {
     [state.watchlistSymbols]
   );
 
+  const visibleAssets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const hasMore = visibleAssets.length < filtered.length;
+
+  useEffect(() => {
+    setVisibleCount(8);
+  }, [category, query, state.watchlistSymbols.length]);
+
+  useEffect(() => {
+    if (!hasMore) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+
+    const node = loadMoreRef.current;
+    if (!node) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + 8, filtered.length));
+        }
+      },
+      { rootMargin: '120px 0px' }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, filtered.length]);
+
   return (
-    <div className="grid">
+    <div className="grid markets-page">
       <section className="card">
-        <div className="row" style={{ flexWrap: 'wrap' }}>
+        <h2 className="screen-title">Mercados</h2>
+
+        <div className="search-bar">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar símbolo o activo..." />
+        </div>
+
+        <div className="pills">
           {CATEGORY_OPTIONS.map((x) => (
-            <button key={x} type="button" onClick={() => setCategory(x)} style={{ borderColor: category === x ? '#00E08E' : undefined }}>
-              {x}
+            <button key={x} type="button" className={`pill ${category === x ? 'active' : ''}`} onClick={() => setCategory(x)}>
+              {categoryLabel[x] || x}
             </button>
           ))}
         </div>
-        <div className="label" style={{ marginTop: 8 }}>
-          <span className="muted">Buscar activo</span>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="AAPL, BTC, EUR/USD..." />
-        </div>
+
         <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Agregar a watchlist</span>
-            <select value={candidate} onChange={(e) => setCandidate(e.target.value)}>
-              <option value="">Seleccionar activo...</option>
+            <select className="select-field" aria-label="Activo para agregar a watchlist" value={candidate} onChange={(e) => setCandidate(e.target.value)}>
+              <option value="">Seleccioná un activo...</option>
               {options.map((x) => (
                 <option key={x.symbol} value={x.symbol}>
                   {x.symbol} - {x.name}
@@ -74,42 +106,36 @@ const Markets = () => {
         </div>
       </section>
 
-      {filtered.map((a) => {
-        const signal = calculateConfluence(a, state.config);
-        const inWatchlist = state.watchlistSymbols.includes(a.symbol);
-        return (
-          <article key={a.symbol} className="card">
-            <div className="row">
-              <div>
-                <strong>{a.symbol}</strong> <span className="muted">{a.name}</span>
-              </div>
-              <div className="row" style={{ justifyContent: 'flex-end' }}>
-                <span className="badge" style={{ background: `${sourceColor(a.source)}22`, color: sourceColor(a.source) }}>
-                  {sourceLabel(a.source)}
-                </span>
-                <CategoryBadge category={a.category} />
-              </div>
+      <section className="card">
+        {isStreamingLoad && (
+          <div className="markets-loading-note">
+            Cargando mercado en segundo plano: {state.progress.loaded}/{state.progress.total}
+          </div>
+        )}
+        <div className="asset-list">
+          {isStreamingLoad && !filtered.length
+            ? Array.from({ length: 6 }).map((_, idx) => <div key={`mk-skeleton-${idx}`} className="skeleton skeleton-asset" />)
+            : null}
+          {visibleAssets.map((a) => (
+            <AssetRow
+              key={a.symbol}
+              asset={a}
+              to={`/markets/${a.symbol}`}
+              action={state.watchlistSymbols.includes(a.symbol) ? () => actions.removeFromWatchlist(a.symbol) : null}
+              actionLabel={state.watchlistSymbols.includes(a.symbol) ? 'Quitar' : null}
+            />
+          ))}
+          {hasMore ? (
+            <div className="markets-load-more">
+              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, filtered.length))} aria-label="Cargar más activos">
+                Cargar más
+              </button>
+              <div ref={loadMoreRef} className="markets-load-sentinel" aria-hidden="true" />
             </div>
-            <div className="row" style={{ marginTop: 6 }}>
-              <span>{formatUSD(a.price)}</span>
-              <span className={a.changePercent >= 0 ? 'up' : 'down'}>{formatPct(a.changePercent)}</span>
-              <span className="muted">RSI {a.indicators?.rsi?.toFixed(1) ?? '-'}</span>
-            </div>
-            <Sparkline values={a.candles?.c?.slice(-30) || []} color={a.changePercent >= 0 ? '#00E08E' : '#FF4757'} />
-            <div className="row" style={{ marginTop: 8 }}>
-              <span className="muted">Confluencia: {signal.net}</span>
-              <div className="row" style={{ justifyContent: 'flex-end' }}>
-                {inWatchlist && (
-                  <button type="button" onClick={() => actions.removeFromWatchlist(a.symbol)}>
-                    Quitar
-                  </button>
-                )}
-                <Link to={`/markets/${a.symbol}`}>Ver detalle</Link>
-              </div>
-            </div>
-          </article>
-        );
-      })}
+          ) : null}
+          {!filtered.length && !isStreamingLoad ? <div className="muted">No hay activos para este filtro.</div> : null}
+        </div>
+      </section>
     </div>
   );
 };

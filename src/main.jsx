@@ -8,8 +8,8 @@ import { ThemeProvider } from './store/ThemeContext';
 import './styles.css';
 
 createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <BrowserRouter>
+  <>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <AuthProvider>
           <AppProvider>
@@ -18,5 +18,5 @@ createRoot(document.getElementById('root')).render(
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
-  </React.StrictMode>
+  </>
 );

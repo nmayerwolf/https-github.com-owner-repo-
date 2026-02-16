@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer, useRe
 import { fetchMacroAssets, getAlphaHealth } from '../api/alphavantage';
 import { api } from '../api/apiClient';
 import { getClaudeHealth } from '../api/claude';
-import { createFinnhubSocket, fetchAssetSnapshot, getFinnhubHealth } from '../api/finnhub';
+import { createFinnhubSocket, fetchAssetSnapshot, getFinnhubHealth, recordFinnhubProxyStats } from '../api/finnhub';
 import { createBackendSocket } from '../api/realtime';
 import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
@@ -15,6 +15,8 @@ import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
 
 const AppContext = createContext(null);
 const ASSET_CACHE_KEY = 'nexusfin_assets_cache_v1';
+const INITIAL_BLOCKING_ASSET_LOAD = 1;
+const BULK_SNAPSHOT_BATCH_SIZE = 1;
 
 const initialState = {
   assets: [],
@@ -60,9 +62,23 @@ export const appReducer = (state, action) => {
     case 'SET_API_HEALTH':
       return { ...state, apiHealth: action.payload };
     case 'PUSH_UI_ERROR':
+      if (!action.payload?.module || !action.payload?.message) {
+        return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
+      }
+      if (
+        action.payload.key &&
+        state.uiErrors.some((e) => e.module === action.payload.module && e.key && e.key === action.payload.key)
+      ) {
+        return state;
+      }
+      if (state.uiErrors.some((e) => e.module === action.payload.module && e.message === action.payload.message)) {
+        return state;
+      }
       return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
     case 'DISMISS_UI_ERROR':
       return { ...state, uiErrors: state.uiErrors.filter((e) => e.id !== action.payload) };
+    case 'DISMISS_UI_ERRORS_BY_MODULE':
+      return { ...state, uiErrors: state.uiErrors.filter((e) => e.module !== action.payload) };
     case 'PUSH_REALTIME_ALERT': {
       const incoming = action.payload;
       if (!incoming?.id) return state;
@@ -93,6 +109,21 @@ const updateCandlesWithLivePrice = (candles, price) => {
   next.h[idx] = Math.max(next.h[idx], price);
   next.l[idx] = Math.min(next.l[idx], price);
   return next;
+};
+
+const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
+  const current = Number(price);
+  const previous = Number(prevClose);
+  if (!Number.isFinite(current) || current <= 0) return null;
+  const start = Number.isFinite(previous) && previous > 0 ? previous : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    c,
+    h: c.map((v) => Number((v * 1.002).toFixed(6))),
+    l: c.map((v) => Number((v * 0.998).toFixed(6))),
+    v: c.map(() => 0)
+  };
 };
 
 const toWsMarketSymbol = (asset) => {
@@ -175,35 +206,48 @@ const normalizePosition = (row) => ({
 
 const fetchSnapshotViaProxy = async (meta) => {
   try {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const fromSec = nowSec - 60 * 60 * 24 * 90;
-
-    if (meta.source === 'finnhub_stock') {
-      const [quote, candles] = await Promise.all([api.quote(meta.symbol), api.candles(meta.symbol, fromSec, nowSec)]);
-      return { quote, candles };
+    const out = await api.snapshot([meta.symbol]);
+    const item = (out?.items || []).find((x) => String(x?.symbol || '').toUpperCase() === String(meta.symbol || '').toUpperCase());
+    if (!item?.quote || !item?.candles?.c?.length) {
+      recordFinnhubProxyStats({ calls: 1, errors: 1, lastError: 'snapshot missing item' });
+      return null;
     }
-
-    if (meta.source === 'finnhub_crypto') {
-      const [quote, candles] = await Promise.all([api.quote(`BINANCE:${meta.symbol}`), api.cryptoCandles(meta.symbol, fromSec, nowSec)]);
-      return { quote, candles };
-    }
-
-    if (meta.source === 'finnhub_fx') {
-      const [base, quote] = meta.symbol.split('_');
-      const [fxCandles, fxQuote] = await Promise.all([api.forexCandles(base, quote, fromSec, nowSec), api.quote(`OANDA:${meta.symbol}`)]);
-      return { quote: fxQuote, candles: fxCandles };
-    }
-
-    return null;
-  } catch {
+    recordFinnhubProxyStats({ calls: 1, fallbacks: item?.quote?.fallback ? 1 : 0 });
+    return { quote: item.quote, candles: item.candles };
+  } catch (error) {
+    recordFinnhubProxyStats({ calls: 1, errors: 1, lastError: error?.message || 'snapshot proxy failed' });
     return null;
   }
 };
 
-export const makeUiError = (module, message) => ({
+const fetchSnapshotBatchViaProxy = async (metaBatch = []) => {
+  try {
+    const symbols = metaBatch.map((x) => x.symbol).filter(Boolean);
+    if (!symbols.length) return { okBySymbol: {}, failedSymbols: [] };
+    const out = await api.snapshot(symbols);
+    const okBySymbol = {};
+    for (const item of out?.items || []) {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol) continue;
+      recordFinnhubProxyStats({ calls: 1, fallbacks: item?.quote?.fallback ? 1 : 0 });
+      okBySymbol[symbol] = { quote: item.quote, candles: item.candles };
+    }
+    const failedSymbols = (out?.errors || []).map((x) => String(x?.symbol || '').toUpperCase()).filter(Boolean);
+    if (failedSymbols.length) {
+      recordFinnhubProxyStats({ errors: failedSymbols.length, lastError: out?.errors?.[0]?.message || 'snapshot symbols failed' });
+    }
+    return { okBySymbol, failedSymbols };
+  } catch {
+    recordFinnhubProxyStats({ errors: metaBatch.length, lastError: 'snapshot batch failed' });
+    return { okBySymbol: {}, failedSymbols: metaBatch.map((x) => String(x?.symbol || '').toUpperCase()).filter(Boolean) };
+  }
+};
+
+export const makeUiError = (module, message, key = null) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   module,
-  message
+  message,
+  key
 });
 
 const readAssetCache = () => {
@@ -229,6 +273,19 @@ const saveAssetCache = (assets) => {
     );
   } catch {
     // Ignore local cache failures.
+  }
+};
+
+const formatCacheTimestamp = (ts) => {
+  const value = Number(ts);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  try {
+    return new Date(value).toLocaleString('es-AR', {
+      dateStyle: 'short',
+      timeStyle: 'short'
+    });
+  } catch {
+    return null;
   }
 };
 
@@ -294,45 +351,127 @@ export const AppProvider = ({ children }) => {
 
   const loadAssets = async (watchlistSymbols = state.watchlistSymbols) => {
     const watchlist = resolveWatchlistAssets(watchlistSymbols);
-    dispatch({ type: 'SET_LOADING', payload: true });
+    const cached = readAssetCache();
+    const hasWarmCache = Boolean(cached?.assets?.length);
+
+    if (hasWarmCache) {
+      dispatch({ type: 'SET_ASSETS', payload: cached.assets });
+      dispatch({ type: 'SET_LOADING', payload: false });
+    } else {
+      dispatch({ type: 'SET_LOADING', payload: true });
+    }
+
     dispatch({ type: 'SET_PROGRESS', payload: { loaded: 0, total: watchlist.length } });
     macroLoadedRef.current = false;
 
     const loaded = [];
-    for (let i = 0; i < watchlist.length; i += 1) {
-      const meta = watchlist[i];
-      const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
+    let failedLoads = 0;
+    const pushAsset = (meta, data) => {
+      loaded.push(
+        withIndicators({
+          ...meta,
+          price: data.quote.c,
+          prevClose: data.quote.pc,
+          changePercent: data.quote.dp,
+          candles: data.candles
+        })
+      );
+    };
 
+    const loadSingle = async (meta, index) => {
+      const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
       if (data?.quote && data?.candles?.c?.length) {
-        loaded.push(
-          withIndicators({
-            ...meta,
-            price: data.quote.c,
-            prevClose: data.quote.pc,
-            changePercent: data.quote.dp,
-            candles: data.candles
-          })
-        );
+        pushAsset(meta, data);
       } else {
-        dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Mercados', `No se pudo cargar ${meta.symbol}.`) });
+        if (failedLoads < 3) {
+          dispatch({
+            type: 'PUSH_UI_ERROR',
+            payload: makeUiError('Mercados', 'No se pudieron cargar algunos activos del mercado.', 'markets-initial-load')
+          });
+        }
+        failedLoads += 1;
+      }
+      dispatch({ type: 'SET_PROGRESS', payload: { loaded: index + 1, total: watchlist.length } });
+      dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
+    };
+
+    const loadBatch = async (metaBatch, startIndex) => {
+      if (!metaBatch.length) return;
+      if (!isAuthenticated) {
+        for (let i = 0; i < metaBatch.length; i += 1) {
+          await loadSingle(metaBatch[i], startIndex + i);
+        }
+        return;
       }
 
-      dispatch({ type: 'SET_PROGRESS', payload: { loaded: i + 1, total: watchlist.length } });
+      const { okBySymbol, failedSymbols } = await fetchSnapshotBatchViaProxy(metaBatch);
+      for (let i = 0; i < metaBatch.length; i += 1) {
+        const meta = metaBatch[i];
+        const symbol = String(meta.symbol || '').toUpperCase();
+        const data = okBySymbol[symbol];
+
+        if (data?.quote && data?.candles?.c?.length) {
+          pushAsset(meta, data);
+        } else {
+          if (failedLoads < 3) {
+            dispatch({
+              type: 'PUSH_UI_ERROR',
+              payload: makeUiError('Mercados', 'No se pudieron cargar algunos activos del mercado.', 'markets-initial-load')
+            });
+          }
+          failedLoads += 1;
+        }
+
+        const processed = startIndex + i + 1;
+        dispatch({ type: 'SET_PROGRESS', payload: { loaded: processed, total: watchlist.length } });
+      }
+
+      if (failedSymbols.length && failedLoads < 3) {
+        dispatch({
+          type: 'PUSH_UI_ERROR',
+          payload: makeUiError('Mercados', `Sin datos para ${failedSymbols.slice(0, 2).join(', ')}.`, 'markets-snapshot-missing')
+        });
+      }
+
       dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
+    };
+
+    const firstSliceEnd = hasWarmCache ? 0 : Math.min(INITIAL_BLOCKING_ASSET_LOAD, watchlist.length);
+    if (firstSliceEnd > 0) {
+      await loadBatch(watchlist.slice(0, firstSliceEnd), 0);
     }
 
     if (!loaded.length) {
-      const cached = readAssetCache();
       if (cached?.assets?.length) {
+        const cacheStamp = formatCacheTimestamp(cached.ts);
         dispatch({ type: 'SET_ASSETS', payload: cached.assets });
         dispatch({
           type: 'PUSH_UI_ERROR',
-          payload: makeUiError('Offline', 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.')
+          payload: makeUiError(
+            'Offline',
+            cacheStamp
+              ? `Sin conexión al mercado en tiempo real. Mostrando cache de ${cacheStamp}.`
+              : 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.',
+            'offline-cache-fallback'
+          )
         });
       }
     }
 
     dispatch({ type: 'SET_LOADING', payload: false });
+
+    if (firstSliceEnd >= watchlist.length) return;
+
+    (async () => {
+      for (let i = firstSliceEnd; i < watchlist.length; i += BULK_SNAPSHOT_BATCH_SIZE) {
+        const batch = watchlist.slice(i, i + BULK_SNAPSHOT_BATCH_SIZE);
+        await loadBatch(batch, i);
+      }
+
+      if (!loaded.length && cached?.assets?.length) {
+        dispatch({ type: 'SET_ASSETS', payload: cached.assets });
+      }
+    })();
   };
 
   useEffect(() => {
@@ -369,7 +508,7 @@ export const AppProvider = ({ children }) => {
       })
       .catch(() => {
         dispatch({ type: 'SET_MACRO_STATUS', payload: 'error' });
-        dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Macro', 'Falló la carga de Alpha Vantage.') });
+        dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Macro', 'Falló la carga de Alpha Vantage.', 'macro-load') });
       });
   }, [state.loading, state.assets.length]);
 
@@ -395,7 +534,16 @@ export const AppProvider = ({ children }) => {
       symbols: wsSymbols,
       onStatus: (status) => {
         dispatch({ type: 'SET_WS_STATUS', payload: status });
-        if (status === 'error') dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('WebSocket', 'Error de conexión en tiempo real.') });
+        if (status === 'connected') {
+          dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
+          return;
+        }
+        if (status === 'auth_error') {
+          dispatch({
+            type: 'PUSH_UI_ERROR',
+            payload: makeUiError('WebSocket', 'Sesión expirada para tiempo real. Reingresá para reconectar WS.', 'ws-auth-error')
+          });
+        }
       },
       onTrade: ({ symbol, price }) => {
         const current = assetsRef.current;

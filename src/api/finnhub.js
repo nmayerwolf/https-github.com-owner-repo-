@@ -5,6 +5,8 @@ const stats = {
   errors: 0,
   retries: 0,
   rateLimited: 0,
+  fallbacks: 0,
+  fallbackActive: false,
   lastError: '',
   lastCallAt: 0,
   source: 'backend_proxy'
@@ -12,6 +14,20 @@ const stats = {
 
 const nowSec = Math.floor(Date.now() / 1000);
 const fromSec = nowSec - 60 * 60 * 24 * 90;
+const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
+  const current = Number(price);
+  const previous = Number(prevClose);
+  if (!Number.isFinite(current) || current <= 0) return null;
+  const start = Number.isFinite(previous) && previous > 0 ? previous : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    c,
+    h: c.map((v) => Number((v * 1.002).toFixed(6))),
+    l: c.map((v) => Number((v * 0.998).toFixed(6))),
+    v: c.map(() => 0)
+  };
+};
 
 const trackCall = () => {
   stats.calls += 1;
@@ -23,28 +39,55 @@ const trackError = (error, context = '') => {
   stats.lastError = `${context}${error?.message ? `: ${error.message}` : ''}`.trim();
 };
 
+export const recordFinnhubProxyStats = ({ calls = 0, errors = 0, fallbacks = 0, lastError = '' } = {}) => {
+  const nextCalls = Number(calls);
+  const nextErrors = Number(errors);
+  const nextFallbacks = Number(fallbacks);
+
+  if (Number.isFinite(nextCalls) && nextCalls > 0) {
+    stats.calls += nextCalls;
+    stats.lastCallAt = Date.now();
+  }
+  if (Number.isFinite(nextErrors) && nextErrors > 0) {
+    stats.errors += nextErrors;
+  }
+  if (Number.isFinite(nextFallbacks) && nextFallbacks > 0) {
+    stats.fallbacks += nextFallbacks;
+    stats.fallbackActive = true;
+  }
+  if (lastError) {
+    stats.lastError = String(lastError);
+  }
+};
+
 export const fetchAssetSnapshot = async (asset) => {
   try {
     if (!asset?.source) return null;
     trackCall();
 
     if (asset.source === 'finnhub_stock') {
-      const [quote, candles] = await Promise.all([api.quote(asset.symbol), api.candles(asset.symbol, fromSec, nowSec)]);
-      return { quote, candles };
+      const quote = await api.quote(asset.symbol);
+      const candles = await api.candles(asset.symbol, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     if (asset.source === 'finnhub_crypto') {
-      const [quote, candles] = await Promise.all([api.quote(`BINANCE:${asset.symbol}`), api.cryptoCandles(asset.symbol, fromSec, nowSec)]);
-      return { quote, candles };
+      const quote = await api.quote(`BINANCE:${asset.symbol}`);
+      const candles = await api.cryptoCandles(asset.symbol, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     if (asset.source === 'finnhub_fx') {
       const [base, quoteCode] = String(asset.symbol).split('_');
-      const [quote, candles] = await Promise.all([
-        api.quote(`OANDA:${asset.symbol}`),
-        api.forexCandles(base, quoteCode, fromSec, nowSec)
-      ]);
-      return { quote, candles };
+      const quote = await api.quote(`OANDA:${asset.symbol}`);
+      const candles = await api.forexCandles(base, quoteCode, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     return null;

@@ -150,11 +150,16 @@ const Settings = () => {
   };
 
   return (
-    <div className="grid" style={{ gap: 12 }}>
+    <div className="grid settings-page" style={{ gap: 12 }}>
+      <section className="card">
+        <h2 className="screen-title" style={{ marginBottom: 0 }}>Config</h2>
+        <p className="muted">Preferencias de AI Agent, perfil, notificaciones y cuenta.</p>
+      </section>
+
       <div className="card">
-        <h2>Tema</h2>
+        <h2>Cuenta</h2>
         <p className="muted" style={{ marginTop: 6 }}>
-          Elegí entre tema oscuro o claro.
+          Ajustes de visualización y sesión.
         </p>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
           <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>
@@ -167,22 +172,23 @@ const Settings = () => {
       </div>
 
       <div className="card">
-        <h2>Configuración</h2>
+        <h2>Perfil de inversión</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Riesgo, horizonte y umbrales del motor de señales.</p>
         <div className="grid grid-2" style={{ marginTop: 8 }}>
           <label className="label">
             <span className="muted">Perfil de riesgo</span>
-            <select value={local.riskProfile} onChange={(e) => setLocal({ ...local, riskProfile: e.target.value })}>
-              <option value="conservador">conservador</option>
-              <option value="moderado">moderado</option>
-              <option value="agresivo">agresivo</option>
+            <select className="select-field" aria-label="Perfil de riesgo" value={local.riskProfile} onChange={(e) => setLocal({ ...local, riskProfile: e.target.value })}>
+              <option value="conservador">Conservador</option>
+              <option value="moderado">Moderado</option>
+              <option value="agresivo">Agresivo</option>
             </select>
           </label>
           <label className="label">
             <span className="muted">Horizonte</span>
-            <select value={local.horizon} onChange={(e) => setLocal({ ...local, horizon: e.target.value })}>
-              <option value="corto">corto</option>
-              <option value="mediano">mediano</option>
-              <option value="largo">largo</option>
+            <select className="select-field" aria-label="Horizonte de inversión" value={local.horizon} onChange={(e) => setLocal({ ...local, horizon: e.target.value })}>
+              <option value="corto">Corto</option>
+              <option value="mediano">Mediano</option>
+              <option value="largo">Largo</option>
             </select>
           </label>
           <label className="label">
@@ -218,6 +224,29 @@ const Settings = () => {
         <button type="button" onClick={() => actions.setConfig(local)}>
           Guardar y aplicar
         </button>
+      </div>
+
+      <div className="card">
+        <h2>AI Agent</h2>
+        <p className="muted" style={{ marginTop: 6 }}>Controlá intensidad y costo operativo del agente.</p>
+        <div className="ind-grid" style={{ marginTop: 8 }}>
+          <div className="ind-cell">
+            <div className="ind-label">Estado</div>
+            <div className="ind-val mono">{local.minConfluence > 0 ? 'Activo' : 'Pausado'}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Confluencia mínima</div>
+            <div className="ind-val mono">{local.minConfluence}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Riesgo</div>
+            <div className="ind-val mono">{String(local.riskProfile || '-').toUpperCase()}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Horizonte</div>
+            <div className="ind-val mono">{String(local.horizon || '-').toUpperCase()}</div>
+          </div>
+        </div>
       </div>
 
       <div className="card">

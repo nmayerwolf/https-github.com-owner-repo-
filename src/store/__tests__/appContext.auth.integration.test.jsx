@@ -19,6 +19,7 @@ const { apiMock, createBackendSocketMock, fetchMacroAssetsMock } = vi.hoisted(()
     getPortfolio: vi.fn(),
     getConfig: vi.fn(),
     getWatchlist: vi.fn(),
+    snapshot: vi.fn(),
     quote: vi.fn(),
     candles: vi.fn(),
     cryptoCandles: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock('../../api/realtime', () => ({
 vi.mock('../../api/finnhub', () => ({
   fetchAssetSnapshot: vi.fn(),
   createFinnhubSocket: vi.fn(() => ({ close: () => {} })),
+  recordFinnhubProxyStats: vi.fn(),
   getFinnhubHealth: () => ({ calls: 0, errors: 0, rateLimited: 0, retries: 0, lastError: '', lastCallAt: 0 })
 }));
 
@@ -89,6 +91,7 @@ describe('AppContext authenticated integration', () => {
     apiMock.getConfig.mockReset();
     apiMock.getWatchlist.mockReset();
     apiMock.quote.mockReset();
+    apiMock.snapshot.mockReset();
     apiMock.candles.mockReset();
     apiMock.cryptoCandles.mockReset();
     apiMock.forexCandles.mockReset();
@@ -114,6 +117,13 @@ describe('AppContext authenticated integration', () => {
     apiMock.candles.mockResolvedValue(makeCandles(100));
     apiMock.cryptoCandles.mockResolvedValue(makeCandles(200));
     apiMock.forexCandles.mockResolvedValue(makeCandles(50));
+    apiMock.snapshot.mockResolvedValue({
+      items: [
+        { symbol: 'AAPL', quote: { c: 120, pc: 100, dp: 20 }, candles: makeCandles(100) },
+        { symbol: 'NVDA', quote: { c: 220, pc: 200, dp: 10 }, candles: makeCandles(200) }
+      ],
+      errors: []
+    });
 
     apiMock.updateConfig.mockResolvedValue({ riskProfile: 'agresivo', horizon: 'corto', rsiOS: 25, rsiOB: 75, volThresh: 1.8, minConfluence: 3 });
     apiMock.addPosition.mockResolvedValue({

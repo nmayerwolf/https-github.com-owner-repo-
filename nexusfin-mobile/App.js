@@ -9,7 +9,7 @@ import GroupsScreen from './src/screens/GroupsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import { api } from './src/api/client';
-import { hydrateSession, loginWithEmail, loginWithToken, logoutSession } from './src/store/auth';
+import { hydrateSession, loginWithToken, logoutSession } from './src/store/auth';
 import { hydrateTheme, saveTheme } from './src/store/theme';
 import { getThemePalette } from './src/theme/palette';
 
@@ -17,7 +17,6 @@ const TABS = ['dashboard', 'markets', 'alerts', 'groups', 'settings'];
 
 const App = () => {
   const [booting, setBooting] = useState(true);
-  const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState('dashboard');
@@ -104,19 +103,6 @@ const App = () => {
     };
   }, []);
 
-  const login = async ({ email, password }) => {
-    setAuthLoading(true);
-    setAuthError('');
-    try {
-      const out = await loginWithEmail({ email, password });
-      setSession(out);
-    } catch (error) {
-      setAuthError(error?.message || 'No se pudo iniciar sesión');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const loginWithOAuth = async (provider) => {
     setOauthLoading(true);
     setAuthError('');
@@ -157,9 +143,8 @@ const App = () => {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: palette.bg }]}>
         <LoginScreen
-          onSubmit={login}
           onOAuth={loginWithOAuth}
-          loading={authLoading}
+          loading={oauthLoading}
           oauthLoading={oauthLoading}
           oauthProviders={oauthProviders}
           error={authError}

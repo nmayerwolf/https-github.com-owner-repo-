@@ -1,6 +1,6 @@
-# NexusFin (Phase 4)
+# Horsy (Phase 4)
 
-NexusFin es una plataforma de monitoreo financiero multi-activo con:
+Horsy es una plataforma de monitoreo financiero multi-activo con:
 - web (React + Vite),
 - backend API (Node + Express + PostgreSQL),
 - mobile (Expo),

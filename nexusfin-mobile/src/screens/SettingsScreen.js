@@ -160,7 +160,7 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
     setMessage('');
     try {
       const out = await api.sendTestNotification({
-        title: 'NexusFin test',
+        title: 'Horsy test',
         body: 'Push de prueba desde mobile settings.',
         respectQuietHours: true
       });

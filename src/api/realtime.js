@@ -17,6 +17,7 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
   let ws = null;
   let reconnectTimer = null;
   let stopped = false;
+  let hadOpen = false;
 
   const connect = () => {
     const url = new URL(buildWsUrl());
@@ -26,6 +27,7 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
     ws = new WebSocket(url.toString());
 
     ws.onopen = () => {
+      hadOpen = true;
       onStatus?.('connected');
     };
 
@@ -55,13 +57,20 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
       }
     };
 
-    ws.onerror = () => {
-      onStatus?.('error');
-    };
+    ws.onerror = () => {};
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      const code = Number(event?.code || 0);
+      const reason = String(event?.reason || '');
+      const authFailure = code === 1008 && ['TOKEN_REQUIRED', 'TOKEN_EXPIRED', 'INVALID_SESSION'].includes(reason);
+
+      if (authFailure) {
+        onStatus?.('auth_error');
+        return;
+      }
+
       onStatus?.('disconnected');
-      if (!stopped) reconnectTimer = setTimeout(connect, 5000);
+      if (!stopped) reconnectTimer = setTimeout(connect, hadOpen ? 5000 : 2000);
     };
   };
 
@@ -79,4 +88,3 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
     }
   };
 };
-

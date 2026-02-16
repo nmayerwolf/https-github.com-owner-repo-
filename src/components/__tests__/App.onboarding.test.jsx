@@ -88,12 +88,12 @@ describe('App onboarding flow', () => {
 
   it('shows onboarding and completes profile setup', async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Bienvenido a NexusFin')).toBeTruthy();
+    expect(await screen.findByText('Bienvenido a Horsy')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));

@@ -165,7 +165,7 @@ describe('alertEngine cycle', () => {
 
     expect(result.alertsCreated).toBe(1);
     expect(finnhub.quote).toHaveBeenCalledWith('BINANCE:BTCUSDT');
-    expect(finnhub.cryptoCandles).toHaveBeenCalledWith('BTCUSDT', 'D', expect.any(Number), expect.any(Number));
+    expect(finnhub.cryptoCandles).not.toHaveBeenCalled();
     expect(finnhub.candles).not.toHaveBeenCalled();
   });
 

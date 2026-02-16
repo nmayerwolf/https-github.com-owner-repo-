@@ -81,7 +81,7 @@ describe('App route error boundaries', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={['/']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </MemoryRouter>
     );

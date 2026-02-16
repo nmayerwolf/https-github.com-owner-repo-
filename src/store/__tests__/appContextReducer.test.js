@@ -55,6 +55,19 @@ describe('appReducer', () => {
     expect(state.uiErrors.length).toBe(6);
   });
 
+  it('deduplicates ui errors by key', () => {
+    const e1 = makeUiError('Mercados', 'No se pudo cargar', 'markets-initial-load');
+    const e2 = makeUiError('Mercados', 'No se pudo cargar de nuevo', 'markets-initial-load');
+
+    const withErrors = appReducer(appReducer(baseState, { type: 'PUSH_UI_ERROR', payload: e1 }), {
+      type: 'PUSH_UI_ERROR',
+      payload: e2
+    });
+
+    expect(withErrors.uiErrors.length).toBe(1);
+    expect(withErrors.uiErrors[0].id).toBe(e1.id);
+  });
+
   it('pushes and clears realtime alerts', () => {
     const mapped = mapServerAlertToLive({
       id: 'a1',

@@ -25,7 +25,7 @@ const {
   buildAppleAuthUrl,
   exchangeAppleCode
 } = require('../services/oauth');
-const { badRequest, conflict, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
+const { badRequest, conflict, forbidden, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
 
 const router = express.Router();
@@ -261,27 +261,7 @@ router.post('/apple/callback', handleAppleCallback);
 
 router.post('/register', async (req, res, next) => {
   try {
-    const email = validateEmail(req.body.email);
-    const password = validatePassword(req.body.password);
-
-    const exists = await query('SELECT 1 FROM users WHERE email = $1', [email]);
-    if (exists.rows.length) throw conflict('Ya existe una cuenta con ese email', 'EMAIL_EXISTS');
-
-    const hash = await bcrypt.hash(password, 10);
-    const created = await query(
-      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
-      [email, hash]
-    );
-
-    const user = created.rows[0];
-    const token = issueToken(user);
-    await storeSession(user.id, token);
-    setAuthCookies(res, token);
-
-    const body = { user: { id: user.id, email: user.email, createdAt: user.created_at } };
-    if (isMobileClient(req)) body.token = token;
-
-    return res.status(201).json(body);
+    throw forbidden('Registro por email deshabilitado. Usá Continuar con Google.', 'GOOGLE_OAUTH_ONLY');
   } catch (error) {
     return next(error);
   }
@@ -289,39 +269,7 @@ router.post('/register', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
-    const email = validateEmail(req.body.email);
-    const password = String(req.body.password || '');
-
-    await enforceLoginLock(email);
-
-    const found = await query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
-    if (!found.rows.length) {
-      await recordAttempt(email, false);
-      throw unauthorized('Email o contraseña incorrectos', 'INVALID_CREDENTIALS');
-    }
-
-    const user = found.rows[0];
-
-    if (!user.password_hash) {
-      await recordAttempt(email, false);
-      throw unauthorized('Usá login social para esta cuenta', 'USE_OAUTH_LOGIN');
-    }
-
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
-      await recordAttempt(email, false);
-      throw unauthorized('Email o contraseña incorrectos', 'INVALID_CREDENTIALS');
-    }
-
-    await recordAttempt(email, true);
-    const token = issueToken(user);
-    await storeSession(user.id, token);
-    setAuthCookies(res, token);
-
-    const body = { user: { id: user.id, email: user.email } };
-    if (isMobileClient(req)) body.token = token;
-
-    return res.json(body);
+    throw forbidden('Login por email deshabilitado. Usá Continuar con Google.', 'GOOGLE_OAUTH_ONLY');
   } catch (error) {
     return next(error);
   }

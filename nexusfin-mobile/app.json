@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NexusFin Mobile",
+    "name": "Horsy",
     "slug": "nexusfin-mobile",
     "scheme": "nexusfin",
     "version": "1.0.0",
@@ -21,7 +21,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nexusfin.mobile",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.nexusfin.mobile",
@@ -45,7 +48,10 @@
       ]
     ],
     "extra": {
-      "apiUrl": "http://localhost:3001/api"
+      "apiUrl": "http://localhost:3001/api",
+      "eas": {
+        "projectId": "a15d1c02-80aa-4a5e-8bf7-83794c3c1e70"
+      }
     }
   }
 }

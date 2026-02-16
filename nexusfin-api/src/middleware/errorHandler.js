@@ -13,7 +13,7 @@ const errorHandler = (err, _req, res, _next) => {
     return res.status(err.status).json(payload);
   }
 
-  console.error(err);
+  if (!err?.silent) console.error(err);
   return res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Error interno del servidor' });
 };
 

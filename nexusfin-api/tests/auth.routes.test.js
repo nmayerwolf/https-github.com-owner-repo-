@@ -98,71 +98,26 @@ describe('auth routes', () => {
     mockExchangeAppleCode.mockClear();
   });
 
-  it('registers a new user and sets auth cookie', async () => {
-    bcrypt.hash.mockResolvedValueOnce('hash123');
-    query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com', created_at: '2026-02-13T00:00:00.000Z' }] });
-
+  it('blocks register endpoint and requires Google OAuth', async () => {
     const app = makeApp();
     const res = await request(app).post('/api/auth/register').send({ email: 'USER@mail.com', password: 'abc12345' });
 
-    expect(res.status).toBe(201);
-    expect(res.body.user.email).toBe('user@mail.com');
-    expect(res.body.token).toBeUndefined();
-    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
-    expect(mockSetAuthCookies).toHaveBeenCalled();
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('GOOGLE_OAUTH_ONLY');
+    expect(query).not.toHaveBeenCalled();
+    expect(mockStoreSession).not.toHaveBeenCalled();
+    expect(mockSetAuthCookies).not.toHaveBeenCalled();
   });
 
-  it('returns mobile token when x-client-platform=mobile', async () => {
-    bcrypt.hash.mockResolvedValueOnce('hash123');
-    query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com', created_at: '2026-02-13T00:00:00.000Z' }] });
-
-    const app = makeApp();
-    const res = await request(app)
-      .post('/api/auth/register')
-      .set('x-client-platform', 'mobile')
-      .send({ email: 'USER@mail.com', password: 'abc12345' });
-
-    expect(res.status).toBe(201);
-    expect(res.body.token).toBe('jwt-token');
-  });
-
-  it('returns 409 when email already exists', async () => {
-    query.mockResolvedValueOnce({ rows: [{ exists: 1 }] });
-
-    const app = makeApp();
-    const res = await request(app).post('/api/auth/register').send({ email: 'user@mail.com', password: 'abc12345' });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe('EMAIL_EXISTS');
-  });
-
-  it('returns 429 with retryAfter when login is locked', async () => {
-    query.mockResolvedValueOnce({ rows: [{ failures: 5 }] });
-
+  it('blocks login endpoint and requires Google OAuth', async () => {
     const app = makeApp();
     const res = await request(app).post('/api/auth/login').send({ email: 'user@mail.com', password: 'abc12345' });
 
-    expect(res.status).toBe(429);
-    expect(res.body.error).toBe('TOO_MANY_ATTEMPTS');
-    expect(res.body.retryAfter).toBe(900);
-    expect(res.headers['retry-after']).toBe('900');
-  });
-
-  it('returns 401 when login credentials are invalid', async () => {
-    query
-      .mockResolvedValueOnce({ rows: [{ failures: 0 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
-
-    const app = makeApp();
-    const res = await request(app).post('/api/auth/login').send({ email: 'user@mail.com', password: 'abc12345' });
-
-    expect(res.status).toBe(401);
-    expect(res.body.error).toBe('INVALID_CREDENTIALS');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('GOOGLE_OAUTH_ONLY');
+    expect(query).not.toHaveBeenCalled();
+    expect(mockStoreSession).not.toHaveBeenCalled();
+    expect(mockSetAuthCookies).not.toHaveBeenCalled();
   });
 
   it('returns token on refresh endpoint for bearer mode', async () => {
