@@ -39,7 +39,26 @@ const createFinnhubService = (options = {}) => {
 
       const current = now();
       const endpointCooldownUntil = Number(endpointBlockedUntil.get(path) || 0);
-      const waitMs = Math.max(0, lastStartedAt + minIntervalMs - current, providerBlockedUntil - current, endpointCooldownUntil - current);
+
+      if (endpointCooldownUntil > current) {
+        const err = new Error(`Finnhub endpoint cooldown ${path}`);
+        err.code = 'FINNHUB_ENDPOINT_FORBIDDEN';
+        err.status = 403;
+        err.path = path;
+        err.retryAfterMs = endpointCooldownUntil - current;
+        throw err;
+      }
+
+      if (providerBlockedUntil > current) {
+        const err = new Error('Finnhub provider cooldown');
+        err.code = 'FINNHUB_RATE_LIMIT';
+        err.status = 429;
+        err.path = path;
+        err.retryAfterMs = providerBlockedUntil - current;
+        throw err;
+      }
+
+      const waitMs = Math.max(0, lastStartedAt + minIntervalMs - current);
       if (waitMs > 0) await wait(waitMs);
       lastStartedAt = now();
 
