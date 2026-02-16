@@ -1,11 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, getApiBase, getToken } from '../api/client';
 import { MARKET_CATEGORIES, MOBILE_MARKET_UNIVERSE } from '../constants/markets';
 import { getThemePalette } from '../theme/palette';
+import { typography } from '../theme/typography';
+import EmptyState from '../components/EmptyState';
+import FadeInView from '../components/FadeInView';
 
 const toQuoteSymbol = (asset) => asset.wsSymbol;
 const WATCHLIST_FILTER = 'watchlist';
+const WS_STATUS_LABEL = {
+  connected: 'conectado',
+  disconnected: 'desconectado',
+  error: 'error'
+};
+const SKELETON_ROWS = [1, 2, 3, 4, 5];
 
 const formatUsd = (value) => {
   const n = Number(value);
@@ -82,6 +91,11 @@ const MarketsScreen = ({ theme = 'dark' }) => {
     () => watchlistItems.filter((item) => !knownSymbols.has(String(item.symbol || '').toUpperCase())),
     [watchlistItems, knownSymbols]
   );
+  const lastUpdatedAt = useMemo(() => {
+    const values = rows.map((item) => Number(item.updatedAt)).filter((v) => Number.isFinite(v));
+    if (!values.length) return null;
+    return new Date(Math.max(...values));
+  }, [rows]);
 
   const refreshQuotes = async ({ silent = false } = {}) => {
     if (!silent) setRefreshing(true);
@@ -278,9 +292,14 @@ const MarketsScreen = ({ theme = 'dark' }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
-      <Text style={[styles.title, { color: palette.text }]}>Markets</Text>
-      <Text style={[styles.muted, { color: palette.muted }]}>WS: {wsStatus}</Text>
+      <Text style={[styles.title, { color: palette.text }]}>Mercados</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>Tiempo real: {WS_STATUS_LABEL[wsStatus] || wsStatus}</Text>
       <Text style={[styles.muted, { color: palette.muted }]}>Watchlist: {watchlistSymbols.length} símbolos</Text>
+      {lastUpdatedAt ? (
+        <Text style={[styles.muted, { color: palette.muted }]}>
+          Última actualización: {lastUpdatedAt.toLocaleTimeString('es-AR')}
+        </Text>
+      ) : null}
       {message ? <Text style={[styles.message, { color: palette.info }]}>{message}</Text> : null}
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
@@ -298,41 +317,67 @@ const MarketsScreen = ({ theme = 'dark' }) => {
         ))}
       </View>
 
+      {loading ? (
+        <View style={styles.skeletonWrap}>
+          {SKELETON_ROWS.map((item) => (
+            <View key={item} style={[styles.skeletonRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+              <View style={styles.skeletonLeft}>
+                <View style={[styles.skeletonLineLg, { backgroundColor: palette.surfaceAlt }]} />
+                <View style={[styles.skeletonLineSm, { backgroundColor: palette.surfaceAlt }]} />
+              </View>
+              <View style={styles.skeletonRight}>
+                <View style={[styles.skeletonLineMd, { backgroundColor: palette.surfaceAlt }]} />
+                <View style={[styles.skeletonLineSm, { backgroundColor: palette.surfaceAlt, marginTop: 6 }]} />
+              </View>
+            </View>
+          ))}
+          <View style={[styles.loadingCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <ActivityIndicator color={palette.primary} />
+            <Text style={[styles.loadingText, { color: palette.muted }]}>Cargando activos del mercado...</Text>
+          </View>
+        </View>
+      ) : null}
+
       <FlatList
         data={visible}
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={() => refreshQuotes()}
-        ListEmptyComponent={!loading ? <Text style={[styles.muted, { color: palette.muted }]}>Sin activos para este filtro.</Text> : null}
+        ListEmptyComponent={!loading ? <EmptyState palette={palette} title="Sin activos" subtitle="Probá otro filtro o actualizá la lista." /> : null}
         renderItem={({ item }) => {
           const isUp = Number(item.changePercent) >= 0;
           const inWatchlist = watchlistSymbols.includes(String(item.symbol || '').toUpperCase());
           const isBusy = watchlistBusySymbol === String(item.symbol || '').toUpperCase();
           return (
-            <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
-                <Text style={[styles.meta, { color: palette.muted }]}>{item.name}</Text>
+            <FadeInView delay={20}>
+              <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
+                  <Text style={[styles.meta, { color: palette.muted }]}>{item.name}</Text>
+                </View>
+                <View style={styles.right}>
+                  <Text style={[styles.price, { color: palette.text }]}>{formatUsd(item.price)}</Text>
+                  <Text style={[styles.change, { color: isUp ? palette.positive : palette.negative }]}>{formatPct(item.changePercent)}</Text>
+                  <Pressable
+                    onPress={() => toggleWatchlist(item)}
+                    disabled={isBusy}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${inWatchlist ? 'Quitar' : 'Agregar'} ${item.symbol} de watchlist`}
+                    hitSlop={8}
+                    style={[
+                      styles.watchButton,
+                      inWatchlist
+                        ? [styles.watchButtonOn, { backgroundColor: palette.surfaceAlt, borderColor: palette.primary }]
+                        : [styles.watchButtonOff, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]
+                    ]}
+                  >
+                    <Text style={[styles.watchButtonLabel, { color: palette.text }]}>
+                      {isBusy ? '...' : inWatchlist ? 'Quitar' : 'Agregar'}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
-              <View style={styles.right}>
-                <Text style={[styles.price, { color: palette.text }]}>{formatUsd(item.price)}</Text>
-                <Text style={[styles.change, { color: isUp ? palette.positive : palette.negative }]}>{formatPct(item.changePercent)}</Text>
-                <Pressable
-                  onPress={() => toggleWatchlist(item)}
-                  disabled={isBusy}
-                  style={[
-                    styles.watchButton,
-                    inWatchlist
-                      ? [styles.watchButtonOn, { backgroundColor: palette.surfaceAlt, borderColor: palette.primary }]
-                      : [styles.watchButtonOff, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]
-                  ]}
-                >
-                  <Text style={[styles.watchButtonLabel, { color: palette.text }]}>
-                    {isBusy ? '...' : inWatchlist ? 'Quitar' : 'Agregar'}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+            </FadeInView>
           );
         }}
         ListFooterComponent={
@@ -368,10 +413,34 @@ const MarketsScreen = ({ theme = 'dark' }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 6 },
-  muted: { marginBottom: 8 },
-  error: { marginBottom: 8 },
-  message: { marginBottom: 8 },
+  title: { ...typography.screenTitle, marginBottom: 6 },
+  muted: { ...typography.body, marginBottom: 8 },
+  error: { ...typography.body, marginBottom: 8 },
+  message: { ...typography.body, marginBottom: 8 },
+  skeletonWrap: { marginBottom: 8 },
+  skeletonRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  skeletonLeft: { flex: 1 },
+  skeletonRight: { alignItems: 'flex-end' },
+  skeletonLineLg: { width: 90, height: 12, borderRadius: 6 },
+  skeletonLineMd: { width: 70, height: 12, borderRadius: 6 },
+  skeletonLineSm: { width: 120, height: 10, borderRadius: 6, marginTop: 8 },
+  loadingCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  loadingText: { ...typography.body },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   chip: {
     borderRadius: 999,
@@ -381,7 +450,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent'
   },
   chipActive: {},
-  chipLabel: { fontSize: 11, fontWeight: '700' },
+  chipLabel: { ...typography.chipLabel },
   chipLabelActive: {},
   row: {
     borderWidth: 1,
@@ -392,11 +461,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
-  symbol: { fontWeight: '700' },
-  meta: { marginTop: 2 },
+  symbol: { ...typography.bodyStrong },
+  meta: { ...typography.body, marginTop: 2 },
   right: { alignItems: 'flex-end' },
-  price: { fontWeight: '700' },
-  change: { marginTop: 2, fontWeight: '700' },
+  price: { ...typography.number },
+  change: { ...typography.number, marginTop: 2 },
   positive: {},
   negative: {},
   watchButton: {
@@ -409,7 +478,7 @@ const styles = StyleSheet.create({
   watchButtonOn: {},
   watchButtonOff: {},
   watchButtonLabel: {
-    fontWeight: '700',
+    ...typography.buttonLabel,
     fontSize: 12
   },
   externalCard: {
@@ -419,8 +488,7 @@ const styles = StyleSheet.create({
     padding: 12
   },
   externalTitle: {
-    fontSize: 13,
-    fontWeight: '700',
+    ...typography.bodyStrong,
     marginBottom: 8
   },
   externalRow: {

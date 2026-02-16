@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, getApiBase, getToken } from '../api/client';
 import { getThemePalette } from '../theme/palette';
+import { typography } from '../theme/typography';
+import EmptyState from '../components/EmptyState';
+import FadeInView from '../components/FadeInView';
 
 const MAIN_TABS = ['live', 'history', 'performance'];
 const HISTORY_TYPES = ['all', 'opportunity', 'bearish', 'stop_loss'];
@@ -10,6 +13,12 @@ const OUTCOME_TYPES = ['all', 'win', 'loss', 'open'];
 const MAIN_LABEL = { live: 'En vivo', history: 'Historial', performance: 'Performance' };
 const HISTORY_LABEL = { all: 'Todos', opportunity: 'Compra', bearish: 'Venta', stop_loss: 'Stop Loss' };
 const OUTCOME_LABEL = { all: 'Todos', win: 'Win', loss: 'Loss', open: 'Open' };
+const WS_STATUS_LABEL = {
+  connected: 'conectado',
+  disconnected: 'desconectado',
+  error: 'error'
+};
+const SKELETON_ROWS = [1, 2, 3, 4];
 
 const formatPct = (n, { signed = false } = {}) => {
   const value = Number(n);
@@ -27,16 +36,18 @@ const toLiveAlert = (incoming) => ({
 });
 
 const AlertRow = ({ item, palette }) => (
-  <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-    <View>
-      <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
-      <Text style={[styles.meta, { color: palette.muted }]}>Confianza: {item.confidence || 'high'}</Text>
+  <FadeInView delay={20}>
+    <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+      <View>
+        <Text style={[styles.symbol, { color: palette.text }]}>{item.symbol}</Text>
+        <Text style={[styles.meta, { color: palette.muted }]}>Confianza: {item.confidence || 'high'}</Text>
+      </View>
+      <View style={styles.right}>
+        <Text style={[styles.recommendation, { color: palette.text }]}>{item.recommendation || 'SEÑAL'}</Text>
+        <Text style={[styles.badge, { color: palette.info }]}>{item.type || 'unknown'}</Text>
+      </View>
     </View>
-    <View style={styles.right}>
-      <Text style={[styles.recommendation, { color: palette.text }]}>{item.recommendation || 'SEÑAL'}</Text>
-      <Text style={[styles.badge, { color: palette.info }]}>{item.type || 'unknown'}</Text>
-    </View>
-  </View>
+  </FadeInView>
 );
 
 const AlertsScreen = ({ theme = 'dark' }) => {
@@ -214,7 +225,7 @@ const AlertsScreen = ({ theme = 'dark' }) => {
       keyExtractor={(item) => item.id}
       refreshing={refreshing}
       onRefresh={onRefresh}
-      ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin alertas en vivo.</Text>}
+      ListEmptyComponent={<EmptyState palette={palette} title="Sin alertas en vivo" subtitle="Cuando lleguen señales nuevas, aparecerán acá." />}
       renderItem={({ item }) => <AlertRow item={item} palette={palette} />}
     />
   );
@@ -255,7 +266,7 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        ListEmptyComponent={!historyLoading ? <Text style={[styles.muted, { color: palette.muted }]}>Sin alertas en historial.</Text> : null}
+        ListEmptyComponent={!historyLoading ? <EmptyState palette={palette} title="Sin historial" subtitle="Todavía no hay alertas para este filtro." /> : null}
         renderItem={({ item }) => (
           <View>
             <AlertRow item={item} palette={palette} />
@@ -264,6 +275,9 @@ const AlertsScreen = ({ theme = 'dark' }) => {
                 style={[styles.shareBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
                 onPress={() => shareAlert(item.id)}
                 disabled={!shareGroupId || shareLoadingId === item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Compartir alerta ${item.symbol || ''}`}
+                hitSlop={8}
               >
                 <Text style={{ color: palette.text, fontWeight: '700' }}>
                   {shareLoadingId === item.id ? 'Compartiendo...' : shareGroupId ? 'Compartir al grupo seleccionado' : 'Sin grupo'}
@@ -326,7 +340,7 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin alertas para este filtro.</Text>}
+        ListEmptyComponent={<EmptyState palette={palette} title="Sin resultados" subtitle="No hay alertas de performance para este filtro." />}
         renderItem={({ item }) => <AlertRow item={item} palette={palette} />}
       />
     </>
@@ -335,7 +349,7 @@ const AlertsScreen = ({ theme = 'dark' }) => {
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Alertas</Text>
-      <Text style={[styles.muted, { color: palette.muted }]}>WS: {wsStatus}</Text>
+      <Text style={[styles.muted, { color: palette.muted }]}>Tiempo real: {WS_STATUS_LABEL[wsStatus] || wsStatus}</Text>
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
       <View style={styles.rowWrap}>
@@ -353,6 +367,27 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         ))}
       </View>
 
+      {tab === 'live' && refreshing ? (
+        <View style={styles.skeletonWrap}>
+          {SKELETON_ROWS.map((item) => (
+            <View key={item} style={[styles.skeletonRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+              <View>
+                <View style={[styles.skeletonLineMd, { backgroundColor: palette.surfaceAlt }]} />
+                <View style={[styles.skeletonLineSm, { backgroundColor: palette.surfaceAlt }]} />
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <View style={[styles.skeletonLineLg, { backgroundColor: palette.surfaceAlt }]} />
+                <View style={[styles.skeletonLineSm, { backgroundColor: palette.surfaceAlt, width: 70 }]} />
+              </View>
+            </View>
+          ))}
+          <View style={[styles.loadingCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <ActivityIndicator color={palette.primary} />
+            <Text style={[styles.loadingText, { color: palette.muted }]}>Actualizando alertas...</Text>
+          </View>
+        </View>
+      ) : null}
+
       {tab === 'live' ? renderLive() : null}
       {tab === 'history' ? renderHistory() : null}
       {tab === 'performance' ? renderPerformance() : null}
@@ -362,9 +397,31 @@ const AlertsScreen = ({ theme = 'dark' }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 4 },
-  muted: { marginBottom: 8 },
-  error: { marginBottom: 10 },
+  title: { ...typography.screenTitle, marginBottom: 4 },
+  muted: { ...typography.body, marginBottom: 8 },
+  error: { ...typography.body, marginBottom: 10 },
+  skeletonWrap: { marginBottom: 8 },
+  skeletonRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  skeletonLineLg: { width: 80, height: 12, borderRadius: 6 },
+  skeletonLineMd: { width: 60, height: 12, borderRadius: 6 },
+  skeletonLineSm: { width: 100, height: 10, borderRadius: 6, marginTop: 8 },
+  loadingCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  loadingText: { ...typography.body },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   chip: {
     borderRadius: 999,
@@ -373,7 +430,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6
   },
   chipActive: {},
-  chipLabel: { fontSize: 12, fontWeight: '700' },
+  chipLabel: { ...typography.chipLabel },
   row: {
     borderWidth: 1,
     borderRadius: 10,
@@ -383,10 +440,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
-  symbol: { fontWeight: '700' },
-  recommendation: { fontWeight: '700' },
-  meta: { marginTop: 2 },
-  badge: { marginTop: 3, fontSize: 12, fontWeight: '700' },
+  symbol: { ...typography.bodyStrong },
+  recommendation: { ...typography.bodyStrong },
+  meta: { ...typography.body, marginTop: 2 },
+  badge: { ...typography.caption, marginTop: 3 },
   right: { alignItems: 'flex-end' },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   statCard: {
@@ -395,8 +452,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10
   },
-  statLabel: { fontSize: 12, fontWeight: '600' },
-  statValue: { fontSize: 20, fontWeight: '700', marginTop: 4 },
+  statLabel: { ...typography.caption },
+  statValue: { ...typography.screenTitle, fontSize: 20, marginTop: 4 },
   pagination: {
     flexDirection: 'row',
     alignItems: 'center',

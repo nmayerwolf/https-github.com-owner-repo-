@@ -12,8 +12,16 @@ import { api } from './src/api/client';
 import { hydrateSession, loginWithToken, logoutSession } from './src/store/auth';
 import { hydrateTheme, saveTheme } from './src/store/theme';
 import { getThemePalette } from './src/theme/palette';
+import { typography } from './src/theme/typography';
 
 const TABS = ['dashboard', 'markets', 'alerts', 'groups', 'settings'];
+const TAB_LABEL = {
+  dashboard: 'Inicio',
+  markets: 'Mercados',
+  alerts: 'Alertas',
+  groups: 'Grupos',
+  settings: 'Ajustes'
+};
 
 const App = () => {
   const [booting, setBooting] = useState(true);
@@ -176,10 +184,18 @@ const App = () => {
       {!onboardingPending ? (
         <View style={[styles.tabs, { borderTopColor: palette.border, backgroundColor: palette.surface }]}>
           {TABS.map((item) => (
-            <Pressable key={item} onPress={() => setTab(item)} style={[styles.tab, tab === item ? [styles.tabActive, { backgroundColor: palette.surfaceAlt }] : null]}>
+            <Pressable
+              key={item}
+              onPress={() => setTab(item)}
+              style={[styles.tab, tab === item ? [styles.tabActive, { backgroundColor: palette.surfaceAlt }] : null]}
+              accessibilityRole="button"
+              accessibilityLabel={`Ir a ${TAB_LABEL[item] || item}`}
+              hitSlop={8}
+            >
               <Text style={[styles.tabLabel, { color: palette.muted }, tab === item ? [styles.tabLabelActive, { color: palette.primary }] : null]}>
-                {item.toUpperCase()}
+                {TAB_LABEL[item] || item}
               </Text>
+              {tab === item ? <View style={[styles.activeDot, { backgroundColor: palette.primary }]} /> : null}
             </Pressable>
           ))}
         </View>
@@ -192,15 +208,21 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  muted: {},
+  muted: { ...typography.body },
   tabs: {
     flexDirection: 'row',
     borderTopWidth: 1
   },
-  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  tab: { flex: 1, minHeight: 58, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
   tabActive: {},
-  tabLabel: { fontSize: 12, fontWeight: '600' },
-  tabLabelActive: {}
+  tabLabel: { ...typography.caption },
+  tabLabelActive: {},
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    marginTop: 5
+  }
 });
 
 export default App;

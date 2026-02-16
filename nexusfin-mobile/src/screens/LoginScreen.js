@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { getThemePalette } from '../theme/palette';
+import { typography } from '../theme/typography';
 
 const LoginScreen = ({ onOAuth, loading, error, oauthProviders, oauthLoading = false, theme = 'dark' }) => {
   const palette = getThemePalette(theme);
@@ -8,7 +9,7 @@ const LoginScreen = ({ onOAuth, loading, error, oauthProviders, oauthLoading = f
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Horsy</Text>
-      <Text style={[styles.subtitle, { color: palette.muted }]}>Ingresá con Google</Text>
+      <Text style={[styles.subtitle, { color: palette.muted }]}>Iniciar sesión con Google</Text>
 
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
@@ -16,8 +17,11 @@ const LoginScreen = ({ onOAuth, loading, error, oauthProviders, oauthLoading = f
         style={[styles.button, { backgroundColor: palette.primary }]}
         disabled={loading || oauthLoading || !oauthProviders?.google}
         onPress={() => onOAuth?.('google')}
+        accessibilityRole="button"
+        accessibilityLabel="Iniciar sesión con Google"
+        hitSlop={8}
       >
-        <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{loading || oauthLoading ? 'Ingresando...' : 'Continuar con Google'}</Text>
+        <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{loading || oauthLoading ? 'Ingresando...' : 'Iniciar sesión con Google'}</Text>
       </Pressable>
     </View>
   );
@@ -29,11 +33,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700'
-  },
+  title: { ...typography.screenTitle, fontSize: 30 },
   subtitle: {
+    ...typography.screenSubtitle,
     marginTop: 6,
     marginBottom: 20
   },
@@ -43,11 +45,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center'
   },
-  buttonLabel: {
-    fontWeight: '700'
-  },
+  buttonLabel: { ...typography.buttonLabel },
   error: {
-    color: '#FF6B6B',
+    ...typography.body,
     marginTop: 6
   }
 });
