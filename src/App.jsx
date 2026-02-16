@@ -481,20 +481,6 @@ const App = () => {
           </section>
         )}
 
-        {!!state.uiErrors.length && (
-          <section className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }} role="alert" aria-live="assertive">
-            {state.uiErrors.map((e) => (
-              <div key={e.id} className="row" style={{ marginBottom: 6 }}>
-                <span>
-                  <strong>{e.module}:</strong> {e.message}
-                </span>
-                <button type="button" onClick={() => actions.dismissUiError(e.id)}>
-                  Ocultar
-                </button>
-              </div>
-            ))}
-          </section>
-        )}
       </header>
       <Navigation />
       <main className="container">
