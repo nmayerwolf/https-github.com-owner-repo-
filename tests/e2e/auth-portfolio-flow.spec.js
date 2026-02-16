@@ -139,7 +139,7 @@ test('login and add position in portfolio', async ({ page }) => {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();
     await expect(migrationHeading).toBeHidden();
   }
-  await page.getByRole('link', { name: 'Cartera' }).click();
+  await page.locator('a.nav-item[href="/portfolio"]').click();
   await expect(page.getByRole('heading', { name: 'Nueva posición' })).toBeVisible();
 
   await page.getByLabel('Símbolo').fill('AAPL');
