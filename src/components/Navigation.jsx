@@ -36,6 +36,18 @@ const links = [
     )
   },
   {
+    to: '/news',
+    label: 'Noticias',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M7 8h10" />
+        <path d="M7 12h10" />
+        <path d="M7 16h6" />
+      </svg>
+    )
+  },
+  {
     to: '/settings',
     label: 'Ajustes',
     icon: (

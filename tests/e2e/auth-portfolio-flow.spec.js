@@ -135,10 +135,11 @@ test('login and add position in portfolio', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Horsai' })).toBeVisible({ timeout: 45_000 });
   const navItems = page.locator('nav.bottom-nav a.nav-item');
-  await expect(navItems).toHaveCount(4);
+  await expect(navItems).toHaveCount(5);
   await expect(page.locator('nav.bottom-nav')).toContainText('Agente IA');
   await expect(page.locator('nav.bottom-nav')).toContainText('Mercados');
   await expect(page.locator('nav.bottom-nav')).toContainText('Cartera');
+  await expect(page.locator('nav.bottom-nav')).toContainText('Noticias');
   await expect(page.locator('nav.bottom-nav')).toContainText('Ajustes');
   await expect(page.locator('a.nav-item.active[href="/alerts"]')).toBeVisible();
 

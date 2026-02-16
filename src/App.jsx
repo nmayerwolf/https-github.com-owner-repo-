@@ -6,6 +6,7 @@ import Navigation from './components/Navigation';
 import Markets from './components/Markets';
 import Alerts from './components/Alerts';
 import Portfolio from './components/Portfolio';
+import News from './components/News';
 import Settings from './components/Settings';
 import Screener from './components/Screener';
 import Groups from './components/Groups';
@@ -462,6 +463,14 @@ const App = () => {
             element={
               <RouteBoundary moduleName="Cartera">
                 <Portfolio />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/news"
+            element={
+              <RouteBoundary moduleName="Noticias">
+                <News />
               </RouteBoundary>
             }
           />
