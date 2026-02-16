@@ -88,7 +88,7 @@ describe('App onboarding flow', () => {
 
   it('shows onboarding and completes profile setup', async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </MemoryRouter>
     );
