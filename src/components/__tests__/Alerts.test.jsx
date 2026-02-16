@@ -25,7 +25,7 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/apiClient', () => ({ api: apiMock }));
-vi.mock('../../api/claude', () => ({ generateInvestmentThesis: vi.fn() }));
+vi.mock('../../api/claude', () => ({ generateInvestmentThesis: vi.fn(), askClaude: vi.fn() }));
 vi.mock('../../store/AppContext', () => ({ useApp: () => appCtxMock }));
 
 import Alerts from '../Alerts';

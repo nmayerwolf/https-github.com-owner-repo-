@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
+import { askClaude } from '../api/claude';
 import { generateInvestmentThesis } from '../api/claude';
 import { calculateConfluence } from '../engine/confluence';
 import { useApp } from '../store/AppContext';
@@ -33,6 +34,19 @@ const OUTCOME_LABEL = {
   open: 'Open'
 };
 
+const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Riesgo en watchlist'];
+
+const buildLocalHint = (assets = [], query = '') => {
+  const q = String(query || '').toLowerCase();
+  if (!assets.length) return 'No hay activos cargados todavía.';
+  if (q.includes('crypto')) {
+    const rows = assets.filter((a) => a.category === 'crypto').slice(0, 4).map((a) => `${a.symbol}: ${formatPct(a.changePercent || 0)}`);
+    return `Crypto destacadas:\n${rows.join('\n')}`;
+  }
+  const byChange = [...assets].sort((a, b) => Number(b.changePercent || 0) - Number(a.changePercent || 0)).slice(0, 4);
+  return `Top movimiento:\n${byChange.map((a) => `${a.symbol}: ${formatPct(a.changePercent || 0)}`).join('\n')}`;
+};
+
 const Alerts = () => {
   const { state, actions } = useApp();
 
@@ -63,6 +77,10 @@ const Alerts = () => {
   const [shareMessage, setShareMessage] = useState('');
   const [exportLoadingId, setExportLoadingId] = useState('');
   const [exportMessage, setExportMessage] = useState('');
+  const [agentQuery, setAgentQuery] = useState('');
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
 
@@ -140,6 +158,26 @@ const Alerts = () => {
       setThesisSymbol(alert.symbol);
     } finally {
       setLoadingId('');
+    }
+  };
+
+  const askAgent = async (raw) => {
+    const text = String(raw || '').trim();
+    if (!text || agentLoading) return;
+    setAgentLoading(true);
+    setAgentQuery('');
+    setChatMessages((prev) => [...prev, { role: 'user', text }]);
+    try {
+      const context = (state.assets || [])
+        .slice(0, 16)
+        .map((a) => `${a.symbol} price=${a.price} change=${a.changePercent} rsi=${a?.indicators?.rsi ?? 'n/a'}`)
+        .join('\n');
+      const out = await askAgentFn(`Consulta usuario: ${text}\n\nContexto de mercado:\n${context}`);
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: out?.text || buildLocalHint(state.assets, text) }]);
+    } catch {
+      setChatMessages((prev) => [...prev, { role: 'assistant', text: buildLocalHint(state.assets, text) }]);
+    } finally {
+      setAgentLoading(false);
     }
   };
 
@@ -225,6 +263,42 @@ const Alerts = () => {
             {t}
           </button>
         ))}
+      </section>
+
+      <section className="card">
+        <h2 style={{ marginBottom: 8 }}>AI Agent</h2>
+        <div className="chat-area">
+          {!chatMessages.length ? (
+            <div className="muted">Preguntale al agente sobre activos, señales o riesgo de portfolio.</div>
+          ) : null}
+          {chatMessages.map((msg, idx) => (
+            <div key={`${msg.role}-${idx}`} className={`chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-ai'}`}>
+              {msg.text}
+            </div>
+          ))}
+        </div>
+        {!chatMessages.length ? (
+          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+            {quickPrompts.map((prompt) => (
+              <button key={prompt} type="button" onClick={() => askAgent(prompt)}>
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="row" style={{ marginTop: 8 }}>
+          <input
+            placeholder="Preguntale al agente..."
+            value={agentQuery}
+            onChange={(e) => setAgentQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') askAgent(agentQuery);
+            }}
+          />
+          <button type="button" onClick={() => askAgent(agentQuery)} disabled={agentLoading}>
+            {agentLoading ? 'Pensando...' : 'Enviar'}
+          </button>
+        </div>
       </section>
 
       {liveList.map((a) => (

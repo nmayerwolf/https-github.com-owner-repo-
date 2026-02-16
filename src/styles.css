@@ -537,6 +537,31 @@ textarea {
   margin-top: 4px;
 }
 
+/* AI chat */
+.chat-area {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-bubble {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.chat-user {
+  margin-left: 42px;
+  background: var(--bg-elevated);
+}
+
+.chat-ai {
+  margin-right: 42px;
+  background: var(--bg-card-hover);
+  border: 1px solid var(--border);
+}
+
 /* Markets */
 .screen-title {
   font-size: 1.4rem;
