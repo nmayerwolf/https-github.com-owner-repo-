@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api } from '../api/client';
 import { getThemePalette } from '../theme/palette';
+import { typography } from '../theme/typography';
+import EmptyState from '../components/EmptyState';
 
 const formatPct = (value) => {
   const n = Number(value);
@@ -194,10 +196,16 @@ const GroupsScreen = ({ theme = 'dark' }) => {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: palette.bg }]} contentContainerStyle={{ paddingBottom: 24 }}>
-      <Text style={[styles.title, { color: palette.text }]}>Groups</Text>
+      <Text style={[styles.title, { color: palette.text }]}>Grupos</Text>
       <Text style={[styles.muted, { color: palette.muted }]}>Mis grupos: {groups.length}</Text>
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
       {message ? <Text style={[styles.message, { color: palette.info }]}>{message}</Text> : null}
+      {loading ? (
+        <View style={[styles.loadingCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={[styles.loadingText, { color: palette.muted }]}>Cargando grupos...</Text>
+        </View>
+      ) : null}
 
       <View style={styles.row}>
         <TextInput
@@ -246,7 +254,7 @@ const GroupsScreen = ({ theme = 'dark' }) => {
             </Pressable>
           );
         }}
-        ListEmptyComponent={!loading ? <Text style={[styles.muted, { color: palette.muted }]}>Sin grupos todavía.</Text> : null}
+        ListEmptyComponent={!loading ? <EmptyState palette={palette} title="Sin grupos" subtitle="Creá uno nuevo o uníte con código." /> : null}
       />
 
       {selectedGroup ? (
@@ -352,7 +360,7 @@ const GroupsScreen = ({ theme = 'dark' }) => {
             </View>
           </View>
         )}
-        ListEmptyComponent={<Text style={[styles.muted, { color: palette.muted }]}>Sin eventos en feed.</Text>}
+        ListEmptyComponent={<EmptyState palette={palette} title="Feed vacío" subtitle="Publicá una nota para iniciar la conversación." />}
       />
     </ScrollView>
   );
@@ -360,10 +368,20 @@ const GroupsScreen = ({ theme = 'dark' }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 4 },
-  muted: { marginBottom: 8 },
-  error: { marginBottom: 8 },
-  message: { marginBottom: 8 },
+  title: { ...typography.screenTitle, marginBottom: 4 },
+  muted: { ...typography.body, marginBottom: 8 },
+  error: { ...typography.body, marginBottom: 8 },
+  message: { ...typography.body, marginBottom: 8 },
+  loadingCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  loadingText: { ...typography.body },
   row: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   input: {
     flex: 1,
@@ -373,7 +391,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   actionBtn: { borderRadius: 10, paddingHorizontal: 12, justifyContent: 'center' },
-  actionBtnLabel: { fontWeight: '700' },
+  actionBtnLabel: { ...typography.buttonLabel },
   groupPill: {
     borderWidth: 1,
     borderRadius: 10,
@@ -381,10 +399,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginRight: 8
   },
-  groupName: { fontWeight: '700' },
-  groupMeta: { fontSize: 12, marginTop: 2 },
+  groupName: { ...typography.bodyStrong },
+  groupMeta: { ...typography.caption, marginTop: 2 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 },
-  section: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  section: { ...typography.sectionTitle, marginBottom: 8 },
   leaveBtn: { borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginTop: 8 },
   feedRow: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 8 },
   reactRow: { flexDirection: 'row', gap: 8, marginTop: 8 },

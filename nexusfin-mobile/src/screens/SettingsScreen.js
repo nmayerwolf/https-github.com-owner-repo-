@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { registerNativePush } from '../lib/push';
 import { clearPushSubscriptionId, savePushSubscriptionId } from '../store/auth';
 import { getThemePalette } from '../theme/palette';
+import { typography } from '../theme/typography';
 
 const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
   const palette = getThemePalette(theme);
@@ -178,7 +179,8 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
-      <Text style={[styles.title, { color: palette.text }]}>Settings</Text>
+      <Text style={[styles.title, { color: palette.text }]}>Ajustes</Text>
+      <Text style={[styles.status, { color: palette.muted }]}>Personalizá la experiencia de Horsy.</Text>
       <Text style={[styles.status, { color: palette.muted }]}>Push: {pushEnabled ? 'activo' : 'inactivo'}</Text>
       <Pressable style={[styles.button, { backgroundColor: palette.primary }]} disabled={loading} onPress={enablePush}>
         <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{loading ? 'Activando...' : 'Activar push nativo'}</Text>
@@ -201,49 +203,59 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
       </Pressable>
 
       <Text style={[styles.section, { color: palette.text }]}>Fase 3 readiness</Text>
-      <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-        <Text style={[styles.prefLabel, { color: palette.text }]}>
-          Score: {phase3Health ? `${phase3Health.score}/${phase3Health.total}` : '--'}
-        </Text>
-        <Pressable
-          style={[styles.refreshBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
-          onPress={loadPhase3Health}
-          disabled={phase3Loading}
-        >
-          <Text style={{ color: palette.text, fontWeight: '700' }}>{phase3Loading ? '...' : 'Refrescar'}</Text>
-        </Pressable>
-      </View>
-      {phase3Health?.check ? (
-        <View style={[styles.healthList, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          {Object.entries(phase3Health.check).map(([key, ok]) => (
-            <Text key={key} style={{ color: ok ? palette.positive : palette.danger, marginBottom: 4 }}>
-              {ok ? 'OK' : 'PEND'} {key}
-            </Text>
-          ))}
+      <View style={[styles.sectionCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <Text style={[styles.prefLabel, { color: palette.text }]}>
+            Score: {phase3Health ? `${phase3Health.score}/${phase3Health.total}` : '--'}
+          </Text>
+          <Pressable
+            style={[styles.refreshBtn, { backgroundColor: palette.secondaryButton, borderColor: palette.border }]}
+            onPress={loadPhase3Health}
+            disabled={phase3Loading}
+          >
+            <Text style={{ color: palette.text, fontWeight: '700' }}>{phase3Loading ? '...' : 'Refrescar'}</Text>
+          </Pressable>
         </View>
-      ) : null}
+        {phase3Health?.check ? (
+          <View style={[styles.healthList, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            {Object.entries(phase3Health.check).map(([key, ok]) => (
+              <Text key={key} style={{ color: ok ? palette.positive : palette.danger, marginBottom: 4 }}>
+                {ok ? 'OK' : 'PEND'} {key}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+      </View>
 
       <Text style={[styles.section, { color: palette.text }]}>Tema</Text>
-      <View style={styles.rowTwo}>
+      <View style={[styles.sectionCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        <View style={styles.rowTwo}>
         <Pressable
           style={[styles.button, styles.themeButton, { backgroundColor: theme === 'dark' ? palette.primary : palette.secondaryButton }]}
           onPress={() => onThemeChange?.('dark')}
+          accessibilityRole="button"
+          accessibilityLabel="Activar tema oscuro"
+          hitSlop={8}
         >
           <Text style={[styles.buttonLabel, { color: theme === 'dark' ? palette.primaryText : palette.text }]}>Oscuro</Text>
         </Pressable>
         <Pressable
           style={[styles.button, styles.themeButton, { backgroundColor: theme === 'light' ? palette.primary : palette.secondaryButton }]}
           onPress={() => onThemeChange?.('light')}
+          accessibilityRole="button"
+          accessibilityLabel="Activar tema claro"
+          hitSlop={8}
         >
           <Text style={[styles.buttonLabel, { color: theme === 'light' ? palette.primaryText : palette.text }]}>Claro</Text>
         </Pressable>
+        </View>
       </View>
 
       <Text style={[styles.section, { color: palette.text }]}>Preferencias de notificaciones</Text>
       {prefsLoading ? (
         <Text style={[styles.status, { color: palette.muted }]}>Cargando preferencias...</Text>
       ) : (
-        <>
+        <View style={[styles.sectionCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
           <View style={[styles.prefRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
             <Text style={[styles.prefLabel, { color: palette.text }]}>Stop loss</Text>
             <Switch
@@ -293,7 +305,7 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
           <Pressable style={[styles.button, styles.saveButton, { backgroundColor: palette.primary }]} disabled={prefsSaving} onPress={savePreferences}>
             <Text style={[styles.buttonLabel, { color: palette.primaryText }]}>{prefsSaving ? 'Guardando...' : 'Guardar preferencias'}</Text>
           </Pressable>
-        </>
+        </View>
       )}
 
       {message ? <Text style={[styles.message, { color: palette.muted }]}>{message}</Text> : null}
@@ -303,9 +315,9 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  status: { marginBottom: 8 },
-  section: { fontSize: 16, fontWeight: '700', marginTop: 14, marginBottom: 8 },
+  title: { ...typography.screenTitle, marginBottom: 12 },
+  status: { ...typography.body, marginBottom: 8 },
+  section: { ...typography.sectionTitle, marginTop: 14, marginBottom: 8 },
   rowTwo: { flexDirection: 'row', gap: 8 },
   button: {
     borderRadius: 10,
@@ -313,11 +325,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10
   },
-  buttonLabel: { fontWeight: '700' },
+  buttonLabel: { ...typography.buttonLabel },
   secondary: {},
-  secondaryLabel: { fontWeight: '600' },
+  secondaryLabel: { ...typography.bodyStrong },
   themeButton: { flex: 1 },
   saveButton: { marginTop: 8 },
+  sectionCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8
+  },
   prefRow: {
     borderWidth: 1,
     borderRadius: 10,
@@ -328,7 +346,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between'
   },
-  prefLabel: {},
+  prefLabel: { ...typography.body },
   refreshBtn: {
     borderWidth: 1,
     borderRadius: 8,
@@ -342,7 +360,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8
   },
-  prefHint: { marginTop: 6, marginBottom: 6 },
+  prefHint: { ...typography.caption, marginTop: 6, marginBottom: 6 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timeInput: {
     flex: 1,
@@ -351,7 +369,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10
   },
-  message: { marginTop: 8 }
+  message: { ...typography.body, marginTop: 8 }
 });
 
 export default SettingsScreen;

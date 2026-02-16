@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../api/client';
 import { registerNativePush } from '../lib/push';
 import { getThemePalette } from '../theme/palette';
+import { typography } from '../theme/typography';
 
 const RISK_OPTIONS = ['conservador', 'moderado', 'agresivo'];
 const HORIZON_OPTIONS = ['corto', 'mediano', 'largo'];
@@ -109,6 +110,9 @@ const OnboardingScreen = ({ onDone, theme = 'dark' }) => {
     <ScrollView style={[styles.container, { backgroundColor: palette.bg }]} contentContainerStyle={{ paddingBottom: 24 }}>
       <Text style={[styles.title, { color: palette.text }]}>Onboarding guiado</Text>
       <Text style={[styles.muted, { color: palette.muted }]}>Paso {step}/4</Text>
+      <View style={[styles.progressTrack, { backgroundColor: palette.surfaceAlt, borderColor: palette.border }]}>
+        <View style={[styles.progressFill, { width: `${(step / 4) * 100}%`, backgroundColor: palette.primary }]} />
+      </View>
 
       {step === 1 ? (
         <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
@@ -203,15 +207,26 @@ const OnboardingScreen = ({ onDone, theme = 'dark' }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  title: { fontSize: 24, fontWeight: '700' },
-  muted: { marginTop: 6 },
+  title: { ...typography.screenTitle },
+  muted: { ...typography.body, marginTop: 6 },
+  progressTrack: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    height: 8,
+    overflow: 'hidden'
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999
+  },
   card: {
     marginTop: 12,
     borderWidth: 1,
     borderRadius: 10,
     padding: 12
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  sectionTitle: { ...typography.sectionTitle, marginBottom: 8 },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
     borderRadius: 999,
@@ -220,7 +235,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7
   },
   pillActive: {},
-  pillLabel: { fontWeight: '700' },
+  pillLabel: { ...typography.chipLabel },
   pillLabelActive: {},
   actions: { marginTop: 16, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   buttonPrimary: {
@@ -229,17 +244,17 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center'
   },
-  buttonPrimaryLabel: { fontWeight: '700' },
+  buttonPrimaryLabel: { ...typography.buttonLabel },
   buttonSecondary: {
     flex: 1,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center'
   },
-  buttonSecondaryLabel: { fontWeight: '700' },
+  buttonSecondaryLabel: { ...typography.buttonLabel },
   buttonDisabled: { opacity: 0.5 },
-  error: { marginTop: 10 },
-  message: { marginTop: 10 }
+  error: { ...typography.body, marginTop: 10 },
+  message: { ...typography.body, marginTop: 10 }
 });
 
 export default OnboardingScreen;
