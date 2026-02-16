@@ -677,6 +677,12 @@ textarea {
   font-size: 0.68rem;
 }
 
+.portfolio-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 /* AI chat */
 .chat-area {
   display: grid;

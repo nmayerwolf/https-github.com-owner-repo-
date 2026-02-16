@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
@@ -6,10 +6,43 @@ import { formatPct, formatUSD, shortDate } from '../utils/format';
 const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', quantity: 1 };
 const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10) };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
+const PORTFOLIO_PAGE_SIZE = 8;
+
+const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete }) {
+  return (
+    <article className="card pos-row">
+      <div className="pos-icon">{String(position.symbol).slice(0, 3)}</div>
+      <div className="pos-info">
+        <div className="pos-sym mono">{position.symbol}</div>
+        <div className="pos-detail">
+          Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
+        </div>
+        {position.sellDate ? <div className="pos-detail">Venta {formatUSD(position.sellPrice)} · {shortDate(position.sellDate)}</div> : null}
+      </div>
+      <div className="pos-vals">
+        <div className="pos-value mono">{formatUSD(position.value)}</div>
+        <div className={`pos-pnl mono ${position.pnl >= 0 ? 'up' : 'down'}`}>
+          {formatUSD(position.pnl)} ({formatPct(position.pnlPctPos)})
+        </div>
+        {!position.sellDate ? (
+          <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => onOpenSell(position)}>
+              Vender
+            </button>
+            <button type="button" onClick={() => onDelete(position.id)}>
+              Eliminar
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+});
 
 const Portfolio = () => {
   const { state, actions } = useApp();
   const [tab, setTab] = useState('active');
+  const [visibleCount, setVisibleCount] = useState(PORTFOLIO_PAGE_SIZE);
   const [form, setForm] = useState(emptyForm);
   const [sellModal, setSellModal] = useState(emptySell);
   const [exportFilter, setExportFilter] = useState('all');
@@ -17,27 +50,35 @@ const Portfolio = () => {
   const [exportError, setExportError] = useState('');
 
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
-  const active = state.positions.filter((p) => !p.sellDate);
-  const sold = state.positions.filter((p) => p.sellDate);
+  const active = useMemo(() => state.positions.filter((p) => !p.sellDate), [state.positions]);
+  const sold = useMemo(() => state.positions.filter((p) => p.sellDate), [state.positions]);
   const portfolioValue = active.reduce((acc, p) => acc + (assetsBySymbol[p.symbol]?.price ?? p.buyPrice) * p.quantity, 0);
   const invested = active.reduce((acc, p) => acc + p.buyPrice * p.quantity, 0);
   const pnlTotal = portfolioValue - invested;
   const pnlPct = invested ? (pnlTotal / invested) * 100 : 0;
 
-  const activeRows = active.map((p) => {
-    const current = assetsBySymbol[p.symbol]?.price ?? p.buyPrice;
-    const pnl = (current - p.buyPrice) * p.quantity;
-    const pnlPctPos = ((current - p.buyPrice) / p.buyPrice) * 100;
-    const value = current * p.quantity;
-    return { ...p, current, pnl, pnlPctPos, value };
-  });
+  const activeRows = useMemo(
+    () =>
+      active.map((p) => {
+        const current = assetsBySymbol[p.symbol]?.price ?? p.buyPrice;
+        const pnl = (current - p.buyPrice) * p.quantity;
+        const pnlPctPos = ((current - p.buyPrice) / p.buyPrice) * 100;
+        const value = current * p.quantity;
+        return { ...p, current, pnl, pnlPctPos, value };
+      }),
+    [active, assetsBySymbol]
+  );
 
-  const soldRows = sold.map((p) => {
-    const pnl = (p.sellPrice - p.buyPrice) * p.quantity;
-    const pnlPctPos = ((p.sellPrice - p.buyPrice) / p.buyPrice) * 100;
-    const value = (p.sellPrice ?? 0) * p.quantity;
-    return { ...p, pnl, pnlPctPos, value };
-  });
+  const soldRows = useMemo(
+    () =>
+      sold.map((p) => {
+        const pnl = (p.sellPrice - p.buyPrice) * p.quantity;
+        const pnlPctPos = ((p.sellPrice - p.buyPrice) / p.buyPrice) * 100;
+        const value = (p.sellPrice ?? 0) * p.quantity;
+        return { ...p, pnl, pnlPctPos, value };
+      }),
+    [sold]
+  );
 
   const allocation = activeRows
     .map((row, idx) => ({
@@ -93,6 +134,25 @@ const Portfolio = () => {
   };
 
   const rows = tab === 'active' ? activeRows : tab === 'sold' ? soldRows : [];
+  const visibleRows = rows.slice(0, visibleCount);
+  const hasMoreRows = visibleRows.length < rows.length;
+
+  useEffect(() => {
+    setVisibleCount(PORTFOLIO_PAGE_SIZE);
+  }, [tab, rows.length]);
+
+  const handleOpenSell = useCallback(
+    (position) =>
+      setSellModal({
+        id: position.id,
+        symbol: position.symbol,
+        sellPrice: (assetsBySymbol[position.symbol]?.price ?? position.buyPrice).toFixed(4),
+        sellDate: new Date().toISOString().slice(0, 10)
+      }),
+    [assetsBySymbol]
+  );
+
+  const handleDelete = useCallback((id) => actions.deletePosition(id), [actions]);
 
   return (
     <div className="grid portfolio-page">
@@ -208,42 +268,7 @@ const Portfolio = () => {
       </section>
 
       {tab !== 'summary'
-        ? rows.map((p) => (
-            <article className="card pos-row" key={p.id}>
-              <div className="pos-icon">{String(p.symbol).slice(0, 3)}</div>
-              <div className="pos-info">
-                <div className="pos-sym mono">{p.symbol}</div>
-                <div className="pos-detail">
-                  Cantidad {p.quantity} · Compra {formatUSD(p.buyPrice)} · {shortDate(p.buyDate)}
-                </div>
-                {p.sellDate ? <div className="pos-detail">Venta {formatUSD(p.sellPrice)} · {shortDate(p.sellDate)}</div> : null}
-              </div>
-              <div className="pos-vals">
-                <div className="pos-value mono">{formatUSD(p.value)}</div>
-                <div className={`pos-pnl mono ${p.pnl >= 0 ? 'up' : 'down'}`}>{formatUSD(p.pnl)} ({formatPct(p.pnlPctPos)})</div>
-                {!p.sellDate ? (
-                  <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSellModal({
-                          id: p.id,
-                          symbol: p.symbol,
-                          sellPrice: (assetsBySymbol[p.symbol]?.price ?? p.buyPrice).toFixed(4),
-                          sellDate: new Date().toISOString().slice(0, 10)
-                        })
-                      }
-                    >
-                      Vender
-                    </button>
-                    <button type="button" onClick={() => actions.deletePosition(p.id)}>
-                      Eliminar
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </article>
-          ))
+        ? visibleRows.map((p) => <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} />)
         : (
           <section className="card">
             <h3>Resumen de posiciones</h3>
@@ -271,6 +296,13 @@ const Portfolio = () => {
             </div>
           </section>
         )}
+      {tab !== 'summary' && hasMoreRows ? (
+        <div className="card portfolio-more">
+          <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + PORTFOLIO_PAGE_SIZE, rows.length))}>
+            Ver más posiciones
+          </button>
+        </div>
+      ) : null}
       {tab !== 'summary' && !rows.length && <div className="card muted">No hay posiciones en esta pestaña.</div>}
 
       {sellModal.id && (
