@@ -349,9 +349,10 @@ a:focus-visible {
 }
 
 .tk-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 58px 78px 62px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -359,11 +360,14 @@ a:focus-visible {
   color: var(--text-secondary);
   font-size: 0.7rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .tk-price,
 .tk-chg {
   font-size: 0.75rem;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .section-header-inline {
@@ -450,10 +454,17 @@ a:focus-visible {
 
 .alert-meta {
   margin-top: 6px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 70px 70px 56px;
+  justify-content: end;
+  column-gap: 6px;
   color: var(--text-secondary);
   font-size: 0.68rem;
+}
+
+.alert-meta .mono {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .ai-card {
@@ -615,7 +626,7 @@ a:focus-visible {
 .a-price-col {
   text-align: right;
   flex-shrink: 0;
-  width: 86px;
+  width: 96px;
 }
 
 .a-price {

@@ -310,9 +310,10 @@ const Alerts = () => {
           </div>
           {typeof a.net === 'number' && <ConfluenceBar net={a.net} />}
           {a.stopLoss && (
-            <div className="row" style={{ marginTop: 8 }}>
-              <span className="muted">SL: {formatUSD(a.stopLoss)}</span>
-              <span className="muted">TP: {formatUSD(a.takeProfit)}</span>
+            <div className="alert-meta" style={{ marginTop: 8 }}>
+              <span className="mono">{`SL ${formatUSD(a.stopLoss)}`}</span>
+              <span className="mono">{`TP ${formatUSD(a.takeProfit)}`}</span>
+              <span className="mono">{String(a.confidence || 'high')}</span>
             </div>
           )}
           {(a.type === 'compra' || a.type === 'venta') && (
@@ -362,7 +363,7 @@ const Alerts = () => {
               <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                 <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{HISTORY_TYPE_LABEL[a.type] || a.type}</span>
                 <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>{a.outcome || 'open'}</span>
-                <span className="muted">Precio alerta: {formatUSD(a.priceAtAlert)}</span>
+                <span className="muted mono" style={{ minWidth: 128, textAlign: 'right' }}>Precio alerta: {formatUSD(a.priceAtAlert)}</span>
                 <span className="muted">Confianza: {a.confidence}</span>
               </div>
               {renderShareControls(a.id)}
@@ -453,7 +454,7 @@ const Alerts = () => {
                 <span className="muted">{a.recommendation}</span>
                 <span className="muted">{shortDate(a.createdAt)}</span>
                 <span className="muted">Outcome: {a.outcome}</span>
-                <span className="muted">Precio: {formatUSD(a.priceAtAlert)}</span>
+                <span className="muted mono" style={{ minWidth: 108, textAlign: 'right' }}>Precio: {formatUSD(a.priceAtAlert)}</span>
               </article>
             ))}
 

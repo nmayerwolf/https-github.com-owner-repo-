@@ -35,9 +35,8 @@ const AlertCard = ({ alert }) => {
       <div className="alert-body">{alert.title || alert.recommendation || 'Nueva señal del agente.'}</div>
       <ConfluenceBar net={Number.isFinite(net) ? net : 0} />
       <div className="alert-meta">
-        <span className="mono">
-          {alert.stopLoss ? `SL ${formatUSD(alert.stopLoss)}` : '-'} {alert.takeProfit ? `→ TP ${formatUSD(alert.takeProfit)}` : ''}
-        </span>
+        <span className="mono">{alert.stopLoss ? `SL ${formatUSD(alert.stopLoss)}` : 'SL -'}</span>
+        <span className="mono">{alert.takeProfit ? `TP ${formatUSD(alert.takeProfit)}` : 'TP -'}</span>
         <span className="mono">{String(alert.confidence || 'high')}</span>
       </div>
     </article>
