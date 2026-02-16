@@ -338,6 +338,29 @@ const Alerts = () => {
 
   const renderLive = () => (
     <>
+      <section className="ai-card">
+        <div className="ai-card-title">Screener IA</div>
+        <div className="ai-card-sub">Lanzá búsquedas inteligentes con un clic.</div>
+        <div className="ai-suggestions">
+          {quickPrompts.map((prompt) => (
+            <button
+              key={`screener-${prompt}`}
+              type="button"
+              className="ai-sug"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  q: prompt,
+                  autorun: '1'
+                });
+                navigate(`/screener?${params.toString()}`);
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="card">
         <div className="section-header-inline">
           <h3 className="section-title">Señales activas</h3>
@@ -402,29 +425,6 @@ const Alerts = () => {
           <button type="button" onClick={() => askAgent(agentQuery)} disabled={agentLoading}>
             {agentLoading ? 'Pensando...' : 'Enviar'}
           </button>
-        </div>
-      </section>
-
-      <section className="ai-card">
-        <div className="ai-card-title">Screener IA</div>
-        <div className="ai-card-sub">Lanzá búsquedas inteligentes con un clic.</div>
-        <div className="ai-suggestions">
-          {quickPrompts.map((prompt) => (
-            <button
-              key={`screener-${prompt}`}
-              type="button"
-              className="ai-sug"
-              onClick={() => {
-                const params = new URLSearchParams({
-                  q: prompt,
-                  autorun: '1'
-                });
-                navigate(`/screener?${params.toString()}`);
-              }}
-            >
-              {prompt}
-            </button>
-          ))}
         </div>
       </section>
 
