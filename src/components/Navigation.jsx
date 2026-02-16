@@ -3,12 +3,13 @@ import { NavLink } from 'react-router-dom';
 
 const links = [
   {
-    to: '/',
-    label: 'Inicio',
+    to: '/alerts',
+    label: 'Agente IA',
+    special: true,
     icon: (
       <svg viewBox="0 0 24 24">
-        <path d="M3 10.5L12 3l9 7.5" />
-        <path d="M5 9.5V21h14V9.5" />
+        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+        <path d="M12 3v18" />
       </svg>
     )
   },
@@ -21,17 +22,6 @@ const links = [
         <path d="M10 18v-8" />
         <path d="M16 18V9" />
         <path d="M22 18v-5" />
-      </svg>
-    )
-  },
-  {
-    to: '/alerts',
-    label: 'Agente IA',
-    special: true,
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
-        <path d="M12 3v18" />
       </svg>
     )
   },

@@ -46,13 +46,12 @@ vi.mock('../../store/AuthContext', () => ({
 }));
 
 vi.mock('../Navigation', () => ({ default: () => <div>Navigation</div> }));
-vi.mock('../Dashboard', () => ({
+vi.mock('../Alerts', () => ({
   default: () => {
-    throw new Error('dashboard exploded');
+    throw new Error('alerts exploded');
   }
 }));
 vi.mock('../Markets', () => ({ default: () => <div>Markets</div> }));
-vi.mock('../Alerts', () => ({ default: () => <div>Alerts</div> }));
 vi.mock('../Portfolio', () => ({ default: () => <div>Portfolio</div> }));
 vi.mock('../Settings', () => ({ default: () => <div>Settings</div> }));
 vi.mock('../Screener', () => ({ default: () => <div>Screener</div> }));
@@ -76,7 +75,7 @@ describe('App route error boundaries', () => {
     appCtxMock.actions.dismissUiError.mockReset();
   });
 
-  it('renders fallback when dashboard crashes', async () => {
+  it('renders fallback when agente IA crashes', async () => {
     apiMock.health.mockResolvedValueOnce({ ok: true });
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -86,8 +85,8 @@ describe('App route error boundaries', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Error en Dashboard')).toBeTruthy();
-    expect(await screen.findByText(/dashboard exploded/i)).toBeTruthy();
+    expect(await screen.findByText('Error en Agente IA')).toBeTruthy();
+    expect(await screen.findByText(/alerts exploded/i)).toBeTruthy();
     errSpy.mockRestore();
   });
 });

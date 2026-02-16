@@ -5,6 +5,7 @@ import { fetchCompanyProfile } from '../api/finnhub';
 import { useApp } from '../store/AppContext';
 import { formatUSD } from '../utils/format';
 import AssetRow from './common/AssetRow';
+import NewsSection from './NewsSection';
 import Sparkline from './common/Sparkline';
 import { CATEGORY_OPTIONS, WATCHLIST_CATALOG } from '../utils/constants';
 
@@ -43,8 +44,21 @@ const Markets = () => {
     [state.watchlistSymbols]
   );
 
-  const visibleAssets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
-  const hasMore = visibleAssets.length < filtered.length;
+  const watchlistAssets = useMemo(() => {
+    const bySymbol = Object.fromEntries(state.assets.map((asset) => [String(asset.symbol || '').toUpperCase(), asset]));
+    return state.watchlistSymbols
+      .map((symbol) => bySymbol[String(symbol || '').toUpperCase()])
+      .filter(Boolean)
+      .filter((asset) => {
+        const okCategory = category === 'all' || asset.category === category;
+        const q = query.toLowerCase();
+        const okText = !q || asset.symbol.toLowerCase().includes(q) || asset.name.toLowerCase().includes(q);
+        return okCategory && okText;
+      });
+  }, [state.assets, state.watchlistSymbols, category, query]);
+
+  const visibleAssets = useMemo(() => watchlistAssets.slice(0, visibleCount), [watchlistAssets, visibleCount]);
+  const hasMore = visibleAssets.length < watchlistAssets.length;
   const selectedAsset = useMemo(() => {
     const symbol = String(selectedSymbol || '').toUpperCase();
     if (!symbol) return null;
@@ -246,15 +260,21 @@ const Markets = () => {
           ))}
           {hasMore ? (
             <div className="markets-load-more">
-              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, filtered.length))} aria-label="Cargar más activos">
+              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, watchlistAssets.length))} aria-label="Cargar más activos">
                 Cargar más
               </button>
               <div ref={loadMoreRef} className="markets-load-sentinel" aria-hidden="true" />
             </div>
           ) : null}
-          {!filtered.length && !isStreamingLoad ? <div className="muted">No hay activos para este filtro.</div> : null}
+          {!watchlistAssets.length && !isStreamingLoad ? <div className="muted">Tu watchlist está vacía para este filtro.</div> : null}
         </div>
       </section>
+
+      <NewsSection
+        title={selectedAsset?.symbol ? `Noticias: ${selectedAsset.symbol}` : 'Noticias de mercado'}
+        symbol={selectedAsset?.symbol || ''}
+        limit={12}
+      />
     </div>
   );
 };

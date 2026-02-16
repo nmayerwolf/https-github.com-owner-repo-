@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
 import Navigation from './components/Navigation';
-import Dashboard from './components/Dashboard';
 import Markets from './components/Markets';
 import Alerts from './components/Alerts';
 import Portfolio from './components/Portfolio';
@@ -433,14 +432,7 @@ const App = () => {
       <Navigation />
       <main className="container">
         <Routes>
-          <Route
-            path="/"
-            element={
-              <RouteBoundary moduleName="Dashboard">
-                <Dashboard />
-              </RouteBoundary>
-            }
-          />
+          <Route path="/" element={<Navigate to="/alerts" replace />} />
           <Route
             path="/markets"
             element={
@@ -460,7 +452,7 @@ const App = () => {
           <Route
             path="/alerts"
             element={
-              <RouteBoundary moduleName="Alertas">
+              <RouteBoundary moduleName="Agente IA">
                 <Alerts />
               </RouteBoundary>
             }
@@ -497,7 +489,7 @@ const App = () => {
               </RouteBoundary>
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/alerts" replace />} />
         </Routes>
       </main>
     </div>
