@@ -140,6 +140,18 @@ export const api = {
     }
     return request(`/market/news?${q.toString()}`);
   },
+  marketNewsRecommended: ({ symbols = [], category = 'general', minId = 0, minScore = 6, limit = 60 } = {}) => {
+    const q = new URLSearchParams();
+    const cleanSymbols = Array.isArray(symbols)
+      ? symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+    if (cleanSymbols.length) q.set('symbols', cleanSymbols.join(','));
+    if (category) q.set('category', String(category));
+    if (minId != null) q.set('minId', String(minId));
+    if (minScore != null) q.set('minScore', String(minScore));
+    if (limit != null) q.set('limit', String(limit));
+    return request(`/market/news/recommended?${q.toString()}`);
+  },
 
   getGroups: () => request('/groups'),
   createGroup: (name) => request('/groups', { method: 'POST', body: JSON.stringify({ name }) }),

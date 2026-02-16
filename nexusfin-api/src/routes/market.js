@@ -2,6 +2,7 @@ const express = require('express');
 const { cache } = require('../config/cache');
 const av = require('../services/alphavantage');
 const finnhub = require('../services/finnhub');
+const { rankNews } = require('../services/newsRanker');
 const { badRequest } = require('../utils/errors');
 const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
 
@@ -268,6 +269,51 @@ router.get('/news', async (req, res, next) => {
     }
 
     return res.json(Array.isArray(data) ? data : []);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/news/recommended', async (req, res, next) => {
+  try {
+    const symbols = normalizeSymbolList(req.query.symbols).slice(0, 8);
+    const category = String(req.query.category || 'general').trim().toLowerCase() || 'general';
+    const minId = Number.isFinite(Number(req.query.minId)) ? Number(req.query.minId) : 0;
+    const minScore = Number.isFinite(Number(req.query.minScore)) ? Number(req.query.minScore) : 6;
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 60;
+    const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+    const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
+
+    const generalKey = `news:recommended:general:${category}:${minId}`;
+    const general = await getOrSet(generalKey, 900, () => finnhub.generalNews(category, minId));
+
+    const companyBuckets = await Promise.all(
+      symbols.map((symbol) => {
+        const key = `news:recommended:company:${symbol}:${from}:${to}`;
+        return getOrSet(key, 900, () => finnhub.companyNews(symbol, from, to)).catch(() => []);
+      })
+    );
+
+    const merged = new Map();
+    for (const item of [...(Array.isArray(general) ? general : []), ...companyBuckets.flat()]) {
+      const key = item?.id || item?.url;
+      if (!key || merged.has(key)) continue;
+      merged.set(key, item);
+    }
+
+    const ranked = rankNews([...merged.values()], {
+      watchlistSymbols: symbols,
+      minScore,
+      limit
+    });
+
+    return res.json({
+      mode: 'ai',
+      minScore,
+      total: merged.size,
+      count: ranked.length,
+      items: ranked
+    });
   } catch (error) {
     return next(error);
   }

@@ -126,6 +126,47 @@ describe('market routes', () => {
     expect(finnhub.generalNews).toHaveBeenCalledWith('general', 0);
   });
 
+  it('returns AI recommended market news ranked by recency with score filter', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    finnhub.generalNews.mockResolvedValueOnce([
+      {
+        id: 101,
+        headline: 'Fed warns on inflation outlook',
+        summary: 'Policy update with macro impact',
+        related: '',
+        datetime: now - 120
+      },
+      {
+        id: 102,
+        headline: 'Minor local event',
+        summary: 'Low impact',
+        related: '',
+        datetime: now - 60
+      }
+    ]);
+    finnhub.companyNews.mockResolvedValueOnce([
+      {
+        id: 103,
+        headline: 'AAPL announces major launch',
+        summary: 'Product launch expected to affect growth guidance',
+        related: 'AAPL',
+        datetime: now - 30
+      }
+    ]);
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/news/recommended?symbols=AAPL&minScore=6&limit=10');
+
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe('ai');
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    expect(res.body.items[0]).toEqual(expect.objectContaining({ id: 103 }));
+    expect(res.body.items.every((item) => Number(item.aiScore) >= 6)).toBe(true);
+    expect(finnhub.generalNews).toHaveBeenCalledWith('general', 0);
+    expect(finnhub.companyNews).toHaveBeenCalledWith('AAPL', expect.any(String), expect.any(String));
+  });
+
   it('returns bulk snapshot with successes and per-symbol errors', async () => {
     finnhub.quote.mockImplementation(async (symbol) => {
       if (symbol === 'MSFT') throw new Error('unexpected failure');

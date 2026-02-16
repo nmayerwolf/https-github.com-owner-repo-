@@ -3,45 +3,9 @@ import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 
 const MAX_ITEMS = 60;
-const WATCHLIST_SYMBOL_LIMIT = 6;
+const WATCHLIST_SYMBOL_LIMIT = 8;
 const REFRESH_MS = 45000;
 const AI_RELEVANCE_MIN = 6;
-
-const KEYWORDS_HIGH = [
-  'earnings',
-  'guidance',
-  'merger',
-  'acquisition',
-  'ipo',
-  'rate',
-  'inflation',
-  'fed',
-  'ecb',
-  'tariff',
-  'sanction',
-  'war',
-  'ceasefire',
-  'election',
-  'opec',
-  'debt',
-  'default',
-  'stimulus',
-  'regulation',
-  'antitrust',
-  'launch',
-  'funding',
-  'round',
-  'geopolitical',
-  'bankrupt',
-  'layoff',
-  'recession',
-  'gdp',
-  'export',
-  'import',
-  'treasury'
-];
-
-const KEYWORDS_MED = ['forecast', 'outlook', 'policy', 'tax', 'strike', 'supply', 'demand', 'upgrade', 'downgrade', 'contract', 'deal'];
 
 const timeAgoEs = (unixSeconds) => {
   const ts = Number(unixSeconds || 0) * 1000;
@@ -53,36 +17,6 @@ const timeAgoEs = (unixSeconds) => {
   if (hours < 24) return `hace ${hours}h`;
   const days = Math.floor(hours / 24);
   return `hace ${days}d`;
-};
-
-const scoreNews = (item, watchlistSymbols = []) => {
-  const headline = String(item?.headline || '').toLowerCase();
-  const summary = String(item?.summary || '').toLowerCase();
-  const text = `${headline} ${summary}`;
-  let score = 0;
-
-  for (const kw of KEYWORDS_HIGH) {
-    if (text.includes(kw)) score += 4;
-  }
-  for (const kw of KEYWORDS_MED) {
-    if (text.includes(kw)) score += 2;
-  }
-
-  const related = String(item?.related || '')
-    .split(',')
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
-  const watch = new Set(watchlistSymbols.map((s) => String(s || '').toUpperCase()));
-  const relatedHits = related.filter((s) => watch.has(s)).length;
-  score += relatedHits * 5;
-
-  if (Number(item?.datetime) > 0) {
-    const ageMinutes = Math.max(1, Math.floor((Date.now() - Number(item.datetime) * 1000) / 60000));
-    if (ageMinutes <= 60) score += 4;
-    else if (ageMinutes <= 240) score += 2;
-  }
-
-  return score;
 };
 
 const dedupeNews = (items = []) => {
@@ -110,7 +44,7 @@ const News = () => {
     [state.assets]
   );
   const filteredItems = useMemo(() => {
-    const modeItems = mode === 'ai' ? items.filter((item) => Number(item?._score || 0) >= AI_RELEVANCE_MIN) : items;
+    const modeItems = mode === 'ai' ? items.filter((item) => Number(item?.aiScore || 0) >= AI_RELEVANCE_MIN) : items;
     const q = String(query || '').trim().toLowerCase();
     if (!q) return modeItems;
     return modeItems.filter((item) => {
@@ -129,13 +63,20 @@ const News = () => {
         if (!items.length) setLoading(true);
 
         const symbols = watchlistSymbols.slice(0, WATCHLIST_SYMBOL_LIMIT);
+        if (mode === 'ai') {
+          const out = await api.marketNewsRecommended({ symbols, category: 'general', minId: 0, minScore: AI_RELEVANCE_MIN, limit: MAX_ITEMS });
+          if (!active) return;
+          setItems(Array.isArray(out?.items) ? out.items : []);
+          return;
+        }
+
         const requests = [api.marketNews({ category: 'general', minId: 0 }), ...symbols.map((symbol) => api.marketNews({ symbol }))];
         const responses = await Promise.all(requests.map((p) => p.catch(() => [])));
         if (!active) return;
 
         const merged = dedupeNews(responses.flat().filter(Boolean));
         const ranked = merged
-          .map((item) => ({ ...item, _score: scoreNews(item, watchlistSymbols) }))
+          .map((item) => ({ ...item, aiScore: Number(item?.aiScore || 0) }))
           .sort((a, b) => {
             return Number(b.datetime || 0) - Number(a.datetime || 0);
           })
@@ -158,11 +99,11 @@ const News = () => {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [watchlistSymbols.join(',')]);
+  }, [mode, watchlistSymbols.join(',')]);
 
   useEffect(() => {
     setVisibleCount(15);
-  }, [query]);
+  }, [query, mode]);
 
   return (
     <div className="grid">
@@ -216,7 +157,7 @@ const News = () => {
                     <div className="news-headline">{item.headline}</div>
                     {item.summary ? <div className="muted" style={{ marginTop: 4 }}>{String(item.summary).slice(0, 220)}...</div> : null}
                     <div className="news-meta mono">
-                      {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · relevancia {item._score}
+                      {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · relevancia {Number(item.aiScore || 0)}
                     </div>
                     <div className="row" style={{ marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                       {leadSymbol ? <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{leadSymbol}{leadName ? ` · ${leadName}` : ''}</span> : null}

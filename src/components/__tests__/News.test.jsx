@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiMock, appCtxMock } = vi.hoisted(() => ({
   apiMock: {
-    marketNews: vi.fn()
+    marketNews: vi.fn(),
+    marketNewsRecommended: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -54,7 +55,14 @@ const baseItems = [
 
 describe('News', () => {
   beforeEach(() => {
+    apiMock.marketNewsRecommended.mockReset();
     apiMock.marketNews.mockReset();
+    apiMock.marketNewsRecommended.mockResolvedValue({
+      items: [
+        { ...baseItems[0], aiScore: 12 },
+        { ...baseItems[2], aiScore: 10 }
+      ]
+    });
     apiMock.marketNews.mockResolvedValueOnce(baseItems).mockResolvedValueOnce([]);
     vi.spyOn(window, 'open').mockImplementation(() => null);
   });
@@ -67,20 +75,21 @@ describe('News', () => {
   it('shows AI recommended mode by default and can switch to all', async () => {
     render(<News />);
 
-    await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMock.marketNewsRecommended).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('button', { name: 'Recomendadas por IA' })).toBeTruthy();
     expect(screen.getByText('Fed signals inflation risk for global markets')).toBeTruthy();
     expect(screen.queryByText('Minor local event with low financial impact')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Todas' }));
+    await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
     expect(screen.getByText('Minor local event with low financial impact')).toBeTruthy();
   });
 
   it('orders news from most recent to oldest', async () => {
     const { container } = render(<News />);
 
-    await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
     fireEvent.click(screen.getByRole('button', { name: 'Todas' }));
+    await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
 
     const headlines = [...container.querySelectorAll('.news-headline')].map((node) => node.textContent);
     expect(headlines[0]).toBe('OPEC updates oil supply expectations');
@@ -89,7 +98,7 @@ describe('News', () => {
 
   it('filters by keyword search', async () => {
     render(<News />);
-    await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMock.marketNewsRecommended).toHaveBeenCalledTimes(1));
 
     fireEvent.change(screen.getByPlaceholderText(/Buscar por palabra clave/i), { target: { value: 'opec' } });
 
