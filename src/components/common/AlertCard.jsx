@@ -20,14 +20,29 @@ const toneByType = {
   stop_loss: 'warning'
 };
 
-const AlertCard = ({ alert }) => {
+const AlertCard = ({ alert, onClick = null }) => {
   if (!alert) return null;
   const tone = toneByType[String(alert.type || '').toLowerCase()] || 'hold';
   const label = labelByType[String(alert.type || '').toLowerCase()] || 'Señal';
   const net = Number(alert.net ?? alert.confluenceBull ?? 0) - Number(alert.confluenceBear ?? 0);
 
   return (
-    <article className={`alert-card ${tone}`}>
+    <article
+      className={`alert-card ${tone} ${onClick ? 'alert-card-clickable' : ''}`}
+      onClick={onClick || undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
       <div className="alert-top">
         <span className="alert-symbol mono">{alert.symbol || 'N/A'}</span>
         <span className={`badge ${tone}`}>{label}</span>
@@ -59,7 +74,8 @@ const areEqualAlertCard = (prevProps, nextProps) => {
     prev.confidence === next.confidence &&
     prev.net === next.net &&
     prev.confluenceBull === next.confluenceBull &&
-    prev.confluenceBear === next.confluenceBear
+    prev.confluenceBear === next.confluenceBear &&
+    prevProps.onClick === nextProps.onClick
   );
 };
 

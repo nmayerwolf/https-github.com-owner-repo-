@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 import AssetRow from './common/AssetRow';
@@ -8,7 +9,15 @@ import NewsSection from './NewsSection';
 
 const Dashboard = () => {
   const { state } = useApp();
+  const navigate = useNavigate();
   const [alertVisibleCount, setAlertVisibleCount] = useState(3);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const screenerSuggestions = [
+    { label: 'Acciones oversold', query: 'Acciones con RSI bajo y confluencia alcista', category: 'equity' },
+    { label: 'Crypto momentum', query: 'Cryptos con momentum positivo y volumen creciente', category: 'crypto' },
+    { label: 'Metales defensivos', query: 'Metales defensivos con tendencia estable', category: 'metal' },
+    { label: 'Bonds con yield', query: 'Bonos con mejor rendimiento y riesgo moderado', category: 'bond' }
+  ];
 
   const portfolio = useMemo(() => {
     const assetsBySymbol = Object.fromEntries(state.assets.map((a) => [a.symbol, a]));
@@ -27,14 +36,12 @@ const Dashboard = () => {
     return { invested, value, pnl, pnlPct };
   }, [state.positions, state.assets]);
 
-  const tickerAssets = useMemo(
-    () =>
-      ['AAPL', 'NVDA', 'BTCUSDT', 'ETHUSDT', 'GLD', 'EUR_USD', 'SPY']
-        .map((s) => state.assets.find((a) => a.symbol === s))
-        .filter(Boolean),
-    [state.assets]
-  );
-  const watchlistAssets = useMemo(() => state.assets.slice(0, 10), [state.assets]);
+  const watchlistAssets = useMemo(() => {
+    const bySymbol = Object.fromEntries(state.assets.map((asset) => [String(asset.symbol || '').toUpperCase(), asset]));
+    const selected = state.watchlistSymbols.map((symbol) => bySymbol[String(symbol || '').toUpperCase()]).filter(Boolean);
+    if (selected.length) return selected;
+    return state.assets.slice(0, 10);
+  }, [state.assets, state.watchlistSymbols]);
   const performance = useMemo(
     () => ({
       hitRate: Number(state.alerts.length ? (state.alerts.filter((a) => String(a.type).includes('compra')).length / state.alerts.length) * 100 : 0),
@@ -62,18 +69,6 @@ const Dashboard = () => {
         <div className="muted">Actualizado {state.lastUpdated ? shortDate(new Date(state.lastUpdated).toISOString()) : '-'}</div>
       </section>
 
-      <section className="ticker-wrap card">
-        <div className="ticker">
-          {[...tickerAssets, ...tickerAssets].map((x, idx) => (
-            <div className="tk-item" key={`${x.symbol}-${idx}`}>
-              <span className="tk-sym mono">{x.symbol}</span>
-              <span className="tk-price mono">{formatUSD(x.price)}</span>
-              <span className={`tk-chg mono ${x.changePercent >= 0 ? 'up' : 'down'}`}>{formatPct(x.changePercent)}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section>
         <div className="section-header-inline">
           <h3 className="section-title">Señales del AI Agent</h3>
@@ -91,7 +86,7 @@ const Dashboard = () => {
         </div>
         <div className="alerts-scroll">
           {visibleAlerts.map((a) => (
-            <AlertCard key={a.id} alert={a} />
+            <AlertCard key={a.id} alert={a} onClick={() => setSelectedAlert(a)} />
           ))}
           {!state.alerts.length ? <div className="card muted">Sin señales activas.</div> : null}
         </div>
@@ -101,10 +96,23 @@ const Dashboard = () => {
         <div className="ai-card-title">AI Screener</div>
         <div className="ai-card-sub">Explorá oportunidades por contexto en lenguaje natural.</div>
         <div className="ai-suggestions">
-          <span className="ai-sug">Acciones oversold</span>
-          <span className="ai-sug">Crypto momentum</span>
-          <span className="ai-sug">Metales defensivos</span>
-          <span className="ai-sug">Bonds con yield</span>
+          {screenerSuggestions.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="ai-sug"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  q: item.query,
+                  category: item.category,
+                  autorun: '1'
+                });
+                navigate(`/screener?${params.toString()}`);
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </section>
 
@@ -144,6 +152,45 @@ const Dashboard = () => {
           </div>
         </div>
       </section>
+
+      {selectedAlert ? (
+        <section className="modal-backdrop" role="presentation" onClick={() => setSelectedAlert(null)}>
+          <article className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="row" style={{ alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ marginBottom: 6 }}>{selectedAlert.symbol || 'Señal'}</h3>
+                <div className="muted">{selectedAlert.title || selectedAlert.recommendation || 'Recomendación del AI Agent'}</div>
+              </div>
+              <button type="button" onClick={() => setSelectedAlert(null)}>
+                Cerrar
+              </button>
+            </div>
+            <div className="grid" style={{ marginTop: 10 }}>
+              <div className="ind-cell">
+                <div className="ind-label">Confluencia</div>
+                <div className="ind-val mono">
+                  {Number(selectedAlert.net ?? selectedAlert.confluenceBull ?? 0) - Number(selectedAlert.confluenceBear ?? 0)}
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Confluencia = puntos alcistas - puntos bajistas. Un valor negativo (ej. -4) indica sesgo bajista.
+                </div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Stop Loss</div>
+                <div className="ind-val mono">{selectedAlert.stopLoss ? formatUSD(selectedAlert.stopLoss) : '-'}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Take Profit</div>
+                <div className="ind-val mono">{selectedAlert.takeProfit ? formatUSD(selectedAlert.takeProfit) : '-'}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Confianza</div>
+                <div className="ind-val mono">{String(selectedAlert.confidence || 'high')}</div>
+              </div>
+            </div>
+          </article>
+        </section>
+      ) : null}
     </div>
   );
 };

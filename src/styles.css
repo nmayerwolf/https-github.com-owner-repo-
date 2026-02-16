@@ -448,6 +448,15 @@ a:focus-visible {
   padding: 10px;
 }
 
+.alert-card-clickable {
+  cursor: pointer;
+}
+
+.alert-card-clickable:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
 .alert-card.buy {
   border-left-color: var(--green);
 }

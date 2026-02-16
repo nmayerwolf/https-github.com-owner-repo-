@@ -29,6 +29,12 @@ const computeStops = (price, atr, rsi) => {
   };
 };
 
+const formatLargeNumber = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value || '-';
+  return n.toLocaleString('en-US');
+};
+
 const AssetDetail = () => {
   const { symbol } = useParams();
   const { state, actions } = useApp();
@@ -54,6 +60,8 @@ const AssetDetail = () => {
 
   const signal = useMemo(() => (asset ? calculateConfluence(asset, state.config) : { recommendation: 'HOLD', net: 0, points: [] }), [asset, state.config]);
   const levels = useMemo(() => computeStops(asset?.price, asset?.indicators?.atr, asset?.indicators?.rsi), [asset]);
+  const sessionOpen = Number(asset?.candles?.o?.[asset?.candles?.o?.length - 1]);
+  const sessionClose = Number(asset?.candles?.c?.[asset?.candles?.c?.length - 1]);
 
   if (!asset) {
     return (
@@ -123,9 +131,11 @@ const AssetDetail = () => {
       <section className="card">
         <h3>Fundamentales</h3>
         <div className="ind-grid" style={{ marginTop: 8 }}>
+          <Item label="Apertura" value={formatUSD(Number.isFinite(sessionOpen) ? sessionOpen : null)} />
+          <Item label="Cierre" value={formatUSD(Number.isFinite(sessionClose) ? sessionClose : null)} />
           <Item label="P/E" value={overview?.PERatio || '-'} />
           <Item label="Dividend Yield" value={overview?.DividendYield || '-'} />
-          <Item label="Market Cap" value={overview?.MarketCapitalization || profile?.marketCapitalization || '-'} />
+          <Item label="Market Cap" value={formatLargeNumber(overview?.MarketCapitalization || profile?.marketCapitalization || '-')} />
           <Item label="Sector" value={overview?.Sector || profile?.finnhubIndustry || asset.sector} />
         </div>
       </section>

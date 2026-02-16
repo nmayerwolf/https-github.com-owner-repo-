@@ -1,5 +1,6 @@
 import React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { askClaude } from '../api/claude';
 import { useApp } from '../store/AppContext';
 import { CATEGORY_OPTIONS } from '../utils/constants';
@@ -25,10 +26,12 @@ const localFallback = (assets, query) => {
 
 const Screener = () => {
   const { state } = useApp();
+  const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const lastAutorunRef = useRef('');
 
   const assets = useMemo(
     () => state.assets.filter((a) => category === 'all' || a.category === category),
@@ -54,6 +57,22 @@ const Screener = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const q = String(searchParams.get('q') || '').trim();
+    const nextCategory = String(searchParams.get('category') || 'all').toLowerCase();
+    const autorun = searchParams.get('autorun') === '1';
+    const safeCategory = CATEGORY_OPTIONS.includes(nextCategory) ? nextCategory : 'all';
+
+    if (q) setQuery(q);
+    setCategory(safeCategory);
+
+    const key = `${safeCategory}:${q}`;
+    if (autorun && q && lastAutorunRef.current !== key) {
+      lastAutorunRef.current = key;
+      run(q);
+    }
+  }, [searchParams]);
 
   return (
     <div className="grid screener-page">
