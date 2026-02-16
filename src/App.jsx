@@ -398,7 +398,7 @@ const App = () => {
         <div className="top-header card">
           <div>
             <h1 className="brand-title">Horsy</h1>
-            <p className="muted">Monitoreo financiero en tiempo real ({state.sourceMode})</p>
+            <p className="muted app-subtitle">Monitoreo financiero en tiempo real</p>
           </div>
           <div className="header-actions">
             <button type="button" className="icon-btn" aria-label="Notificaciones">

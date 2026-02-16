@@ -21,9 +21,12 @@
   --blue-dim: rgba(59, 130, 246, 0.12);
   --purple: #a78bfa;
   --purple-dim: rgba(167, 139, 250, 0.12);
-  --font-display: 'Plus Jakarta Sans', sans-serif;
+  --font-display: 'DM Sans', sans-serif;
   --font-body: 'DM Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --text-title: 1.18rem;
+  --text-subtitle: 0.95rem;
+  --text-body: 0.9rem;
 }
 
 :root[data-theme='light'] {
@@ -61,6 +64,20 @@ h3 {
   font-family: var(--font-display);
 }
 
+h2,
+.screen-title {
+  font-size: var(--text-title);
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+h3,
+.section-title {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
 button,
 input,
 select,
@@ -93,6 +110,10 @@ textarea {
 .brand-title {
   font-size: 2rem;
   letter-spacing: -0.03em;
+}
+
+.app-subtitle {
+  font-size: var(--text-subtitle);
 }
 
 .header-actions {
@@ -172,7 +193,7 @@ textarea {
 
 .muted {
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--text-body);
 }
 
 .up {
@@ -348,11 +369,6 @@ a:focus-visible {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-}
-
-.section-title {
-  font-size: 0.95rem;
-  font-weight: 700;
 }
 
 .inline-link-btn {
@@ -734,7 +750,6 @@ a:focus-visible {
 
 /* Markets */
 .screen-title {
-  font-size: 1.4rem;
   margin-bottom: 10px;
 }
 
