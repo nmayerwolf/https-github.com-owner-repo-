@@ -15,6 +15,7 @@ import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
 
 const AppContext = createContext(null);
 const ASSET_CACHE_KEY = 'nexusfin_assets_cache_v1';
+const INITIAL_BLOCKING_ASSET_LOAD = 4;
 
 const initialState = {
   assets: [],
@@ -177,19 +178,15 @@ const fetchSnapshotViaProxy = async (meta) => {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const fromSec = nowSec - 60 * 60 * 24 * 90;
-    const serialDelayMs = typeof process !== 'undefined' && process?.env?.NODE_ENV === 'test' ? 0 : 1300;
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     if (meta.source === 'finnhub_stock') {
       const quote = await api.quote(meta.symbol);
-      if (serialDelayMs > 0) await wait(serialDelayMs);
       const candles = await api.candles(meta.symbol, fromSec, nowSec);
       return { quote, candles };
     }
 
     if (meta.source === 'finnhub_crypto') {
       const quote = await api.quote(`BINANCE:${meta.symbol}`);
-      if (serialDelayMs > 0) await wait(serialDelayMs);
       const candles = await api.cryptoCandles(meta.symbol, fromSec, nowSec);
       return { quote, candles };
     }
@@ -197,7 +194,6 @@ const fetchSnapshotViaProxy = async (meta) => {
     if (meta.source === 'finnhub_fx') {
       const [base, quote] = meta.symbol.split('_');
       const fxQuote = await api.quote(`OANDA:${meta.symbol}`);
-      if (serialDelayMs > 0) await wait(serialDelayMs);
       const fxCandles = await api.forexCandles(base, quote, fromSec, nowSec);
       return { quote: fxQuote, candles: fxCandles };
     }
@@ -305,32 +301,43 @@ export const AppProvider = ({ children }) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_PROGRESS', payload: { loaded: 0, total: watchlist.length } });
     macroLoadedRef.current = false;
+    const cached = readAssetCache();
 
     const loaded = [];
-    for (let i = 0; i < watchlist.length; i += 1) {
-      const meta = watchlist[i];
+    let failedLoads = 0;
+    const pushAsset = (meta, data) => {
+      loaded.push(
+        withIndicators({
+          ...meta,
+          price: data.quote.c,
+          prevClose: data.quote.pc,
+          changePercent: data.quote.dp,
+          candles: data.candles
+        })
+      );
+    };
+
+    const loadSingle = async (meta, index) => {
       const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
-
       if (data?.quote && data?.candles?.c?.length) {
-        loaded.push(
-          withIndicators({
-            ...meta,
-            price: data.quote.c,
-            prevClose: data.quote.pc,
-            changePercent: data.quote.dp,
-            candles: data.candles
-          })
-        );
+        pushAsset(meta, data);
       } else {
-        dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Mercados', `No se pudo cargar ${meta.symbol}.`) });
+        if (failedLoads < 3) {
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Mercados', `No se pudo cargar ${meta.symbol}.`) });
+        }
+        failedLoads += 1;
       }
-
-      dispatch({ type: 'SET_PROGRESS', payload: { loaded: i + 1, total: watchlist.length } });
+      dispatch({ type: 'SET_PROGRESS', payload: { loaded: index + 1, total: watchlist.length } });
       dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
+    };
+
+    const firstSliceEnd = Math.min(INITIAL_BLOCKING_ASSET_LOAD, watchlist.length);
+    for (let i = 0; i < firstSliceEnd; i += 1) {
+      const meta = watchlist[i];
+      await loadSingle(meta, i);
     }
 
     if (!loaded.length) {
-      const cached = readAssetCache();
       if (cached?.assets?.length) {
         dispatch({ type: 'SET_ASSETS', payload: cached.assets });
         dispatch({
@@ -341,6 +348,19 @@ export const AppProvider = ({ children }) => {
     }
 
     dispatch({ type: 'SET_LOADING', payload: false });
+
+    if (firstSliceEnd >= watchlist.length) return;
+
+    (async () => {
+      for (let i = firstSliceEnd; i < watchlist.length; i += 1) {
+        const meta = watchlist[i];
+        await loadSingle(meta, i);
+      }
+
+      if (!loaded.length && cached?.assets?.length) {
+        dispatch({ type: 'SET_ASSETS', payload: cached.assets });
+      }
+    })();
   };
 
   useEffect(() => {

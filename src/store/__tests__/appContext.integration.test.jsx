@@ -200,7 +200,9 @@ describe('AppContext integration', () => {
       expect(getLatest().state.loading).toBe(false);
     });
 
-    expect(getLatest().state.assets.some((a) => a.symbol === 'CACHED')).toBe(true);
-    expect(getLatest().state.uiErrors.some((e) => e.module === 'Offline')).toBe(true);
+    await waitFor(() => {
+      expect(getLatest().state.assets.some((a) => a.symbol === 'CACHED')).toBe(true);
+      expect(getLatest().state.uiErrors.some((e) => e.module === 'Offline')).toBe(true);
+    });
   });
 });
