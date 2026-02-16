@@ -313,7 +313,7 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-/* Dashboard */
+/* Main screens */
 .dashboard-page {
   display: grid;
   gap: 10px;
