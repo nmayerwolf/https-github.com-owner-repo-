@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
+import { fetchCompanyOverview } from '../api/alphavantage';
 import { askClaude } from '../api/claude';
 import { generateInvestmentThesis } from '../api/claude';
+import { fetchCompanyProfile } from '../api/finnhub';
 import { calculateConfluence } from '../engine/confluence';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
@@ -35,6 +37,11 @@ const OUTCOME_LABEL = {
 };
 
 const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Riesgo en watchlist'];
+const formatLargeNumber = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value || '-';
+  return n.toLocaleString('en-US');
+};
 
 const buildLocalHint = (assets = [], query = '') => {
   const q = String(query || '').toLowerCase();
@@ -56,6 +63,8 @@ const Alerts = () => {
   const [loadingId, setLoadingId] = useState('');
   const [thesis, setThesis] = useState(null);
   const [thesisSymbol, setThesisSymbol] = useState('');
+  const [selectedLiveAlert, setSelectedLiveAlert] = useState(null);
+  const [selectedFundamentals, setSelectedFundamentals] = useState({ loading: false, pe: '-', marketCap: '-' });
 
   const [historyType, setHistoryType] = useState('all');
   const [historyPage, setHistoryPage] = useState(1);
@@ -83,6 +92,11 @@ const Alerts = () => {
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
+  const selectedAsset = useMemo(() => {
+    const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
+    if (!symbol) return null;
+    return (state.assets || []).find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
+  }, [selectedLiveAlert, state.assets]);
 
   const historyList = historyData.alerts || [];
   const performanceList = useMemo(
@@ -145,6 +159,36 @@ const Alerts = () => {
       active = false;
     };
   }, [mainTab]);
+
+  useEffect(() => {
+    let active = true;
+    const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
+    if (!symbol || selectedAsset?.category !== 'equity') {
+      setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      return () => {
+        active = false;
+      };
+    }
+
+    setSelectedFundamentals({ loading: true, pe: '-', marketCap: '-' });
+    Promise.all([fetchCompanyOverview(symbol), fetchCompanyProfile(symbol)])
+      .then(([overview, profile]) => {
+        if (!active) return;
+        setSelectedFundamentals({
+          loading: false,
+          pe: overview?.PERatio || '-',
+          marketCap: overview?.MarketCapitalization || profile?.marketCapitalization || '-'
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setSelectedFundamentals({ loading: false, pe: '-', marketCap: '-' });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedLiveAlert, selectedAsset?.category]);
 
   const openThesis = async (alert) => {
     const asset = actions.getAssetBySymbol(alert.symbol);
@@ -303,7 +347,19 @@ const Alerts = () => {
       </section>
 
       {liveList.map((a) => (
-        <article key={a.id} className="card">
+        <article
+          key={a.id}
+          className="card card-clickable"
+          onClick={() => setSelectedLiveAlert(a)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setSelectedLiveAlert(a);
+            }
+          }}
+        >
           <div className="row">
             <strong>{a.title}</strong>
             <span className="muted">{a.confidence || 'high'}</span>
@@ -317,13 +373,76 @@ const Alerts = () => {
             </div>
           )}
           {(a.type === 'compra' || a.type === 'venta') && (
-            <button type="button" style={{ marginTop: 8 }} onClick={() => openThesis(a)} disabled={loadingId === a.id}>
+            <button
+              type="button"
+              style={{ marginTop: 8 }}
+              onClick={(event) => {
+                event.stopPropagation();
+                openThesis(a);
+              }}
+              disabled={loadingId === a.id}
+            >
               {loadingId === a.id ? 'Generando...' : 'Ver tesis de inversión AI'}
             </button>
           )}
         </article>
       ))}
       {!liveList.length && <div className="card muted">No hay alertas para este filtro.</div>}
+
+      {selectedLiveAlert ? (
+        <section className="modal-backdrop" role="presentation" onClick={() => setSelectedLiveAlert(null)}>
+          <article className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="row" style={{ alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Señal'}</h3>
+                <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del AI Agent'}</div>
+              </div>
+              <button type="button" onClick={() => setSelectedLiveAlert(null)}>
+                Cerrar
+              </button>
+            </div>
+            <div className="grid" style={{ marginTop: 10 }}>
+              <div className="ind-cell">
+                <div className="ind-label">Confluencia</div>
+                <div className="ind-val mono">
+                  {Number(selectedLiveAlert.net ?? selectedLiveAlert.confluenceBull ?? 0) - Number(selectedLiveAlert.confluenceBear ?? 0)}
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Confluencia = puntos alcistas - puntos bajistas. Valor negativo implica sesgo bajista.
+                </div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Apertura</div>
+                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]))}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Cierre</div>
+                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]))}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">P/E</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Market Cap</div>
+                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : formatLargeNumber(selectedFundamentals.marketCap)}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Stop Loss</div>
+                <div className="ind-val mono">{selectedLiveAlert.stopLoss ? formatUSD(selectedLiveAlert.stopLoss) : '-'}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Take Profit</div>
+                <div className="ind-val mono">{selectedLiveAlert.takeProfit ? formatUSD(selectedLiveAlert.takeProfit) : '-'}</div>
+              </div>
+              <div className="ind-cell">
+                <div className="ind-label">Confianza</div>
+                <div className="ind-val mono">{String(selectedLiveAlert.confidence || 'high')}</div>
+              </div>
+            </div>
+          </article>
+        </section>
+      ) : null}
     </>
   );
 
