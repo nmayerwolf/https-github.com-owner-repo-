@@ -353,10 +353,18 @@ export const AppProvider = ({ children }) => {
 
   const loadAssets = async (watchlistSymbols = state.watchlistSymbols) => {
     const watchlist = resolveWatchlistAssets(watchlistSymbols);
-    dispatch({ type: 'SET_LOADING', payload: true });
+    const cached = readAssetCache();
+    const hasWarmCache = Boolean(cached?.assets?.length);
+
+    if (hasWarmCache) {
+      dispatch({ type: 'SET_ASSETS', payload: cached.assets });
+      dispatch({ type: 'SET_LOADING', payload: false });
+    } else {
+      dispatch({ type: 'SET_LOADING', payload: true });
+    }
+
     dispatch({ type: 'SET_PROGRESS', payload: { loaded: 0, total: watchlist.length } });
     macroLoadedRef.current = false;
-    const cached = readAssetCache();
 
     const loaded = [];
     let failedLoads = 0;
@@ -424,8 +432,10 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
     };
 
-    const firstSliceEnd = Math.min(INITIAL_BLOCKING_ASSET_LOAD, watchlist.length);
-    await loadBatch(watchlist.slice(0, firstSliceEnd), 0);
+    const firstSliceEnd = hasWarmCache ? 0 : Math.min(INITIAL_BLOCKING_ASSET_LOAD, watchlist.length);
+    if (firstSliceEnd > 0) {
+      await loadBatch(watchlist.slice(0, firstSliceEnd), 0);
+    }
 
     if (!loaded.length) {
       if (cached?.assets?.length) {
