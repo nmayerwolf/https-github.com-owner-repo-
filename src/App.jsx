@@ -67,7 +67,7 @@ const OnboardingModal = ({ step, state, onChange, onPrev, onNext, onComplete, sa
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
       <div className="row">
-        <h3>Bienvenido a NexusFin</h3>
+        <h3>Bienvenido a Horsy</h3>
         <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
           Paso {step}/4
         </span>
@@ -362,7 +362,7 @@ const App = () => {
       <header className="header">
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div>
-            <h1>NexusFin</h1>
+            <h1>Horsy</h1>
             <p className="muted">Monitoreo financiero en tiempo real ({state.sourceMode})</p>
           </div>
           <div className="row" style={{ justifyContent: 'flex-end' }}>
