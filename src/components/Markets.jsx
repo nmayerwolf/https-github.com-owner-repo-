@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import AssetRow from './common/AssetRow';
 import { CATEGORY_OPTIONS, WATCHLIST_CATALOG } from '../utils/constants';
@@ -19,6 +19,8 @@ const Markets = () => {
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
+  const [visibleCount, setVisibleCount] = useState(8);
+  const loadMoreRef = useRef(null);
   const isStreamingLoad = state.progress.loaded < state.progress.total;
 
   const filtered = useMemo(() => {
@@ -34,6 +36,33 @@ const Markets = () => {
     () => WATCHLIST_CATALOG.filter((x) => !state.watchlistSymbols.includes(x.symbol)),
     [state.watchlistSymbols]
   );
+
+  const visibleAssets = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const hasMore = visibleAssets.length < filtered.length;
+
+  useEffect(() => {
+    setVisibleCount(8);
+  }, [category, query, state.watchlistSymbols.length]);
+
+  useEffect(() => {
+    if (!hasMore) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+
+    const node = loadMoreRef.current;
+    if (!node) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + 8, filtered.length));
+        }
+      },
+      { rootMargin: '120px 0px' }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, filtered.length]);
 
   return (
     <div className="grid markets-page">
@@ -87,7 +116,7 @@ const Markets = () => {
           {isStreamingLoad && !filtered.length
             ? Array.from({ length: 6 }).map((_, idx) => <div key={`mk-skeleton-${idx}`} className="skeleton skeleton-asset" />)
             : null}
-          {filtered.map((a) => (
+          {visibleAssets.map((a) => (
             <AssetRow
               key={a.symbol}
               asset={a}
@@ -96,6 +125,14 @@ const Markets = () => {
               actionLabel={state.watchlistSymbols.includes(a.symbol) ? 'Quitar' : null}
             />
           ))}
+          {hasMore ? (
+            <div className="markets-load-more">
+              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, filtered.length))}>
+                Cargar más
+              </button>
+              <div ref={loadMoreRef} className="markets-load-sentinel" aria-hidden="true" />
+            </div>
+          ) : null}
           {!filtered.length && !isStreamingLoad ? <div className="muted">No hay activos para este filtro.</div> : null}
         </div>
       </section>
