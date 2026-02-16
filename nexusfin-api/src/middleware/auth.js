@@ -53,11 +53,22 @@ const clearCookieOptions = () => ({
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
 });
 
+const legacyApiClearCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: env.nodeEnv === 'production',
+  path: '/api',
+  ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
+});
+
 const setAuthCookies = (res, rawToken) => {
+  // Cleanup old cookie scope from previous builds to avoid duplicate nxf_token cookies.
+  res.clearCookie('nxf_token', legacyApiClearCookieOptions());
   res.cookie('nxf_token', rawToken, cookieOptions());
 };
 
 const clearAuthCookies = (res) => {
+  res.clearCookie('nxf_token', legacyApiClearCookieOptions());
   res.clearCookie('nxf_token', clearCookieOptions());
 };
 
