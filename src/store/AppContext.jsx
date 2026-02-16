@@ -96,6 +96,21 @@ const updateCandlesWithLivePrice = (candles, price) => {
   return next;
 };
 
+const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
+  const current = Number(price);
+  const previous = Number(prevClose);
+  if (!Number.isFinite(current) || current <= 0) return null;
+  const start = Number.isFinite(previous) && previous > 0 ? previous : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    c,
+    h: c.map((v) => Number((v * 1.002).toFixed(6))),
+    l: c.map((v) => Number((v * 0.998).toFixed(6))),
+    v: c.map(() => 0)
+  };
+};
+
 const toWsMarketSymbol = (asset) => {
   if (!asset?.symbol) return null;
   if (asset.source === 'finnhub_stock') return String(asset.symbol).toUpperCase();
@@ -181,21 +196,27 @@ const fetchSnapshotViaProxy = async (meta) => {
 
     if (meta.source === 'finnhub_stock') {
       const quote = await api.quote(meta.symbol);
-      const candles = await api.candles(meta.symbol, fromSec, nowSec);
-      return { quote, candles };
+      const candles = await api.candles(meta.symbol, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     if (meta.source === 'finnhub_crypto') {
       const quote = await api.quote(`BINANCE:${meta.symbol}`);
-      const candles = await api.cryptoCandles(meta.symbol, fromSec, nowSec);
-      return { quote, candles };
+      const candles = await api.cryptoCandles(meta.symbol, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     if (meta.source === 'finnhub_fx') {
       const [base, quote] = meta.symbol.split('_');
       const fxQuote = await api.quote(`OANDA:${meta.symbol}`);
-      const fxCandles = await api.forexCandles(base, quote, fromSec, nowSec);
-      return { quote: fxQuote, candles: fxCandles };
+      const fxCandles = await api.forexCandles(base, quote, fromSec, nowSec).catch(() => null);
+      const safeCandles = fxCandles?.c?.length ? fxCandles : buildSyntheticCandles(fxQuote?.c, fxQuote?.pc);
+      if (!safeCandles) return null;
+      return { quote: fxQuote, candles: safeCandles };
     }
 
     return null;

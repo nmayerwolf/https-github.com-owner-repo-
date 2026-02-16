@@ -12,6 +12,20 @@ const stats = {
 
 const nowSec = Math.floor(Date.now() / 1000);
 const fromSec = nowSec - 60 * 60 * 24 * 90;
+const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
+  const current = Number(price);
+  const previous = Number(prevClose);
+  if (!Number.isFinite(current) || current <= 0) return null;
+  const start = Number.isFinite(previous) && previous > 0 ? previous : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    c,
+    h: c.map((v) => Number((v * 1.002).toFixed(6))),
+    l: c.map((v) => Number((v * 0.998).toFixed(6))),
+    v: c.map(() => 0)
+  };
+};
 
 const trackCall = () => {
   stats.calls += 1;
@@ -30,21 +44,27 @@ export const fetchAssetSnapshot = async (asset) => {
 
     if (asset.source === 'finnhub_stock') {
       const quote = await api.quote(asset.symbol);
-      const candles = await api.candles(asset.symbol, fromSec, nowSec);
-      return { quote, candles };
+      const candles = await api.candles(asset.symbol, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     if (asset.source === 'finnhub_crypto') {
       const quote = await api.quote(`BINANCE:${asset.symbol}`);
-      const candles = await api.cryptoCandles(asset.symbol, fromSec, nowSec);
-      return { quote, candles };
+      const candles = await api.cryptoCandles(asset.symbol, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     if (asset.source === 'finnhub_fx') {
       const [base, quoteCode] = String(asset.symbol).split('_');
       const quote = await api.quote(`OANDA:${asset.symbol}`);
-      const candles = await api.forexCandles(base, quoteCode, fromSec, nowSec);
-      return { quote, candles };
+      const candles = await api.forexCandles(base, quoteCode, fromSec, nowSec).catch(() => null);
+      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
+      if (!safeCandles) return null;
+      return { quote, candles: safeCandles };
     }
 
     return null;
