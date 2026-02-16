@@ -9,6 +9,8 @@ const DEFAULT_CONFIG = {
 };
 
 const nowEpoch = () => Math.floor(Date.now() / 1000);
+const FINNHUB_SERIAL_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 1300;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const mapRecommendationToType = (recommendation) => {
   if (recommendation.includes('BUY')) return 'opportunity';
@@ -333,25 +335,26 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
     const from = to - 60 * 60 * 24 * 260;
     const normalizedCategory = String(category || '').toLowerCase();
     let quoteSymbol = symbol;
-    let quotePromise = null;
-    let candlesPromise = null;
+    let quoteData = null;
+    let candlesData = null;
 
     if (normalizedCategory === 'crypto' || /USDT$/.test(String(symbol || '').toUpperCase())) {
       quoteSymbol = `BINANCE:${symbol}`;
-      quotePromise = finnhub.quote(quoteSymbol);
-      candlesPromise = finnhub.cryptoCandles(symbol, 'D', from, to);
+      quoteData = await finnhub.quote(quoteSymbol);
+      if (FINNHUB_SERIAL_DELAY_MS > 0) await sleep(FINNHUB_SERIAL_DELAY_MS);
+      candlesData = await finnhub.cryptoCandles(symbol, 'D', from, to);
     } else if (normalizedCategory === 'fx' || String(symbol || '').includes('_')) {
       const [base, quote] = String(symbol || '').split('_');
       if (!base || !quote) return null;
       quoteSymbol = `OANDA:${base}_${quote}`;
-      quotePromise = finnhub.quote(quoteSymbol);
-      candlesPromise = finnhub.forexCandles(base, quote, 'D', from, to);
+      quoteData = await finnhub.quote(quoteSymbol);
+      if (FINNHUB_SERIAL_DELAY_MS > 0) await sleep(FINNHUB_SERIAL_DELAY_MS);
+      candlesData = await finnhub.forexCandles(base, quote, 'D', from, to);
     } else {
-      quotePromise = finnhub.quote(quoteSymbol);
-      candlesPromise = finnhub.candles(symbol, 'D', from, to);
+      quoteData = await finnhub.quote(quoteSymbol);
+      if (FINNHUB_SERIAL_DELAY_MS > 0) await sleep(FINNHUB_SERIAL_DELAY_MS);
+      candlesData = await finnhub.candles(symbol, 'D', from, to);
     }
-
-    const [quoteData, candlesData] = await Promise.all([quotePromise, candlesPromise]);
     if (candlesData?.s !== 'ok') return null;
 
     return buildAssetFromMarketData(symbol, quoteData, candlesData);

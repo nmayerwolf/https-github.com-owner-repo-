@@ -177,20 +177,28 @@ const fetchSnapshotViaProxy = async (meta) => {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const fromSec = nowSec - 60 * 60 * 24 * 90;
+    const serialDelayMs = typeof process !== 'undefined' && process?.env?.NODE_ENV === 'test' ? 0 : 1300;
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     if (meta.source === 'finnhub_stock') {
-      const [quote, candles] = await Promise.all([api.quote(meta.symbol), api.candles(meta.symbol, fromSec, nowSec)]);
+      const quote = await api.quote(meta.symbol);
+      if (serialDelayMs > 0) await wait(serialDelayMs);
+      const candles = await api.candles(meta.symbol, fromSec, nowSec);
       return { quote, candles };
     }
 
     if (meta.source === 'finnhub_crypto') {
-      const [quote, candles] = await Promise.all([api.quote(`BINANCE:${meta.symbol}`), api.cryptoCandles(meta.symbol, fromSec, nowSec)]);
+      const quote = await api.quote(`BINANCE:${meta.symbol}`);
+      if (serialDelayMs > 0) await wait(serialDelayMs);
+      const candles = await api.cryptoCandles(meta.symbol, fromSec, nowSec);
       return { quote, candles };
     }
 
     if (meta.source === 'finnhub_fx') {
       const [base, quote] = meta.symbol.split('_');
-      const [fxCandles, fxQuote] = await Promise.all([api.forexCandles(base, quote, fromSec, nowSec), api.quote(`OANDA:${meta.symbol}`)]);
+      const fxQuote = await api.quote(`OANDA:${meta.symbol}`);
+      if (serialDelayMs > 0) await wait(serialDelayMs);
+      const fxCandles = await api.forexCandles(base, quote, fromSec, nowSec);
       return { quote: fxQuote, candles: fxCandles };
     }
 

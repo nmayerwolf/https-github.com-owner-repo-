@@ -12,6 +12,8 @@ const stats = {
 
 const nowSec = Math.floor(Date.now() / 1000);
 const fromSec = nowSec - 60 * 60 * 24 * 90;
+const FINNHUB_SERIAL_DELAY_MS = typeof process !== 'undefined' && process?.env?.NODE_ENV === 'test' ? 0 : 1300;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const trackCall = () => {
   stats.calls += 1;
@@ -29,21 +31,24 @@ export const fetchAssetSnapshot = async (asset) => {
     trackCall();
 
     if (asset.source === 'finnhub_stock') {
-      const [quote, candles] = await Promise.all([api.quote(asset.symbol), api.candles(asset.symbol, fromSec, nowSec)]);
+      const quote = await api.quote(asset.symbol);
+      if (FINNHUB_SERIAL_DELAY_MS > 0) await sleep(FINNHUB_SERIAL_DELAY_MS);
+      const candles = await api.candles(asset.symbol, fromSec, nowSec);
       return { quote, candles };
     }
 
     if (asset.source === 'finnhub_crypto') {
-      const [quote, candles] = await Promise.all([api.quote(`BINANCE:${asset.symbol}`), api.cryptoCandles(asset.symbol, fromSec, nowSec)]);
+      const quote = await api.quote(`BINANCE:${asset.symbol}`);
+      if (FINNHUB_SERIAL_DELAY_MS > 0) await sleep(FINNHUB_SERIAL_DELAY_MS);
+      const candles = await api.cryptoCandles(asset.symbol, fromSec, nowSec);
       return { quote, candles };
     }
 
     if (asset.source === 'finnhub_fx') {
       const [base, quoteCode] = String(asset.symbol).split('_');
-      const [quote, candles] = await Promise.all([
-        api.quote(`OANDA:${asset.symbol}`),
-        api.forexCandles(base, quoteCode, fromSec, nowSec)
-      ]);
+      const quote = await api.quote(`OANDA:${asset.symbol}`);
+      if (FINNHUB_SERIAL_DELAY_MS > 0) await sleep(FINNHUB_SERIAL_DELAY_MS);
+      const candles = await api.forexCandles(base, quoteCode, fromSec, nowSec);
       return { quote, candles };
     }
 
