@@ -542,7 +542,9 @@ export const AppProvider = ({ children }) => {
       symbols: wsSymbols,
       onStatus: (status) => {
         dispatch({ type: 'SET_WS_STATUS', payload: status });
-        if (status === 'error') dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('WebSocket', 'Error de conexión en tiempo real.') });
+        if (status === 'auth_error') {
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('WebSocket', 'Sesión expirada para tiempo real. Reingresá para reconectar WS.') });
+        }
       },
       onTrade: ({ symbol, price }) => {
         const current = assetsRef.current;

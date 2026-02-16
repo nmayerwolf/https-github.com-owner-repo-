@@ -155,9 +155,9 @@ describe('AppContext integration', () => {
     expect(getLatest().state.uiErrors.some((e) => e.module === 'Mercados')).toBe(true);
   });
 
-  it('captures websocket error status into uiErrors', async () => {
+  it('captures websocket auth_error status into uiErrors', async () => {
     createFinnhubSocketMock.mockImplementationOnce(({ onStatus }) => {
-      onStatus?.('error');
+      onStatus?.('auth_error');
       return { close: () => {} };
     });
 
@@ -169,7 +169,7 @@ describe('AppContext integration', () => {
     });
 
     await waitFor(() => {
-      expect(getLatest().state.wsStatus).toBe('error');
+      expect(getLatest().state.wsStatus).toBe('auth_error');
       expect(getLatest().state.uiErrors.some((e) => e.module === 'WebSocket')).toBe(true);
     });
   });
