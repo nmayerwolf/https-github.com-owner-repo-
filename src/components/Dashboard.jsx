@@ -147,7 +147,7 @@ const Dashboard = () => {
         <div className="muted" style={{ marginBottom: 8 }}>
           Seleccioná una señal para ver recomendación, confluencia y niveles sugeridos.
         </div>
-        <div className="alerts-scroll">
+        <div className="alerts-grid-list">
           {visibleAlerts.map((a) => (
             <AlertCard key={a.id} alert={a} onClick={() => setSelectedAlert(a)} />
           ))}

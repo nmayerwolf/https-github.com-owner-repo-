@@ -407,9 +407,14 @@ a:focus-visible {
   display: none;
 }
 
+.alerts-grid-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
 .alert-card {
-  flex-shrink: 0;
-  width: 240px;
+  width: 100%;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-left-width: 3px;
