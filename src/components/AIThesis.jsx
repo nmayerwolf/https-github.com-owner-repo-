@@ -8,7 +8,7 @@ const AIThesis = ({ thesis, onClose, symbol }) => {
   return (
     <section className="card" style={{ borderColor: '#00E08E' }}>
       <div className="row">
-        <h3>Tesis AI: {symbol}</h3>
+        <h3>Tesis IA: {symbol}</h3>
         <button type="button" onClick={onClose}>
           Cerrar
         </button>
@@ -26,7 +26,7 @@ const AIThesis = ({ thesis, onClose, symbol }) => {
         </span>
       </div>
       <p className="muted" style={{ marginTop: 8 }}>
-        Target: {thesis.priceTarget}
+        Objetivo: {thesis.priceTarget}
       </p>
       <button type="button" onClick={() => setExpanded((v) => !v)}>
         {expanded ? 'Ver menos' : 'Ver detalle completo'}
@@ -57,7 +57,7 @@ const AIThesis = ({ thesis, onClose, symbol }) => {
             <strong>Fundamental:</strong> {thesis.fundamentalView}
           </p>
           <p>
-            <strong>Suitability:</strong> {thesis.suitability}
+            <strong>Adecuación:</strong> {thesis.suitability}
           </p>
         </div>
       )}

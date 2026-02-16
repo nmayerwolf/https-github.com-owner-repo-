@@ -545,7 +545,7 @@ const Alerts = () => {
           <article className="card">
             <h3>Desglose</h3>
             <div className="muted" style={{ marginTop: 6 }}>
-              Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · StopLoss: {Number(stats.stopLoss || 0)}
+              Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · Stop loss: {Number(stats.stopLoss || 0)}
             </div>
           </article>
         </section>
@@ -563,7 +563,7 @@ const Alerts = () => {
           ))}
         </section>
 
-        {historyLoading && <div className="card muted">Cargando performance...</div>}
+        {historyLoading && <div className="card muted">Cargando rendimiento...</div>}
         {!!historyError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{historyError}</div>}
 
         {!historyLoading && !historyError && (
@@ -573,12 +573,12 @@ const Alerts = () => {
                 <strong>{a.symbol}</strong>
                 <span className="muted">{a.recommendation}</span>
                 <span className="muted">{shortDate(a.createdAt)}</span>
-                <span className="muted">Outcome: {a.outcome}</span>
+                <span className="muted">Resultado: {a.outcome}</span>
                 <span className="muted mono" style={{ minWidth: 108, textAlign: 'right' }}>Precio: {formatUSD(a.priceAtAlert)}</span>
               </article>
             ))}
 
-            {!performanceList.length && <div className="card muted">No hay alertas para este filtro de outcome.</div>}
+            {!performanceList.length && <div className="card muted">No hay alertas para este filtro de resultado.</div>}
           </div>
         )}
       </>
