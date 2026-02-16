@@ -116,7 +116,7 @@ describe('market routes', () => {
 
   it('returns bulk snapshot with successes and per-symbol errors', async () => {
     finnhub.quote.mockImplementation(async (symbol) => {
-      if (symbol === 'MSFT') throw Object.assign(new Error('Finnhub HTTP 403 /quote'), { code: 'FINNHUB_ENDPOINT_FORBIDDEN' });
+      if (symbol === 'MSFT') throw new Error('unexpected failure');
       return { c: 120, pc: 100, dp: 20 };
     });
 
@@ -129,8 +129,6 @@ describe('market routes', () => {
     expect(Array.isArray(res.body.items)).toBe(true);
     expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
     expect(Array.isArray(res.body.errors)).toBe(true);
-    expect(res.body.errors).toEqual(
-      expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'FINNHUB_ENDPOINT_FORBIDDEN' })])
-    );
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'SNAPSHOT_FAILED' })]));
   });
 });
