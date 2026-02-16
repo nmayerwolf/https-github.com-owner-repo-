@@ -363,8 +363,9 @@ const Alerts = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Señales activas</h3>
+          <h3 className="section-title">Recomendaciones del agente</h3>
         </div>
+        <div className="muted" style={{ marginBottom: 8 }}>Filtrá por tipo para ver oportunidades activas.</div>
         <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
           {LIVE_TABS.map((t) => (
             <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
