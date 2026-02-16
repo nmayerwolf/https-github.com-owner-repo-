@@ -65,12 +65,20 @@ export const appReducer = (state, action) => {
       if (!action.payload?.module || !action.payload?.message) {
         return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
       }
+      if (
+        action.payload.key &&
+        state.uiErrors.some((e) => e.module === action.payload.module && e.key && e.key === action.payload.key)
+      ) {
+        return state;
+      }
       if (state.uiErrors.some((e) => e.module === action.payload.module && e.message === action.payload.message)) {
         return state;
       }
       return { ...state, uiErrors: [action.payload, ...state.uiErrors].slice(0, 6) };
     case 'DISMISS_UI_ERROR':
       return { ...state, uiErrors: state.uiErrors.filter((e) => e.id !== action.payload) };
+    case 'DISMISS_UI_ERRORS_BY_MODULE':
+      return { ...state, uiErrors: state.uiErrors.filter((e) => e.module !== action.payload) };
     case 'PUSH_REALTIME_ALERT': {
       const incoming = action.payload;
       if (!incoming?.id) return state;
@@ -235,10 +243,11 @@ const fetchSnapshotBatchViaProxy = async (metaBatch = []) => {
   }
 };
 
-export const makeUiError = (module, message) => ({
+export const makeUiError = (module, message, key = null) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   module,
-  message
+  message,
+  key
 });
 
 const readAssetCache = () => {
@@ -375,7 +384,10 @@ export const AppProvider = ({ children }) => {
         pushAsset(meta, data);
       } else {
         if (failedLoads < 3) {
-          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Mercados', `No se pudo cargar ${meta.symbol}.`) });
+          dispatch({
+            type: 'PUSH_UI_ERROR',
+            payload: makeUiError('Mercados', 'No se pudieron cargar algunos activos del mercado.', 'markets-initial-load')
+          });
         }
         failedLoads += 1;
       }
@@ -402,7 +414,10 @@ export const AppProvider = ({ children }) => {
           pushAsset(meta, data);
         } else {
           if (failedLoads < 3) {
-            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Mercados', `No se pudo cargar ${meta.symbol}.`) });
+            dispatch({
+              type: 'PUSH_UI_ERROR',
+              payload: makeUiError('Mercados', 'No se pudieron cargar algunos activos del mercado.', 'markets-initial-load')
+            });
           }
           failedLoads += 1;
         }
@@ -414,7 +429,7 @@ export const AppProvider = ({ children }) => {
       if (failedSymbols.length && failedLoads < 3) {
         dispatch({
           type: 'PUSH_UI_ERROR',
-          payload: makeUiError('Mercados', `Sin datos para ${failedSymbols.slice(0, 2).join(', ')}.`)
+          payload: makeUiError('Mercados', `Sin datos para ${failedSymbols.slice(0, 2).join(', ')}.`, 'markets-snapshot-missing')
         });
       }
 
@@ -436,7 +451,8 @@ export const AppProvider = ({ children }) => {
             'Offline',
             cacheStamp
               ? `Sin conexión al mercado en tiempo real. Mostrando cache de ${cacheStamp}.`
-              : 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.'
+              : 'Sin conexión al mercado en tiempo real. Mostrando últimos datos en cache.',
+            'offline-cache-fallback'
           )
         });
       }
@@ -492,7 +508,7 @@ export const AppProvider = ({ children }) => {
       })
       .catch(() => {
         dispatch({ type: 'SET_MACRO_STATUS', payload: 'error' });
-        dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Macro', 'Falló la carga de Alpha Vantage.') });
+        dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Macro', 'Falló la carga de Alpha Vantage.', 'macro-load') });
       });
   }, [state.loading, state.assets.length]);
 
@@ -518,8 +534,15 @@ export const AppProvider = ({ children }) => {
       symbols: wsSymbols,
       onStatus: (status) => {
         dispatch({ type: 'SET_WS_STATUS', payload: status });
+        if (status === 'connected') {
+          dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
+          return;
+        }
         if (status === 'auth_error') {
-          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('WebSocket', 'Sesión expirada para tiempo real. Reingresá para reconectar WS.') });
+          dispatch({
+            type: 'PUSH_UI_ERROR',
+            payload: makeUiError('WebSocket', 'Sesión expirada para tiempo real. Reingresá para reconectar WS.', 'ws-auth-error')
+          });
         }
       },
       onTrade: ({ symbol, price }) => {

@@ -177,6 +177,7 @@ const App = () => {
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
   const [networkOffline, setNetworkOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [clock, setClock] = useState(Date.now());
 
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
@@ -297,6 +298,11 @@ const App = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const id = setInterval(() => setClock(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
   const finishOnboarding = async () => {
     setOnboardingSaving(true);
     try {
@@ -355,6 +361,17 @@ const App = () => {
   const lastUpdatedLabel = state.lastUpdated
     ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
     : 'sin datos';
+  const lastUpdatedAgoLabel = (() => {
+    if (!state.lastUpdated) return 'sin sincronizar';
+    const diffSec = Math.max(0, Math.floor((clock - state.lastUpdated) / 1000));
+    if (diffSec < 60) return 'hace segundos';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `hace ${diffHr} h`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `hace ${diffDay} d`;
+  })();
 
   return (
     <div className="app">
@@ -413,7 +430,7 @@ const App = () => {
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
           <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
-            Actualizado: {lastUpdatedLabel}
+            Actualizado: {lastUpdatedLabel} ({lastUpdatedAgoLabel})
           </span>
           <HealthBadge
             label={`Finnhub ${state.apiHealth.finnhub.calls}/${state.apiHealth.finnhub.errors} f:${finnhubFallback}`}
