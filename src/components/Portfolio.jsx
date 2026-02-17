@@ -486,22 +486,12 @@ const Portfolio = () => {
               </div>
             ) : null}
           </label>
-          <label className="label">
+          <div className="label" style={{ display: 'grid', alignContent: 'end' }}>
             <span className="muted">Categoría</span>
-            <select
-              className="select-field"
-              aria-label="Categoría de activo"
-              value={selectedAssetMatch?.category || form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            >
-              <option value="equity">Acciones</option>
-              <option value="crypto">Cripto</option>
-              <option value="fx">FX</option>
-              <option value="metal">Metal</option>
-              <option value="commodity">Commodities</option>
-              <option value="bond">Bonos</option>
-            </select>
-          </label>
+            <div className="badge" style={{ width: 'fit-content', marginTop: 8 }}>
+              {selectedAssetMatch ? (selectedAssetMatch.category === 'etf' ? 'equity' : selectedAssetMatch.category) : 'automática'}
+            </div>
+          </div>
           <label className="label">
             <span className="muted">Fecha compra</span>
             <input type="date" value={form.buyDate} required onChange={(e) => setForm({ ...form, buyDate: e.target.value })} />
