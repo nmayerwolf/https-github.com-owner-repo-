@@ -36,6 +36,30 @@ const normalizeSearchText = (value) =>
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
 
+const scoreSearchResult = (query, item) => {
+  const needle = normalizeSearchText(query);
+  const symbol = normalizeSearchText(item?.symbol);
+  const displaySymbol = normalizeSearchText(item?.displaySymbol);
+  const description = normalizeSearchText(item?.description || item?.name);
+  const type = normalizeSearchText(item?.type);
+
+  let score = 0;
+  if (symbol === needle || displaySymbol === needle) score += 120;
+  else if (symbol.startsWith(needle) || displaySymbol.startsWith(needle)) score += 80;
+  else if (symbol.includes(needle) || displaySymbol.includes(needle)) score += 55;
+
+  if (description === needle) score += 95;
+  else if (description.startsWith(needle)) score += 70;
+  else if (description.includes(needle)) score += 45;
+
+  if (type.includes('common stock') || type.includes('adr') || type.includes('etf')) score += 20;
+  if (type.includes('right') || type.includes('warrant') || type.includes('preferred') || type.includes('fund')) score -= 20;
+  if (symbol.includes(':')) score -= 8;
+  if (symbol.length > 7) score -= 5;
+
+  return score;
+};
+
 const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
   const current = toFinite(price);
   const prev = toFinite(previousClose);
@@ -374,6 +398,7 @@ router.get('/search', async (req, res, next) => {
         const rows = Array.isArray(out?.result) ? out.result : [];
         return rows
           .filter((item) => String(item?.symbol || '').trim() && String(item?.description || '').trim())
+          .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
           .slice(0, 20)
           .map((item) => {
             const symbol = String(item.symbol || '').trim().toUpperCase();

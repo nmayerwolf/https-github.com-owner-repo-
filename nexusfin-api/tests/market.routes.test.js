@@ -118,6 +118,21 @@ describe('market routes', () => {
     expect(res.body.items.some((item) => item.symbol === 'NSRGY')).toBe(true);
   });
 
+  it('ranks market search results by relevance', async () => {
+    finnhub.symbolSearch.mockResolvedValueOnce({
+      result: [
+        { symbol: 'NESTL.ZZ', description: 'Nestle Placeholder Right', type: 'Right' },
+        { symbol: 'NSRGY', description: 'Nestle SA ADR', type: 'ADR' }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/search?q=nestle');
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].symbol).toBe('NSRGY');
+  });
+
   it('returns empty market search when query is too short', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/market/search?q=n');
