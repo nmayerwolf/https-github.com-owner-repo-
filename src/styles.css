@@ -51,6 +51,7 @@ body {
   font-family: var(--font-body);
   color: var(--text-primary);
   background: radial-gradient(1200px 700px at 30% -20%, #1b2b4a 0%, var(--bg-primary) 56%);
+  overflow-x: hidden;
 }
 
 a {
@@ -93,6 +94,7 @@ textarea {
 
 .app {
   min-height: 100vh;
+  width: min(430px, 100%);
   max-width: 430px;
   margin: 0 auto;
   padding: 12px 12px 96px;
@@ -193,6 +195,7 @@ textarea {
 .container {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .card {
@@ -200,11 +203,13 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px;
+  min-width: 0;
 }
 
 .grid {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .grid-2 {
@@ -287,6 +292,13 @@ textarea {
   padding: 8px 10px;
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.03);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  padding: 0;
+  accent-color: var(--blue);
 }
 
 .select-field {
@@ -1020,6 +1032,9 @@ a:focus-visible {
 .markets-selected-title {
   font-size: 0.9rem;
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .markets-selected-grid {
@@ -1207,6 +1222,8 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
   gap: 3px;
   text-decoration: none;
 }
