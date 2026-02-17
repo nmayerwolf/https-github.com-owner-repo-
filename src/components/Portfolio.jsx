@@ -102,10 +102,8 @@ const Portfolio = () => {
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
   const active = useMemo(() => state.positions.filter((p) => !p.sellDate), [state.positions]);
   const sold = useMemo(() => state.positions.filter((p) => p.sellDate), [state.positions]);
-  const portfolioValue = active.reduce((acc, p) => acc + (assetsBySymbol[p.symbol]?.price ?? p.buyPrice) * p.quantity, 0);
-  const invested = active.reduce((acc, p) => acc + p.buyPrice * p.quantity, 0);
-  const pnlTotal = portfolioValue - invested;
-  const pnlPct = invested ? (pnlTotal / invested) * 100 : 0;
+  const activeValue = active.reduce((acc, p) => acc + (assetsBySymbol[p.symbol]?.price ?? p.buyPrice) * p.quantity, 0);
+  const activeInvested = active.reduce((acc, p) => acc + p.buyPrice * p.quantity, 0);
 
   const activeRows = useMemo(
     () =>
@@ -129,6 +127,13 @@ const Portfolio = () => {
       }),
     [sold]
   );
+
+  const realizedPnl = useMemo(() => soldRows.reduce((acc, row) => acc + Number(row.pnl || 0), 0), [soldRows]);
+  const unrealizedPnl = activeValue - activeInvested;
+  const pnlTotal = unrealizedPnl + realizedPnl;
+  const totalInvested = activeInvested + soldRows.reduce((acc, row) => acc + Number(row.buyPrice || 0) * Number(row.quantity || 0), 0);
+  const pnlPct = totalInvested ? (pnlTotal / totalInvested) * 100 : 0;
+  const portfolioValue = activeValue;
 
   const allocation = activeRows
     .map((row, idx) => ({
@@ -492,7 +497,11 @@ const Portfolio = () => {
           </div>
           <div className="ind-cell">
             <div className="ind-label">Capital invertido</div>
-            <div className="ind-val mono">{formatUSD(invested)}</div>
+            <div className="ind-val mono">{formatUSD(totalInvested)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">P&L realizado</div>
+            <div className={`ind-val mono ${realizedPnl >= 0 ? 'up' : 'down'}`}>{formatUSD(realizedPnl)}</div>
           </div>
           <div className="ind-cell">
             <div className="ind-label">Mejor posición</div>
