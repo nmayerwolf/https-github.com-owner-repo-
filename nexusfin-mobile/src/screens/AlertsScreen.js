@@ -37,6 +37,12 @@ const toLiveAlert = (incoming) => ({
   confidence: incoming.confidence || 'high'
 });
 
+const getWsStatusTone = (status, palette) => {
+  if (status === 'connected') return { backgroundColor: `${palette.positive}22`, color: palette.positive, borderColor: `${palette.positive}66` };
+  if (status === 'connecting' || status === 'reconnecting') return { backgroundColor: `${palette.info}22`, color: palette.info, borderColor: `${palette.info}66` };
+  return { backgroundColor: `${palette.warning}22`, color: palette.warning, borderColor: `${palette.warning}66` };
+};
+
 const AlertRow = ({ item, palette }) => (
   <FadeInView delay={20}>
     <View style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}>
@@ -74,6 +80,7 @@ const AlertsScreen = ({ theme = 'dark' }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [wsStatus, setWsStatus] = useState('disconnected');
+  const wsTone = getWsStatusTone(wsStatus, palette);
 
   const performanceAlerts = useMemo(
     () => (historyData.alerts || []).filter((a) => outcomeFilter === 'all' || (a.outcome || 'open') === outcomeFilter),
@@ -366,7 +373,9 @@ const AlertsScreen = ({ theme = 'dark' }) => {
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Alertas</Text>
-      <Text style={[styles.muted, { color: palette.muted }]}>Tiempo real: {WS_STATUS_LABEL[wsStatus] || wsStatus}</Text>
+      <View style={[styles.wsBadge, { backgroundColor: wsTone.backgroundColor, borderColor: wsTone.borderColor }]}>
+        <Text style={[styles.wsBadgeLabel, { color: wsTone.color }]}>Tiempo real: {WS_STATUS_LABEL[wsStatus] || wsStatus}</Text>
+      </View>
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 
       <View style={styles.rowWrap}>
@@ -415,6 +424,15 @@ const AlertsScreen = ({ theme = 'dark' }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { ...typography.screenTitle, marginBottom: 4 },
+  wsBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 8
+  },
+  wsBadgeLabel: { ...typography.caption, textTransform: 'uppercase' },
   muted: { ...typography.body, marginBottom: 8 },
   error: { ...typography.body, marginBottom: 10 },
   skeletonWrap: { marginBottom: 8 },

@@ -31,6 +31,12 @@ const formatPct = (value) => {
   return `${sign}${n.toFixed(2)}%`;
 };
 
+const getWsStatusTone = (status, palette) => {
+  if (status === 'connected') return { backgroundColor: `${palette.positive}22`, color: palette.positive, borderColor: `${palette.positive}66` };
+  if (status === 'connecting' || status === 'reconnecting') return { backgroundColor: `${palette.info}22`, color: palette.info, borderColor: `${palette.info}66` };
+  return { backgroundColor: `${palette.warning}22`, color: palette.warning, borderColor: `${palette.warning}66` };
+};
+
 const MarketsScreen = ({ theme = 'dark' }) => {
   const palette = getThemePalette(theme);
   const [category, setCategory] = useState('all');
@@ -47,6 +53,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
     MOBILE_MARKET_UNIVERSE.map((asset) => ({ ...asset, price: null, changePercent: null, updatedAt: null }))
   );
   const knownSymbols = useMemo(() => new Set(rows.map((asset) => String(asset.symbol || '').toUpperCase())), [rows]);
+  const wsTone = getWsStatusTone(wsStatus, palette);
   const tabs = useMemo(() => {
     const categorySet = new Set(universe.map((asset) => asset.category).filter(Boolean));
     const ordered = MARKET_CATEGORIES.filter((item) => item === 'all' || categorySet.has(item));
@@ -308,7 +315,9 @@ const MarketsScreen = ({ theme = 'dark' }) => {
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Mercados</Text>
-      <Text style={[styles.muted, { color: palette.muted }]}>Tiempo real: {WS_STATUS_LABEL[wsStatus] || wsStatus}</Text>
+      <View style={[styles.wsBadge, { backgroundColor: wsTone.backgroundColor, borderColor: wsTone.borderColor }]}>
+        <Text style={[styles.wsBadgeLabel, { color: wsTone.color }]}>Tiempo real: {WS_STATUS_LABEL[wsStatus] || wsStatus}</Text>
+      </View>
       <Text style={[styles.muted, { color: palette.muted }]}>Watchlist: {watchlistSymbols.length} símbolos</Text>
       {lastUpdatedAt ? (
         <Text style={[styles.muted, { color: palette.muted }]}>
@@ -429,6 +438,15 @@ const MarketsScreen = ({ theme = 'dark' }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { ...typography.screenTitle, marginBottom: 6 },
+  wsBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 8
+  },
+  wsBadgeLabel: { ...typography.caption, textTransform: 'uppercase' },
   muted: { ...typography.body, marginBottom: 8 },
   error: { ...typography.body, marginBottom: 8 },
   message: { ...typography.body, marginBottom: 8 },
