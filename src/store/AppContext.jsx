@@ -760,12 +760,64 @@ export const AppProvider = ({ children }) => {
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
-      sellPosition: async (id, sellPrice, sellDate) => {
+      sellPosition: async (id, sellPrice, sellDate, sellQuantity) => {
+        const current = state.positions.find((p) => p.id === id);
+        const qty = Number(sellQuantity);
+        const hasQty = Number.isFinite(qty) && qty > 0;
+
+        if (!current) {
+          if (isAuthenticated && hasQty) {
+            try {
+              const out = await api.updatePosition(id, { sellPrice, sellDate });
+              const updated = normalizePosition(out);
+              dispatch({ type: 'SET_POSITIONS', payload: state.positions.map((p) => (p.id === id ? updated : p)) });
+              return;
+            } catch {
+              dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo vender la posición.') });
+              return;
+            }
+          }
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'Posición no encontrada para vender.') });
+          return;
+        }
+
+        if (current.sellDate) return;
+        const currentQty = Number(current.quantity);
+        const isValidQty = hasQty && qty <= currentQty;
+        if (!isValidQty) {
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'Cantidad de venta inválida.') });
+          return;
+        }
+
+        const isFullSell = qty === currentQty;
         if (isAuthenticated) {
           try {
-            const out = await api.updatePosition(id, { sellPrice, sellDate });
-            const updated = normalizePosition(out);
-            dispatch({ type: 'SET_POSITIONS', payload: state.positions.map((p) => (p.id === id ? updated : p)) });
+            if (isFullSell) {
+              const out = await api.updatePosition(id, { sellPrice, sellDate });
+              const updated = normalizePosition(out);
+              dispatch({ type: 'SET_POSITIONS', payload: state.positions.map((p) => (p.id === id ? updated : p)) });
+              return;
+            }
+
+            const soldLot = await api.addPosition({
+              symbol: current.symbol,
+              name: current.name,
+              category: current.category,
+              buyDate: current.buyDate,
+              buyPrice: Number(current.buyPrice),
+              quantity: qty,
+              notes: current.notes || ''
+            });
+            const soldLotClosed = await api.updatePosition(soldLot.id, { sellPrice, sellDate });
+            const remainingQty = Number((currentQty - qty).toFixed(8));
+            const updatedCurrent = await api.updatePosition(id, { quantity: remainingQty });
+
+            const soldNormalized = normalizePosition(soldLotClosed);
+            const currentNormalized = normalizePosition(updatedCurrent);
+            dispatch({
+              type: 'SET_POSITIONS',
+              payload: [soldNormalized, ...state.positions.map((p) => (p.id === id ? currentNormalized : p))]
+            });
             return;
           } catch {
             dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo vender la posición.') });
@@ -773,7 +825,20 @@ export const AppProvider = ({ children }) => {
           }
         }
 
-        const next = state.positions.map((p) => (p.id === id ? { ...p, sellPrice, sellDate } : p));
+        const next = isFullSell
+          ? state.positions.map((p) => (p.id === id ? { ...p, sellPrice, sellDate } : p))
+          : [
+              {
+                ...current,
+                id: crypto.randomUUID(),
+                quantity: qty,
+                sellPrice,
+                sellDate
+              },
+              ...state.positions.map((p) =>
+                p.id === id ? { ...p, quantity: Number((currentQty - qty).toFixed(8)) } : p
+              )
+            ];
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },

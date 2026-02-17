@@ -5,7 +5,7 @@ import { WATCHLIST_CATALOG } from '../utils/constants';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
 const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', amountUsd: '', stopLoss: '', takeProfit: '' };
-const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10) };
+const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10), sellQuantity: '', maxQuantity: 0 };
 const emptyRiskTargets = { id: '', symbol: '', stopLoss: '', takeProfit: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
 const PORTFOLIO_PAGE_SIZE = 8;
@@ -38,27 +38,7 @@ const normalizePercentInput = (value) => {
 
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets }) {
   const slPct = Number(position.stopLossPct);
-  const legacySlPrice = Number(position.stopLoss);
-  const stopPrice =
-    !position.sellDate && Number.isFinite(slPct) && slPct > 0 && Number(position.buyPrice) > 0
-      ? Number(position.buyPrice) * (1 - slPct / 100)
-      : Number.isFinite(legacySlPrice) && legacySlPrice > 0
-        ? legacySlPrice
-        : null;
-  const stopDistancePct = !position.sellDate && Number.isFinite(stopPrice) && stopPrice > 0 && Number(position.current) > 0
-    ? ((Number(position.current) - Number(stopPrice)) / Number(position.current)) * 100
-    : null;
   const tpPct = Number(position.takeProfitPct);
-  const legacyTpPrice = Number(position.takeProfit);
-  const takeProfitPrice =
-    !position.sellDate && Number.isFinite(tpPct) && tpPct > 0 && Number(position.buyPrice) > 0
-      ? Number(position.buyPrice) * (1 + tpPct / 100)
-      : Number.isFinite(legacyTpPrice) && legacyTpPrice > 0
-        ? legacyTpPrice
-        : null;
-  const takeProfitDistancePct = !position.sellDate && Number.isFinite(takeProfitPrice) && takeProfitPrice > 0 && Number(position.current) > 0
-    ? ((Number(takeProfitPrice) - Number(position.current)) / Number(position.current)) * 100
-    : null;
 
   return (
     <article className="card pos-row">
@@ -66,23 +46,11 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
       <div className="pos-info">
         <div className="pos-sym mono">{position.symbol}</div>
         <div className="pos-detail">
-          Invertido {formatUSD(Number(position.buyPrice) * Number(position.quantity))} · Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
+          Invertido {formatUSD(Number(position.buyPrice) * Number(position.quantity))} · Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)}
+          {!position.sellDate && Number.isFinite(slPct) && slPct > 0 ? ` · SL -${slPct.toFixed(2)}%` : ''}
+          {!position.sellDate && Number.isFinite(tpPct) && tpPct > 0 ? ` · TP +${tpPct.toFixed(2)}%` : ''}
+          {position.sellDate ? ` · Venta ${formatUSD(position.sellPrice)} (${shortDate(position.sellDate)})` : ''}
         </div>
-        {!position.sellDate && Number.isFinite(stopPrice) && stopPrice > 0 ? (
-          <div className="pos-detail">
-            Stop loss {Number.isFinite(slPct) && slPct > 0 ? `-${slPct.toFixed(2)}%` : formatUSD(Number(stopPrice))}
-            {Number.isFinite(slPct) && slPct > 0 ? ` (${formatUSD(Number(stopPrice))})` : ''}
-            {stopDistancePct != null ? ` · Distancia ${formatPct(stopDistancePct)}` : ''}
-          </div>
-        ) : null}
-        {!position.sellDate && Number.isFinite(takeProfitPrice) && takeProfitPrice > 0 ? (
-          <div className="pos-detail">
-            Take profit {Number.isFinite(tpPct) && tpPct > 0 ? `+${tpPct.toFixed(2)}%` : formatUSD(Number(takeProfitPrice))}
-            {Number.isFinite(tpPct) && tpPct > 0 ? ` (${formatUSD(Number(takeProfitPrice))})` : ''}
-            {takeProfitDistancePct != null ? ` · Distancia ${formatPct(takeProfitDistancePct)}` : ''}
-          </div>
-        ) : null}
-        {position.sellDate ? <div className="pos-detail">Venta {formatUSD(position.sellPrice)} · {shortDate(position.sellDate)}</div> : null}
       </div>
       <div className="pos-vals">
         <div className="pos-value mono">{formatUSD(position.value)}</div>
@@ -91,9 +59,6 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
         </div>
         {!position.sellDate ? (
           <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => onOpenRiskTargets(position)}>
-              SL / TP
-            </button>
             <button type="button" onClick={() => onOpenSell(position)}>
               Vender
             </button>
@@ -278,9 +243,11 @@ const Portfolio = () => {
 
   const submitSell = (e) => {
     e.preventDefault();
-    const price = Number(sellModal.sellPrice);
-    if (!sellModal.id || !price || !sellModal.sellDate) return;
-    actions.sellPosition(sellModal.id, price, sellModal.sellDate);
+    const price = Number(parseNumericInput(sellModal.sellPrice));
+    const quantity = Number(parseNumericInput(sellModal.sellQuantity));
+    const maxQuantity = Number(sellModal.maxQuantity || 0);
+    if (!sellModal.id || !price || !sellModal.sellDate || !quantity || quantity <= 0 || quantity > maxQuantity) return;
+    actions.sellPosition(sellModal.id, price, sellModal.sellDate, quantity);
     setSellModal(emptySell);
   };
 
@@ -437,7 +404,9 @@ const Portfolio = () => {
         id: position.id,
         symbol: position.symbol,
         sellPrice: (assetsBySymbol[position.symbol]?.price ?? position.buyPrice).toFixed(4),
-        sellDate: new Date().toISOString().slice(0, 10)
+        sellDate: new Date().toISOString().slice(0, 10),
+        sellQuantity: String(position.quantity),
+        maxQuantity: Number(position.quantity)
       }),
     [assetsBySymbol]
   );
@@ -682,13 +651,28 @@ const Portfolio = () => {
             <h3>Vender {sellModal.symbol}</h3>
             <form onSubmit={submitSell} className="grid" style={{ marginTop: 8 }}>
               <label className="label">
-                <span className="muted">Precio de venta</span>
+                <span className="muted">Cantidad a vender</span>
                 <input
                   type="number"
                   step="0.0001"
+                  min="0.0001"
+                  max={sellModal.maxQuantity || undefined}
+                  value={sellModal.sellQuantity}
+                  required
+                  onChange={(e) => setSellModal({ ...sellModal, sellQuantity: e.target.value })}
+                />
+                <span className="muted">Disponible: {sellModal.maxQuantity}</span>
+              </label>
+              <label className="label">
+                <span className="muted">Precio de venta</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
                   value={sellModal.sellPrice}
                   required
                   onChange={(e) => setSellModal({ ...sellModal, sellPrice: e.target.value })}
+                  onBlur={() => setSellModal((prev) => ({ ...prev, sellPrice: formatMoneyInput(prev.sellPrice) }))}
+                  onFocus={() => setSellModal((prev) => ({ ...prev, sellPrice: String(parseNumericInput(prev.sellPrice) ?? '') }))}
                 />
               </label>
               <label className="label">
