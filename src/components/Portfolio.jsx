@@ -16,6 +16,22 @@ const normalizeSearchText = (value) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+const resolveAssetByQuery = (query, assets = []) => {
+  const raw = normalizeSearchText(query);
+  if (!raw) return null;
+  const list = Array.isArray(assets) ? assets : [];
+  const bySymbol = list.find((item) => normalizeSearchText(item.symbol) === raw);
+  if (bySymbol) return bySymbol;
+  const byName = list.find((item) => normalizeSearchText(item.name) === raw);
+  if (byName) return byName;
+  const bySymbolPrefix = list.find((item) => normalizeSearchText(item.symbol).startsWith(raw));
+  if (bySymbolPrefix) return bySymbolPrefix;
+  const byNamePrefix = list.find((item) => normalizeSearchText(item.name).startsWith(raw));
+  if (byNamePrefix) return byNamePrefix;
+  const byNameContains = list.find((item) => normalizeSearchText(item.name).includes(raw));
+  return byNameContains || null;
+};
+
 const parseNumericInput = (value) => {
   const raw = String(value || '').trim().replace('%', '').replace(/\s/g, '');
   if (!raw) return null;
@@ -98,6 +114,7 @@ const Portfolio = () => {
   const [advisorError, setAdvisorError] = useState('');
   const [advisorData, setAdvisorData] = useState(null);
   const [advisorSkipped, setAdvisorSkipped] = useState(null);
+  const [formError, setFormError] = useState('');
 
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
   const active = useMemo(() => state.positions.filter((p) => !p.sellDate), [state.positions]);
@@ -221,7 +238,7 @@ const Portfolio = () => {
   }, [assetSuggestions, assetQuery]);
 
   const canSubmitPosition =
-    !!(selectedAssetMatch || assetSuggestions[0]) &&
+    !!String(assetQuery || '').trim() &&
     !!form.buyDate &&
     Number(parseNumericInput(form.buyPrice)) > 0 &&
     Number(parseNumericInput(form.amountUsd)) > 0 &&
@@ -230,11 +247,18 @@ const Portfolio = () => {
 
   const submit = (e) => {
     e.preventDefault();
-    const selected = selectedAssetMatch || assetSuggestions[0];
-    if (!selected) return;
+    setFormError('');
+    const selected = selectedAssetMatch || assetSuggestions[0] || resolveAssetByQuery(assetQuery, searchableAssets);
+    if (!selected) {
+      setFormError('Activo inválido. Escribí ticker o nombre válido.');
+      return;
+    }
     const buyPrice = Number(parseNumericInput(form.buyPrice));
     const amountUsd = Number(parseNumericInput(form.amountUsd));
-    if (!Number.isFinite(buyPrice) || buyPrice <= 0 || !Number.isFinite(amountUsd) || amountUsd <= 0) return;
+    if (!Number.isFinite(buyPrice) || buyPrice <= 0 || !Number.isFinite(amountUsd) || amountUsd <= 0) {
+      setFormError('Completá precio y monto total con valores válidos.');
+      return;
+    }
     const quantity = Number((amountUsd / buyPrice).toFixed(8));
     actions.addPosition({
       symbol: selected.symbol,
@@ -251,6 +275,7 @@ const Portfolio = () => {
     setForm(emptyForm);
     setAssetQuery('');
     setAssetRemote([]);
+    setFormError('');
   };
 
   const submitSell = (e) => {
@@ -555,6 +580,7 @@ const Portfolio = () => {
       <section className="card">
         <h2>Nueva posición</h2>
         <p className="muted" style={{ marginTop: 6 }}>Cargá una posición para monitorear P&L y señales relacionadas.</p>
+        {formError ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{formError}</div> : null}
         <form onSubmit={submit} className="grid grid-2" style={{ marginTop: 8 }}>
           <label className="label portfolio-asset-field">
             <span className="muted">Activo</span>
