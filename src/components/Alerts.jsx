@@ -13,7 +13,7 @@ import AlertCard from './common/AlertCard';
 import Sparkline from './common/Sparkline';
 
 const MAIN_TABS = ['live', 'macro', 'history', 'performance'];
-const LIVE_TABS = ['all', 'compra', 'venta', 'stoploss'];
+const LIVE_TABS = ['all', 'compra', 'venta'];
 const HISTORY_TYPE_TABS = ['all', ...ALERT_TYPES];
 const OUTCOME_TABS = ['all', ...ALERT_OUTCOMES];
 
@@ -23,11 +23,10 @@ const MAIN_LABEL = {
   history: 'Historial',
   performance: 'Rendimiento'
 };
-const LIVE_TAB_LABEL = {
+  const LIVE_TAB_LABEL = {
   all: 'all',
   compra: 'compra',
-  venta: 'venta',
-  stoploss: 'stoploss'
+  venta: 'venta'
 };
 
 const HISTORY_TYPE_LABEL = {
@@ -179,7 +178,10 @@ const Alerts = () => {
   const [portfolioAdviceSkipped, setPortfolioAdviceSkipped] = useState(null);
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
-  const liveList = useMemo(() => state.alerts.filter((a) => liveTab === 'all' || a.type === liveTab), [liveTab, state.alerts]);
+  const liveList = useMemo(
+    () => state.alerts.filter((a) => a.type !== 'stoploss' && (liveTab === 'all' || a.type === liveTab)),
+    [liveTab, state.alerts]
+  );
   const portfolio = useMemo(() => {
     const assetsBySymbol = Object.fromEntries((state.assets || []).map((a) => [a.symbol, a]));
     const active = (state.positions || []).filter((p) => !p.sellDate);

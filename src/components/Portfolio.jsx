@@ -3,12 +3,13 @@ import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
-const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', quantity: 1 };
+const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', quantity: 1, stopLoss: '' };
 const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10) };
+const emptyStopLoss = { id: '', symbol: '', stopLoss: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
 const PORTFOLIO_PAGE_SIZE = 8;
 
-const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete }) {
+const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenStopLoss }) {
   return (
     <article className="card pos-row">
       <div className="pos-icon">{String(position.symbol).slice(0, 3)}</div>
@@ -17,6 +18,9 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete }
         <div className="pos-detail">
           Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
         </div>
+        {!position.sellDate && Number(position.stopLoss) > 0 ? (
+          <div className="pos-detail">Stop loss {formatUSD(Number(position.stopLoss))}</div>
+        ) : null}
         {position.sellDate ? <div className="pos-detail">Venta {formatUSD(position.sellPrice)} · {shortDate(position.sellDate)}</div> : null}
       </div>
       <div className="pos-vals">
@@ -26,6 +30,9 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete }
         </div>
         {!position.sellDate ? (
           <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => onOpenStopLoss(position)}>
+              Stop loss
+            </button>
             <button type="button" onClick={() => onOpenSell(position)}>
               Vender
             </button>
@@ -45,6 +52,7 @@ const Portfolio = () => {
   const [visibleCount, setVisibleCount] = useState(PORTFOLIO_PAGE_SIZE);
   const [form, setForm] = useState(emptyForm);
   const [sellModal, setSellModal] = useState(emptySell);
+  const [stopLossModal, setStopLossModal] = useState(emptyStopLoss);
   const [exportFilter, setExportFilter] = useState('all');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -103,7 +111,8 @@ const Portfolio = () => {
       ...form,
       id: crypto.randomUUID(),
       buyPrice: Number(form.buyPrice),
-      quantity: Number(form.quantity)
+      quantity: Number(form.quantity),
+      stopLoss: form.stopLoss ? Number(form.stopLoss) : null
     });
     setForm(emptyForm);
   };
@@ -114,6 +123,14 @@ const Portfolio = () => {
     if (!sellModal.id || !price || !sellModal.sellDate) return;
     actions.sellPosition(sellModal.id, price, sellModal.sellDate);
     setSellModal(emptySell);
+  };
+
+  const submitStopLoss = (e) => {
+    e.preventDefault();
+    const value = Number(stopLossModal.stopLoss);
+    if (!stopLossModal.id || !Number.isFinite(value) || value <= 0) return;
+    actions.setPositionStopLoss(stopLossModal.id, value);
+    setStopLossModal(emptyStopLoss);
   };
 
   const exportCsv = async () => {
@@ -200,6 +217,15 @@ const Portfolio = () => {
   );
 
   const handleDelete = useCallback((id) => actions.deletePosition(id), [actions]);
+  const handleOpenStopLoss = useCallback(
+    (position) =>
+      setStopLossModal({
+        id: position.id,
+        symbol: position.symbol,
+        stopLoss: position.stopLoss ? String(position.stopLoss) : ''
+      }),
+    []
+  );
 
   return (
     <div className="grid portfolio-page">
@@ -326,6 +352,10 @@ const Portfolio = () => {
             <span className="muted">Cantidad</span>
             <input type="number" step="0.0001" value={form.quantity} required onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
           </label>
+          <label className="label">
+            <span className="muted">Stop loss (opcional)</span>
+            <input type="number" step="0.0001" value={form.stopLoss} onChange={(e) => setForm({ ...form, stopLoss: e.target.value })} />
+          </label>
           <button type="submit">Agregar</button>
         </form>
       </section>
@@ -350,7 +380,9 @@ const Portfolio = () => {
         </button>
       </section>
 
-      {visibleRows.map((p) => <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} />)}
+      {visibleRows.map((p) => (
+        <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} onOpenStopLoss={handleOpenStopLoss} />
+      ))}
       {hasMoreRows ? (
         <div className="card portfolio-more">
           <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + PORTFOLIO_PAGE_SIZE, rows.length))}>
@@ -389,6 +421,32 @@ const Portfolio = () => {
                   Cancelar
                 </button>
                 <button type="submit">Confirmar venta</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {stopLossModal.id && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setStopLossModal(emptyStopLoss)}>
+          <section className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h3>Definir stop loss · {stopLossModal.symbol}</h3>
+            <form onSubmit={submitStopLoss} className="grid" style={{ marginTop: 8 }}>
+              <label className="label">
+                <span className="muted">Precio de stop loss</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={stopLossModal.stopLoss}
+                  required
+                  onChange={(e) => setStopLossModal({ ...stopLossModal, stopLoss: e.target.value })}
+                />
+              </label>
+              <div className="row">
+                <button type="button" onClick={() => setStopLossModal(emptyStopLoss)}>
+                  Cancelar
+                </button>
+                <button type="submit">Guardar stop loss</button>
               </div>
             </form>
           </section>

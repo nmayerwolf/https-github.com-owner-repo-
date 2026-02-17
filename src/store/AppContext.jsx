@@ -191,6 +191,24 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
   return watchlistSymbols.map((s) => bySymbol[s]).filter(Boolean);
 };
 
+const STOP_LOSS_TOKEN = /\[SL:([0-9]+(?:\.[0-9]+)?)\]/i;
+
+const parseStopLossFromNotes = (notes) => {
+  const text = String(notes || '');
+  const match = text.match(STOP_LOSS_TOKEN);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const withStopLossToken = (notes, stopLoss) => {
+  const base = String(notes || '').replace(STOP_LOSS_TOKEN, '').trim();
+  const value = Number(stopLoss);
+  if (!Number.isFinite(value) || value <= 0) return base;
+  const token = `[SL:${value}]`;
+  return base ? `${token} ${base}` : token;
+};
+
 const normalizePosition = (row) => ({
   id: row.id,
   symbol: row.symbol,
@@ -201,7 +219,8 @@ const normalizePosition = (row) => ({
   quantity: Number(row.quantity),
   sellDate: row.sellDate || row.sell_date || null,
   sellPrice: row.sellPrice || row.sell_price ? Number(row.sellPrice ?? row.sell_price) : null,
-  notes: row.notes || ''
+  notes: row.notes || '',
+  stopLoss: parseStopLossFromNotes(row.notes)
 });
 
 const fetchSnapshotViaProxy = async (meta) => {
@@ -623,6 +642,7 @@ export const AppProvider = ({ children }) => {
         dispatch({ type: 'SET_CONFIG', payload: config });
       },
       addPosition: async (position) => {
+        const mergedNotes = withStopLossToken(position.notes || '', position.stopLoss);
         if (isAuthenticated) {
           try {
             const payload = {
@@ -632,7 +652,7 @@ export const AppProvider = ({ children }) => {
               buyDate: position.buyDate,
               buyPrice: Number(position.buyPrice),
               quantity: Number(position.quantity),
-              notes: position.notes || ''
+              notes: mergedNotes
             };
             const out = await api.addPosition(payload);
             dispatch({ type: 'SET_POSITIONS', payload: [normalizePosition(out), ...state.positions] });
@@ -643,7 +663,28 @@ export const AppProvider = ({ children }) => {
           }
         }
 
-        const next = [...state.positions, position];
+        const next = [...state.positions, { ...position, notes: mergedNotes, stopLoss: Number(position.stopLoss) || null }];
+        savePortfolio(next);
+        dispatch({ type: 'SET_POSITIONS', payload: next });
+      },
+      setPositionStopLoss: async (id, stopLoss) => {
+        const current = state.positions.find((p) => p.id === id);
+        if (!current) return;
+        const nextNotes = withStopLossToken(current.notes || '', stopLoss);
+
+        if (isAuthenticated) {
+          try {
+            const out = await api.updatePosition(id, { notes: nextNotes });
+            const updated = normalizePosition(out);
+            dispatch({ type: 'SET_POSITIONS', payload: state.positions.map((p) => (p.id === id ? updated : p)) });
+            return;
+          } catch {
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo guardar el stop loss de la posición.') });
+            return;
+          }
+        }
+
+        const next = state.positions.map((p) => (p.id === id ? { ...p, notes: nextNotes, stopLoss: Number(stopLoss) || null } : p));
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
