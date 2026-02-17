@@ -759,47 +759,47 @@ const Alerts = () => {
       <>
         <section className="grid grid-2">
           <article className="card">
-            <h3>Tasa de acierto</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(agentPerformance.hitRate)}</div>
+            <h3 className="section-title">Tasa de acierto</h3>
+            <div className="ind-val mono">{formatPct(agentPerformance.hitRate)}</div>
           </article>
           <article className="card">
-            <h3>Retorno Promedio</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(agentPerformance.avgReturn)}</div>
+            <h3 className="section-title">Retorno Promedio</h3>
+            <div className="ind-val mono">{formatPct(agentPerformance.avgReturn)}</div>
           </article>
           <article className="card">
-            <h3>Pérdida promedio</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(agentPerformance.avgLoss)}</div>
+            <h3 className="section-title">Pérdida promedio</h3>
+            <div className="ind-val mono">{formatPct(agentPerformance.avgLoss)}</div>
           </article>
           <article className="card">
-            <h3>Riesgo/Beneficio</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>1:{agentPerformance.rr.toFixed(1)}</div>
+            <h3 className="section-title">Riesgo/Beneficio</h3>
+            <div className="ind-val mono">1:{agentPerformance.rr.toFixed(1)}</div>
           </article>
           <article className="card">
-            <h3>Tasa de acierto (historial)</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRatePct)}</div>
+            <h3 className="section-title">Tasa de acierto (historial)</h3>
+            <div className="ind-val mono">{formatPct(hitRatePct)}</div>
           </article>
           <article className="card">
-            <h3>Retorno Promedio (historial)</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(Number(stats.avgReturn || 0))}</div>
+            <h3 className="section-title">Retorno Promedio (historial)</h3>
+            <div className="ind-val mono">{formatPct(Number(stats.avgReturn || 0))}</div>
           </article>
           <article className="card">
-            <h3>Hit Rate 24h</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRate24hPct)}</div>
+            <h3 className="section-title">Hit Rate 24h</h3>
+            <div className="ind-val mono">{formatPct(hitRate24hPct)}</div>
           </article>
           <article className="card">
-            <h3>Hit Rate 7d</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRate7dPct)}</div>
+            <h3 className="section-title">Hit Rate 7d</h3>
+            <div className="ind-val mono">{formatPct(hitRate7dPct)}</div>
           </article>
           <article className="card">
-            <h3>Hit Rate 30d</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRate30dPct)}</div>
+            <h3 className="section-title">Hit Rate 30d</h3>
+            <div className="ind-val mono">{formatPct(hitRate30dPct)}</div>
           </article>
           <article className="card">
-            <h3>Total alertas</h3>
-            <div style={{ fontSize: 22, marginTop: 6 }}>{Number(stats.total || 0)}</div>
+            <h3 className="section-title">Total alertas</h3>
+            <div className="ind-val mono">{Number(stats.total || 0)}</div>
           </article>
           <article className="card">
-            <h3>Desglose</h3>
+            <h3 className="section-title">Desglose</h3>
             <div className="muted" style={{ marginTop: 6 }}>
               Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · Stop loss: {Number(stats.stopLoss || 0)}
             </div>
@@ -807,7 +807,7 @@ const Alerts = () => {
         </section>
 
         <section className="card">
-          <h3 style={{ marginBottom: 8 }}>Win rate últimas 30 señales cerradas</h3>
+          <h3 className="section-title" style={{ marginBottom: 8 }}>Win rate últimas 30 señales cerradas</h3>
           {trend.length ? (
             <>
               <Sparkline values={trend} color="#60A5FA" height={52} />
@@ -820,7 +820,7 @@ const Alerts = () => {
 
         <section className="grid grid-2">
           <article className="card">
-            <h3>Mejor señal del mes</h3>
+            <h3 className="section-title">Mejor señal del mes</h3>
             {stats.bestSignalMonth ? (
               <div className="muted" style={{ marginTop: 6 }}>
                 {stats.bestSignalMonth.symbol} · {stats.bestSignalMonth.recommendation} · {formatPct(Number(stats.bestSignalMonth.realizedReturnPct || 0))}
@@ -830,7 +830,7 @@ const Alerts = () => {
             )}
           </article>
           <article className="card">
-            <h3>Peor señal del mes</h3>
+            <h3 className="section-title">Peor señal del mes</h3>
             {stats.worstSignalMonth ? (
               <div className="muted" style={{ marginTop: 6 }}>
                 {stats.worstSignalMonth.symbol} · {stats.worstSignalMonth.recommendation} · {formatPct(Number(stats.worstSignalMonth.realizedReturnPct || 0))}
@@ -842,7 +842,7 @@ const Alerts = () => {
         </section>
 
         <section className="card">
-          <h3 style={{ marginBottom: 8 }}>Dónde el agente es más preciso</h3>
+          <h3 className="section-title" style={{ marginBottom: 8 }}>Dónde el agente es más preciso</h3>
           <div className="grid">
             {Array.isArray(stats.byType) && stats.byType.length ? (
               stats.byType
