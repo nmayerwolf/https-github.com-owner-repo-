@@ -5,7 +5,7 @@ Branch: `codex/release-notes-v1`
 
 ## Estado actual
 
-Fase 5 está en ejecución con foco en estabilización UX/runtime (P0) y consistencia web+mobile.
+Fase 5 sigue en ejecución. El bloque P0 de estabilización UX/runtime quedó prácticamente cerrado en web+mobile (pendiente solo validación integrada final en entorno real).
 
 ## Bloques completados (hasta ahora)
 
@@ -38,11 +38,13 @@ Fase 5 está en ejecución con foco en estabilización UX/runtime (P0) y consist
 6. Mobile UX runtime:
    - reconexión WS con backoff+jitter en `Markets` y `Alerts`.
    - badges de estado WS con color por estado en ambas pantallas.
+   - semántica `auth_error` alineada con web (sesión expirada por cierre WS 1008).
    - `SettingsScreen` en scroll estable para evitar cortes en notificaciones.
 
 ## Commits de Fase 5 (resumen)
 
 - `2840a9d` chore(phase5): add kickoff plan, checklist and gate script
+- `7516876` docs(phase5): add incremental progress tracker
 - `aef98f7` fix(phase5): harden backend offline detection and sync error dedupe
 - `ca512a8` fix(phase5): improve websocket reconnect stability and market batch loading
 - `da82460` feat(phase5-ui): surface realtime connection state in header
@@ -52,6 +54,7 @@ Fase 5 está en ejecución con foco en estabilización UX/runtime (P0) y consist
 - `bc6bf5f` feat(auth-ui): improve OAuth error guidance and retry action
 - `8e0c19d` fix(phase5-auth): clear stale websocket errors on session changes
 - `1c9b228` feat(mobile-ui): add websocket status badges for runtime clarity
+- `47dc50a` fix(mobile-ws): unify auth_error semantics with web runtime
 
 ## Checks ejecutados
 
@@ -60,9 +63,9 @@ Fase 5 está en ejecución con foco en estabilización UX/runtime (P0) y consist
 
 ## Próximos bloques recomendados (orden)
 
-1. P0: runtime UX final
-   - consolidar estado/feedback de reconexión en una sola semántica compartida web+mobile.
-   - reducir casos límite de ruido en errores de mercado.
+1. P0: validación integrada final
+   - smoke manual cruzado web+mobile en reconexión WS y sesión expirada.
+   - confirmar reducción real de ruido en errores de mercado bajo carga.
 
 2. P1: agent UX
    - pulido de flujo “Señales -> detalle tesis -> acción”.
