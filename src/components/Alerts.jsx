@@ -727,6 +727,21 @@ const Alerts = () => {
               <div className="muted">Sin datos de precisión por tipo todavía.</div>
             )}
           </div>
+          <div className="grid" style={{ marginTop: 10 }}>
+            {Array.isArray(stats.byAssetClass) && stats.byAssetClass.length ? (
+              stats.byAssetClass
+                .slice()
+                .sort((a, b) => Number(b.hitRate || 0) - Number(a.hitRate || 0))
+                .slice(0, 3)
+                .map((row) => (
+                  <div key={`asset-class-${row.asset_class}`} className="muted">
+                    {row.asset_class}: {formatPct(Number(row.hitRate || 0) * 100)} ({Number(row.wins || 0)}W/{Number(row.losses || 0)}L)
+                  </div>
+                ))
+            ) : (
+              <div className="muted">Sin datos de precisión por clase de activo todavía.</div>
+            )}
+          </div>
         </section>
 
         <section className="card row" style={{ flexWrap: 'wrap' }}>

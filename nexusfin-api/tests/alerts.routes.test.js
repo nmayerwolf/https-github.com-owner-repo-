@@ -82,6 +82,7 @@ describe('alerts routes', () => {
         ]
       })
       .mockResolvedValueOnce({ rows: [{ type: 'opportunity', wins: 0, losses: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ asset_class: 'equity', wins: 0, losses: 0 }] })
       .mockResolvedValueOnce({ rows: [{ bucket: 'high', wins: 0, losses: 0 }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -97,6 +98,7 @@ describe('alerts routes', () => {
     expect(res.body.stats.hitRate).toBe(0);
     expect(res.body.stats.hitRate24h).toBe(0);
     expect(Array.isArray(res.body.stats.byType)).toBe(true);
+    expect(Array.isArray(res.body.stats.byAssetClass)).toBe(true);
   });
 
   it('returns 404 on missing alert detail', async () => {
