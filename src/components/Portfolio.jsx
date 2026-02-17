@@ -15,6 +15,26 @@ const normalizeSearchText = (value) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+const parseNumericInput = (value) => {
+  const raw = String(value || '').trim().replace('%', '').replace(/\s/g, '');
+  if (!raw) return null;
+  const sanitized = raw.replace(/,/g, '');
+  const out = Number(sanitized);
+  return Number.isFinite(out) ? out : null;
+};
+
+const formatMoneyInput = (value) => {
+  const n = parseNumericInput(value);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const normalizePercentInput = (value) => {
+  const n = parseNumericInput(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return `${n.toFixed(2)}%`;
+};
+
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets }) {
   const slPct = Number(position.stopLossPct);
   const legacySlPrice = Number(position.stopLoss);
@@ -211,31 +231,32 @@ const Portfolio = () => {
   }, [assetSuggestions, assetQuery]);
 
   const canSubmitPosition =
-    !!selectedAssetMatch &&
+    !!(selectedAssetMatch || assetSuggestions[0]) &&
     !!form.buyDate &&
-    Number(form.buyPrice) > 0 &&
-    Number(form.amountUsd) > 0 &&
-    (!form.stopLoss || Number(form.stopLoss) > 0) &&
-    (!form.takeProfit || Number(form.takeProfit) > 0);
+    Number(parseNumericInput(form.buyPrice)) > 0 &&
+    Number(parseNumericInput(form.amountUsd)) > 0 &&
+    (!form.stopLoss || Number(parseNumericInput(form.stopLoss)) > 0) &&
+    (!form.takeProfit || Number(parseNumericInput(form.takeProfit)) > 0);
 
   const submit = (e) => {
     e.preventDefault();
-    if (!selectedAssetMatch) return;
-    const buyPrice = Number(form.buyPrice);
-    const amountUsd = Number(form.amountUsd);
+    const selected = selectedAssetMatch || assetSuggestions[0];
+    if (!selected) return;
+    const buyPrice = Number(parseNumericInput(form.buyPrice));
+    const amountUsd = Number(parseNumericInput(form.amountUsd));
     if (!Number.isFinite(buyPrice) || buyPrice <= 0 || !Number.isFinite(amountUsd) || amountUsd <= 0) return;
     const quantity = Number((amountUsd / buyPrice).toFixed(8));
     actions.addPosition({
-      symbol: selectedAssetMatch.symbol,
-      name: selectedAssetMatch.name,
-      category: selectedAssetMatch.category === 'etf' ? 'equity' : selectedAssetMatch.category,
+      symbol: selected.symbol,
+      name: selected.name,
+      category: selected.category === 'etf' ? 'equity' : selected.category,
       buyDate: form.buyDate,
       id: crypto.randomUUID(),
       buyPrice,
       quantity,
       notes: '',
-      stopLossPct: form.stopLoss ? Number(form.stopLoss) : null,
-      takeProfitPct: form.takeProfit ? Number(form.takeProfit) : null
+      stopLossPct: form.stopLoss ? Number(parseNumericInput(form.stopLoss)) : null,
+      takeProfitPct: form.takeProfit ? Number(parseNumericInput(form.takeProfit)) : null
     });
     setForm(emptyForm);
     setAssetQuery('');
@@ -252,8 +273,8 @@ const Portfolio = () => {
 
   const submitRiskTargets = (e) => {
     e.preventDefault();
-    const stopLossPct = Number(riskTargetsModal.stopLoss);
-    const takeProfitPct = Number(riskTargetsModal.takeProfit);
+    const stopLossPct = Number(parseNumericInput(riskTargetsModal.stopLoss));
+    const takeProfitPct = Number(parseNumericInput(riskTargetsModal.takeProfit));
     const hasStopLoss = Number.isFinite(stopLossPct) && stopLossPct > 0;
     const hasTakeProfit = Number.isFinite(takeProfitPct) && takeProfitPct > 0;
     if (!riskTargetsModal.id || (!hasStopLoss && !hasTakeProfit)) return;
@@ -526,6 +547,8 @@ const Portfolio = () => {
               <span className="muted" style={{ marginTop: 4, display: 'block' }}>
                 {selectedAssetMatch
                   ? `Se cargará: ${selectedAssetMatch.symbol} - ${selectedAssetMatch.name}`
+                  : assetSuggestions.length
+                    ? `Sugerido: ${assetSuggestions[0].symbol} - ${assetSuggestions[0].name}`
                   : assetLoading
                     ? 'Buscando activos...'
                     : String(assetQuery || '').trim().length >= 2
@@ -555,19 +578,49 @@ const Portfolio = () => {
           </label>
           <label className="label">
             <span className="muted">Precio compra</span>
-            <input type="number" step="0.0001" value={form.buyPrice} required onChange={(e) => setForm({ ...form, buyPrice: e.target.value })} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.buyPrice}
+              required
+              onChange={(e) => setForm({ ...form, buyPrice: e.target.value })}
+              onBlur={() => setForm((prev) => ({ ...prev, buyPrice: formatMoneyInput(prev.buyPrice) }))}
+              onFocus={() => setForm((prev) => ({ ...prev, buyPrice: String(parseNumericInput(prev.buyPrice) ?? '') }))}
+            />
           </label>
           <label className="label">
             <span className="muted">Monto total (USD)</span>
-            <input type="number" step="0.01" value={form.amountUsd} required onChange={(e) => setForm({ ...form, amountUsd: e.target.value })} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.amountUsd}
+              required
+              onChange={(e) => setForm({ ...form, amountUsd: e.target.value })}
+              onBlur={() => setForm((prev) => ({ ...prev, amountUsd: formatMoneyInput(prev.amountUsd) }))}
+              onFocus={() => setForm((prev) => ({ ...prev, amountUsd: String(parseNumericInput(prev.amountUsd) ?? '') }))}
+            />
           </label>
           <label className="label">
             <span className="muted">Stop loss % (opcional)</span>
-            <input type="number" step="0.0001" value={form.stopLoss} onChange={(e) => setForm({ ...form, stopLoss: e.target.value })} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.stopLoss}
+              onChange={(e) => setForm({ ...form, stopLoss: e.target.value })}
+              onBlur={() => setForm((prev) => ({ ...prev, stopLoss: normalizePercentInput(prev.stopLoss) }))}
+              onFocus={() => setForm((prev) => ({ ...prev, stopLoss: String(parseNumericInput(prev.stopLoss) ?? '') }))}
+            />
           </label>
           <label className="label">
             <span className="muted">Take profit % (opcional)</span>
-            <input type="number" step="0.0001" value={form.takeProfit} onChange={(e) => setForm({ ...form, takeProfit: e.target.value })} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={form.takeProfit}
+              onChange={(e) => setForm({ ...form, takeProfit: e.target.value })}
+              onBlur={() => setForm((prev) => ({ ...prev, takeProfit: normalizePercentInput(prev.takeProfit) }))}
+              onFocus={() => setForm((prev) => ({ ...prev, takeProfit: String(parseNumericInput(prev.takeProfit) ?? '') }))}
+            />
           </label>
           <button type="submit" disabled={!canSubmitPosition}>
             Agregar
@@ -657,19 +710,23 @@ const Portfolio = () => {
               <label className="label">
                 <span className="muted">Stop loss %</span>
                 <input
-                  type="number"
-                  step="0.0001"
+                  type="text"
+                  inputMode="decimal"
                   value={riskTargetsModal.stopLoss}
                   onChange={(e) => setRiskTargetsModal({ ...riskTargetsModal, stopLoss: e.target.value })}
+                  onBlur={() => setRiskTargetsModal((prev) => ({ ...prev, stopLoss: normalizePercentInput(prev.stopLoss) }))}
+                  onFocus={() => setRiskTargetsModal((prev) => ({ ...prev, stopLoss: String(parseNumericInput(prev.stopLoss) ?? '') }))}
                 />
               </label>
               <label className="label">
                 <span className="muted">Take profit %</span>
                 <input
-                  type="number"
-                  step="0.0001"
+                  type="text"
+                  inputMode="decimal"
                   value={riskTargetsModal.takeProfit}
                   onChange={(e) => setRiskTargetsModal({ ...riskTargetsModal, takeProfit: e.target.value })}
+                  onBlur={() => setRiskTargetsModal((prev) => ({ ...prev, takeProfit: normalizePercentInput(prev.takeProfit) }))}
+                  onFocus={() => setRiskTargetsModal((prev) => ({ ...prev, takeProfit: String(parseNumericInput(prev.takeProfit) ?? '') }))}
                 />
               </label>
               <div className="row">
