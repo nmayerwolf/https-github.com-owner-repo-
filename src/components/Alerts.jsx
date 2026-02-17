@@ -494,7 +494,7 @@ const Alerts = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Fundamentales bullish (macro)</h3>
+          <h3 className="section-title">Fundamentals bullish (macro)</h3>
         </div>
         <ul className="muted" style={{ marginTop: 8, paddingLeft: 18 }}>
           {outlook.bullish.slice(0, 5).map((point, idx) => (
@@ -507,7 +507,7 @@ const Alerts = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Fundamentales bearish (macro)</h3>
+          <h3 className="section-title">Fundamentals bearish (macro)</h3>
         </div>
         <ul className="muted" style={{ marginTop: 8, paddingLeft: 18 }}>
           {outlook.bearish.slice(0, 5).map((point, idx) => (
