@@ -72,6 +72,7 @@ describe('News', () => {
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
     expect(screen.getByText('Fed signals inflation risk for global markets')).toBeTruthy();
     expect(screen.getByText('Minor local event with low financial impact')).toBeTruthy();
+    expect(screen.getAllByText(/Muy relevante|Relevante|Poco relevante/).length).toBeGreaterThan(0);
   });
 
   it('orders news from most recent to oldest', async () => {
@@ -91,5 +92,13 @@ describe('News', () => {
 
     expect(screen.getByText('OPEC updates oil supply expectations')).toBeTruthy();
     expect(screen.queryByText('Fed signals inflation risk for global markets')).toBeNull();
+  });
+
+  it('shows impact badge classification per news item', async () => {
+    render(<News />);
+    await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByText('Muy relevante')).toBeTruthy();
+    expect(screen.getByText('Poco relevante')).toBeTruthy();
   });
 });

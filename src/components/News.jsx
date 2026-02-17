@@ -5,6 +5,16 @@ import { useApp } from '../store/AppContext';
 const MAX_ITEMS = 60;
 const WATCHLIST_SYMBOL_LIMIT = 8;
 const REFRESH_MS = 45000;
+const IMPACT_HIGH_KEYWORDS = [
+  'earnings', 'guidance', 'merger', 'acquisition', 'ipo', 'rate', 'inflation', 'fed', 'ecb',
+  'tariff', 'sanction', 'war', 'ceasefire', 'election', 'opec', 'default', 'stimulus',
+  'regulation', 'antitrust', 'launch', 'funding', 'round', 'geopolitical', 'bankrupt',
+  'recession', 'gdp', 'treasury'
+];
+const IMPACT_MEDIUM_KEYWORDS = [
+  'forecast', 'outlook', 'policy', 'tax', 'strike', 'supply', 'demand', 'upgrade',
+  'downgrade', 'contract', 'deal'
+];
 
 const timeAgoEs = (unixSeconds) => {
   const ts = Number(unixSeconds || 0) * 1000;
@@ -26,6 +36,47 @@ const dedupeNews = (items = []) => {
     if (!map.has(key)) map.set(key, item);
   }
   return [...map.values()];
+};
+
+const computeImpactScore = (item = {}, watchlistSymbols = []) => {
+  const text = `${String(item?.headline || '').toLowerCase()} ${String(item?.summary || '').toLowerCase()}`;
+  const related = String(item?.related || '')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  const watchlist = new Set((watchlistSymbols || []).map((s) => String(s || '').toUpperCase()));
+  const matchedWatchlist = related.filter((s) => watchlist.has(s));
+
+  let score = Number(item?.aiScore || 0);
+  for (const keyword of IMPACT_HIGH_KEYWORDS) {
+    if (text.includes(keyword)) score += 3;
+  }
+  for (const keyword of IMPACT_MEDIUM_KEYWORDS) {
+    if (text.includes(keyword)) score += 1;
+  }
+  if (matchedWatchlist.length) score += matchedWatchlist.length * 4;
+  if (related.length >= 2) score += 2;
+
+  const ts = Number(item?.datetime || 0);
+  if (Number.isFinite(ts) && ts > 0) {
+    const ageMinutes = Math.max(1, Math.floor((Date.now() - ts * 1000) / 60000));
+    if (ageMinutes <= 60) score += 3;
+    else if (ageMinutes <= 240) score += 1;
+  }
+
+  return Math.max(0, score);
+};
+
+const impactLabel = (score) => {
+  if (Number(score) >= 12) return 'Muy relevante';
+  if (Number(score) >= 7) return 'Relevante';
+  return 'Poco relevante';
+};
+
+const impactStyle = (score) => {
+  if (Number(score) >= 12) return { background: '#FF7A9B22', color: '#FF7A9B' };
+  if (Number(score) >= 7) return { background: '#8CC8FF22', color: '#8CC8FF' };
+  return { background: '#8FA3BF22', color: '#A7B5C8' };
 };
 
 const News = () => {
@@ -66,7 +117,10 @@ const News = () => {
 
         const merged = dedupeNews(responses.flat().filter(Boolean));
         const ranked = merged
-          .map((item) => ({ ...item, aiScore: Number(item?.aiScore || 0) }))
+          .map((item) => {
+            const score = computeImpactScore(item, watchlistSymbols);
+            return { ...item, impactScore: score, impactLabel: impactLabel(score) };
+          })
           .sort((a, b) => {
             return Number(b.datetime || 0) - Number(a.datetime || 0);
           })
@@ -139,9 +193,12 @@ const News = () => {
                     <div className="news-headline">{item.headline}</div>
                     {item.summary ? <div className="muted" style={{ marginTop: 4 }}>{String(item.summary).slice(0, 220)}...</div> : null}
                     <div className="news-meta mono">
-                      {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · relevancia {Number(item.aiScore || 0)}
+                      {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · score {Number(item.impactScore || 0)}
                     </div>
                     <div className="row" style={{ marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                      <span className="badge" style={impactStyle(item.impactScore)}>
+                        {item.impactLabel || 'Poco relevante'}
+                      </span>
                       {leadSymbol ? <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{leadSymbol}{leadName ? ` · ${leadName}` : ''}</span> : null}
                       {matched.map((symbol) => (
                         <span key={`${item.id || item.url}-${symbol}`} className="badge" style={{ background: '#00E08E22', color: '#00E08E' }}>
