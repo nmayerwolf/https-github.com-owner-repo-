@@ -37,6 +37,7 @@ const MARKET_UNIVERSE = [
   { id: 'ung', symbol: 'UNG', wsSymbol: 'UNG', name: 'Natural Gas ETF', category: 'commodity' },
   { id: 'dbc', symbol: 'DBC', wsSymbol: 'DBC', name: 'Broad Commodity ETF', category: 'commodity' },
   { id: 'corn', symbol: 'CORN', wsSymbol: 'CORN', name: 'Corn ETF', category: 'commodity' },
+  { id: 'soyb', symbol: 'SOYB', wsSymbol: 'SOYB', name: 'Soybean ETF', category: 'commodity' },
   { id: 'weat', symbol: 'WEAT', wsSymbol: 'WEAT', name: 'Wheat ETF', category: 'commodity' },
 
   { id: 'btc', symbol: 'BTCUSDT', wsSymbol: 'BINANCE:BTCUSDT', name: 'Bitcoin', category: 'crypto' },

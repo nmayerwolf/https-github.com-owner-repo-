@@ -61,6 +61,7 @@ export const WATCHLIST_CATALOG = [
   { symbol: 'NFLX', name: 'Netflix', category: 'equity', sector: 'tech', source: 'finnhub_stock' },
   { symbol: 'BABA', name: 'Alibaba', category: 'equity', sector: 'tech', source: 'finnhub_stock' },
   { symbol: 'GDX', name: 'Gold Miners (ETF)', category: 'metal', sector: 'metals', source: 'finnhub_stock' },
+  { symbol: 'SOYB', name: 'Soybean (ETF)', category: 'commodity', sector: 'agriculture', source: 'finnhub_stock' },
   { symbol: 'DBA', name: 'Agriculture (ETF)', category: 'commodity', sector: 'energy', source: 'finnhub_stock' }
 ];
 

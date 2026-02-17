@@ -43,6 +43,14 @@ const Markets = () => {
   }, [state.assets, category, query]);
 
   const normalizedCandidate = String(candidate || '').trim().toUpperCase();
+  const searchableUniverse = useMemo(
+    () =>
+      (universe || []).filter((item) => {
+        if (category === 'all') return true;
+        return String(item?.category || '').toLowerCase() === category;
+      }),
+    [universe, category]
+  );
   const watchlistSet = useMemo(
     () => new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase())),
     [state.watchlistSymbols]
@@ -50,23 +58,22 @@ const Markets = () => {
   const selectedUniverseMatch = useMemo(() => {
     const raw = String(candidate || '').trim().toLowerCase();
     if (!raw) return null;
-    const bySymbol = universe.find((item) => String(item.symbol || '').toLowerCase() === raw);
+    const bySymbol = searchableUniverse.find((item) => String(item.symbol || '').toLowerCase() === raw);
     if (bySymbol) return bySymbol;
-    const byExactName = universe.find((item) => String(item.name || '').toLowerCase() === raw);
+    const byExactName = searchableUniverse.find((item) => String(item.name || '').toLowerCase() === raw);
     if (byExactName) return byExactName;
-    const bySymbolPrefix = universe.find((item) => String(item.symbol || '').toLowerCase().startsWith(raw));
+    const bySymbolPrefix = searchableUniverse.find((item) => String(item.symbol || '').toLowerCase().startsWith(raw));
     if (bySymbolPrefix) return bySymbolPrefix;
-    const byNamePrefix = universe.find((item) => String(item.name || '').toLowerCase().startsWith(raw));
+    const byNamePrefix = searchableUniverse.find((item) => String(item.name || '').toLowerCase().startsWith(raw));
     if (byNamePrefix) return byNamePrefix;
-    const byNameContains = universe.find((item) => String(item.name || '').toLowerCase().includes(raw));
+    const byNameContains = searchableUniverse.find((item) => String(item.name || '').toLowerCase().includes(raw));
     return byNameContains || null;
-  }, [universe, candidate]);
-  const isTickerInput = useMemo(() => /^[A-Z0-9._:-]{1,20}$/.test(normalizedCandidate), [normalizedCandidate]);
+  }, [searchableUniverse, candidate]);
   const isAlreadyInWatchlist = useMemo(() => {
     if (selectedUniverseMatch?.symbol) return watchlistSet.has(String(selectedUniverseMatch.symbol).toUpperCase());
     return watchlistSet.has(normalizedCandidate);
   }, [selectedUniverseMatch, watchlistSet, normalizedCandidate]);
-  const canAddCandidate = !!normalizedCandidate && !isAlreadyInWatchlist && (!!selectedUniverseMatch || isTickerInput);
+  const canAddCandidate = !!normalizedCandidate && !isAlreadyInWatchlist && !!selectedUniverseMatch;
 
   const watchlistAssets = useMemo(() => {
     const bySymbol = Object.fromEntries(state.assets.map((asset) => [String(asset.symbol || '').toUpperCase(), asset]));
@@ -229,9 +236,7 @@ const Markets = () => {
                   ? isAlreadyInWatchlist
                     ? `${selectedUniverseMatch.symbol} ya está en watchlist.`
                     : `Se agregará: ${selectedUniverseMatch.symbol} - ${selectedUniverseMatch.name}`
-                  : isTickerInput
-                    ? `Ticker manual: ${normalizedCandidate}`
-                    : 'No encontramos ese activo. Probá con nombre más específico o ticker.'}
+                  : `No encontramos ese activo en ${categoryLabel[category] || category}. Probá con otro nombre.`}
               </span>
             ) : null}
           </label>
@@ -240,18 +245,7 @@ const Markets = () => {
             className="markets-tools-btn"
             onClick={() => {
               if (!canAddCandidate) return;
-              actions.addToWatchlist(
-                selectedUniverseMatch || {
-                  symbol: normalizedCandidate,
-                  name: normalizedCandidate,
-                  category: normalizedCandidate.endsWith('USDT') ? 'crypto' : normalizedCandidate.includes('_') ? 'fx' : 'equity',
-                  source: normalizedCandidate.endsWith('USDT')
-                    ? 'finnhub_crypto'
-                    : normalizedCandidate.includes('_')
-                      ? 'finnhub_fx'
-                      : 'finnhub_stock'
-                }
-              );
+              actions.addToWatchlist(selectedUniverseMatch);
               setCandidate('');
             }}
             disabled={!canAddCandidate}

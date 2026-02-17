@@ -755,15 +755,11 @@ export const AppProvider = ({ children }) => {
                     : 'finnhub_stock'))
               }
             : null;
-        const inferredMeta = {
-          symbol: normalizedSymbol,
-          name: normalizedSymbol,
-          category: normalizedSymbol.endsWith('USDT') ? 'crypto' : normalizedSymbol.includes('_') ? 'fx' : 'equity',
-          sector: normalizedSymbol.endsWith('USDT') ? 'crypto' : normalizedSymbol.includes('_') ? 'fx' : 'general',
-          source: normalizedSymbol.endsWith('USDT') ? 'finnhub_crypto' : normalizedSymbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'
-        };
-        const meta = providedMeta || fallbackMeta || inferredMeta;
-        if (!meta) return;
+        const meta = providedMeta || fallbackMeta;
+        if (!meta) {
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `Activo no disponible para agregar: ${normalizedSymbol}.`) });
+          return;
+        }
 
         const nextWatchlist = [...state.watchlistSymbols, normalizedSymbol];
 
