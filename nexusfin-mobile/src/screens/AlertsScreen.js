@@ -14,6 +14,8 @@ const MAIN_LABEL = { live: 'En vivo', history: 'Historial', performance: 'Perfor
 const HISTORY_LABEL = { all: 'Todos', opportunity: 'Compra', bearish: 'Venta', stop_loss: 'Stop Loss' };
 const OUTCOME_LABEL = { all: 'Todos', win: 'Win', loss: 'Loss', open: 'Open' };
 const WS_STATUS_LABEL = {
+  connecting: 'conectando',
+  reconnecting: 'reconectando',
   connected: 'conectado',
   disconnected: 'desconectado',
   error: 'error'
@@ -119,6 +121,16 @@ const AlertsScreen = ({ theme = 'dark' }) => {
     let ws = null;
     let reconnectTimer = null;
     let stopped = false;
+    let hadOpen = false;
+    let reconnectAttempt = 0;
+
+    const nextReconnectDelay = () => {
+      const base = hadOpen ? 2000 : 1200;
+      const expo = Math.min(20000, base * 2 ** reconnectAttempt);
+      const jitter = Math.floor(Math.random() * 700);
+      reconnectAttempt += 1;
+      return expo + jitter;
+    };
 
     const connectWs = () => {
       const token = getToken();
@@ -126,6 +138,7 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         setWsStatus('error');
         return;
       }
+      setWsStatus(hadOpen ? 'reconnecting' : 'connecting');
 
       const apiBase = getApiBase();
       const parsed = new URL(apiBase);
@@ -134,11 +147,15 @@ const AlertsScreen = ({ theme = 'dark' }) => {
       const url = `${wsProtocol}//${parsed.host}${wsPath}/ws?token=${encodeURIComponent(token)}`;
       ws = new WebSocket(url);
 
-      ws.onopen = () => setWsStatus('connected');
+      ws.onopen = () => {
+        hadOpen = true;
+        reconnectAttempt = 0;
+        setWsStatus('connected');
+      };
       ws.onerror = () => setWsStatus('error');
       ws.onclose = () => {
         setWsStatus('disconnected');
-        if (!stopped) reconnectTimer = setTimeout(connectWs, 5000);
+        if (!stopped) reconnectTimer = setTimeout(connectWs, nextReconnectDelay());
       };
       ws.onmessage = (event) => {
         try {

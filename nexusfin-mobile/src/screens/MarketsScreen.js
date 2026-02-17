@@ -10,6 +10,8 @@ import FadeInView from '../components/FadeInView';
 const toQuoteSymbol = (asset) => asset.wsSymbol;
 const WATCHLIST_FILTER = 'watchlist';
 const WS_STATUS_LABEL = {
+  connecting: 'conectando',
+  reconnecting: 'reconectando',
   connected: 'conectado',
   disconnected: 'desconectado',
   error: 'error'
@@ -213,6 +215,16 @@ const MarketsScreen = ({ theme = 'dark' }) => {
     let ws = null;
     let reconnectTimer = null;
     let stopped = false;
+    let hadOpen = false;
+    let reconnectAttempt = 0;
+
+    const nextReconnectDelay = () => {
+      const base = hadOpen ? 2000 : 1200;
+      const expo = Math.min(20000, base * 2 ** reconnectAttempt);
+      const jitter = Math.floor(Math.random() * 700);
+      reconnectAttempt += 1;
+      return expo + jitter;
+    };
 
     const connectWs = () => {
       const token = getToken();
@@ -220,6 +232,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
         setWsStatus('error');
         return;
       }
+      setWsStatus(hadOpen ? 'reconnecting' : 'connecting');
 
       const apiBase = getApiBase();
       const parsed = new URL(apiBase);
@@ -229,6 +242,8 @@ const MarketsScreen = ({ theme = 'dark' }) => {
 
       ws = new WebSocket(url);
       ws.onopen = () => {
+        hadOpen = true;
+        reconnectAttempt = 0;
         setWsStatus('connected');
         ws.send(
           JSON.stringify({
@@ -240,7 +255,7 @@ const MarketsScreen = ({ theme = 'dark' }) => {
       ws.onerror = () => setWsStatus('error');
       ws.onclose = () => {
         setWsStatus('disconnected');
-        if (!stopped) reconnectTimer = setTimeout(connectWs, 5000);
+        if (!stopped) reconnectTimer = setTimeout(connectWs, nextReconnectDelay());
       };
       ws.onmessage = (event) => {
         try {
