@@ -310,7 +310,9 @@ export const AppProvider = ({ children }) => {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
     if (!isAuthenticated) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
       dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
     }
   }, [isAuthenticated]);
