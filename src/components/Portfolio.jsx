@@ -556,21 +556,6 @@ const Portfolio = () => {
                       : 'Escribí al menos 2 letras o elegí una sugerencia.'}
               </span>
             ) : null}
-            {assetSuggestions.length ? (
-              <div className="markets-watchlist-suggestions">
-                {assetSuggestions.map((item) => (
-                  <button
-                    key={item.symbol}
-                    type="button"
-                    className={`markets-watchlist-suggestion ${selectedAssetMatch?.symbol === item.symbol ? 'is-active' : ''}`}
-                    onClick={() => setAssetQuery(item.symbol)}
-                  >
-                    <span className="mono">{item.symbol}</span>
-                    <span>{item.name}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </label>
           <label className="label">
             <span className="muted">Fecha compra</span>
