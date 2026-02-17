@@ -90,6 +90,17 @@ const summarizePortfolio = (positions = []) => {
   };
 };
 
+const buildAgentHistory = ({ stats = {}, latest = null }) => {
+  const wins = Number(stats.wins || 0);
+  const losses = Number(stats.losses || 0);
+  const count = Number(stats.count || 0);
+  const hitRatePct = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+  const lastSignalSummary = latest
+    ? `${latest.symbol || 'N/A'} ${latest.recommendation || ''} hace ${latest.daysAgo || 0}d (${latest.outcome || 'open'})`
+    : 'sin historial';
+  return { count, hitRatePct, lastSignalSummary };
+};
+
 const pickTop = (obj = {}, limit = 3) =>
   Object.entries(obj)
     .sort((a, b) => Number(b[1]) - Number(a[1]))
@@ -164,7 +175,7 @@ const fallbackAdvice = ({ summary, macro, riskProfile }) => {
   };
 };
 
-const buildPrompt = ({ positions, summary, config, macro }) => [
+const buildPrompt = ({ positions, summary, config, macro, agentHistory }) => [
   'Sos un asesor de portfolio del equipo de Horsai.',
   '',
   `PORTFOLIO ACTUAL: ${JSON.stringify(positions)}`,
@@ -180,6 +191,11 @@ const buildPrompt = ({ positions, summary, config, macro }) => [
   'CONTEXTO MACRO HOY:',
   `- Sentimiento: ${macro?.market_sentiment || 'neutral'}`,
   `- Temas principales: ${pickTop(Object.fromEntries((safeArray(macro?.themes).slice(0, 3).map((x) => [x.theme || 'tema', x.conviction || 0]))), 3) || 'N/A'}`,
+  '',
+  'HISTORIAL DEL AGENTE:',
+  `- Señales similares anteriores: ${Number(agentHistory?.count || 0)}`,
+  `- Win rate en señales similares: ${Number(agentHistory?.hitRatePct || 0).toFixed(2)}%`,
+  `- Última señal del agente: ${agentHistory?.lastSignalSummary || 'sin historial'}`,
   '',
   'Respondé en JSON estricto con schema:',
   '{"health_score":1,"health_summary":"string","concentration_risk":"low|medium|high","allocation_analysis":{"by_class":{"current":{},"suggested":{},"reasoning":"string"},"by_currency":{"current":{},"suggested":{},"reasoning":"string"}},"recommendations":[{"type":"reduce|increase|add|close|hold","priority":"high|medium|low","asset":"string","detail":"string","amount_pct":0}],"next_review":"1w|2w|1m"}'
@@ -210,19 +226,43 @@ const normalizeAdvice = (raw = {}, fallback = {}) => {
 
 const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => {
   const getInputsForUser = async (userId) => {
-    const [positionsOut, configOut, macroOut] = await Promise.all([
+    const [positionsOut, configOut, macroOut, statsOut, latestOut] = await Promise.all([
       query(
         'SELECT symbol, name, category, quantity, buy_price, buy_date FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL ORDER BY buy_date ASC',
         [userId]
       ),
       query('SELECT risk_profile, horizon, sectors FROM user_configs WHERE user_id = $1 LIMIT 1', [userId]),
-      query('SELECT market_sentiment, themes, key_events FROM macro_insights WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [userId])
+      query('SELECT market_sentiment, themes, key_events FROM macro_insights WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [userId]),
+      query(
+        `SELECT COUNT(*)::int AS count,
+                COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+                COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
+         FROM alerts
+         WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT symbol, recommendation, outcome, created_at
+         FROM alerts
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId]
+      )
     ]);
+    const latest = latestOut.rows?.[0] || null;
+    const latestInfo = latest
+      ? {
+          ...latest,
+          daysAgo: Math.max(0, Math.round((Date.now() - new Date(latest.created_at).getTime()) / (1000 * 60 * 60 * 24)))
+        }
+      : null;
 
     return {
       positions: positionsOut.rows || [],
       config: configOut.rows?.[0] || {},
-      macro: macroOut.rows?.[0] || null
+      macro: macroOut.rows?.[0] || null,
+      agentHistory: buildAgentHistory({ stats: statsOut.rows?.[0] || {}, latest: latestInfo })
     };
   };
 
@@ -245,7 +285,7 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
   };
 
   const generateForUser = async (userId) => {
-    const { positions, config, macro } = await getInputsForUser(userId);
+    const { positions, config, macro, agentHistory } = await getInputsForUser(userId);
     if (positions.length < 2) {
       return { skipped: true, reason: 'MIN_PORTFOLIO_REQUIRED', minimumPositions: 2, currentPositions: positions.length };
     }
@@ -263,7 +303,7 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
           model: env.aiAgentModel,
           timeoutMs: env.aiAgentTimeoutMs,
           systemPrompt: 'Sos un asesor de portfolio institucional. Responde solo JSON.',
-          userPrompt: buildPrompt({ positions, summary, config, macro })
+          userPrompt: buildPrompt({ positions, summary, config, macro, agentHistory })
         });
         const parsed = extractJsonBlock(response.text);
         if (parsed) {
