@@ -237,14 +237,6 @@ const Portfolio = () => {
     return byNameContains || null;
   }, [assetSuggestions, assetQuery]);
 
-  const canSubmitPosition =
-    !!String(assetQuery || '').trim() &&
-    !!form.buyDate &&
-    Number(parseNumericInput(form.buyPrice)) > 0 &&
-    Number(parseNumericInput(form.amountUsd)) > 0 &&
-    (!form.stopLoss || Number(parseNumericInput(form.stopLoss)) > 0) &&
-    (!form.takeProfit || Number(parseNumericInput(form.takeProfit)) > 0);
-
   const submit = (e) => {
     e.preventDefault();
     setFormError('');
@@ -253,10 +245,24 @@ const Portfolio = () => {
       setFormError('Activo inválido. Escribí ticker o nombre válido.');
       return;
     }
+    if (!form.buyDate) {
+      setFormError('Completá la fecha de compra.');
+      return;
+    }
     const buyPrice = Number(parseNumericInput(form.buyPrice));
     const amountUsd = Number(parseNumericInput(form.amountUsd));
     if (!Number.isFinite(buyPrice) || buyPrice <= 0 || !Number.isFinite(amountUsd) || amountUsd <= 0) {
       setFormError('Completá precio y monto total con valores válidos.');
+      return;
+    }
+    const slPct = form.stopLoss ? Number(parseNumericInput(form.stopLoss)) : null;
+    const tpPct = form.takeProfit ? Number(parseNumericInput(form.takeProfit)) : null;
+    if (form.stopLoss && (!Number.isFinite(slPct) || slPct <= 0)) {
+      setFormError('Stop loss debe ser un porcentaje positivo.');
+      return;
+    }
+    if (form.takeProfit && (!Number.isFinite(tpPct) || tpPct <= 0)) {
+      setFormError('Take profit debe ser un porcentaje positivo.');
       return;
     }
     const quantity = Number((amountUsd / buyPrice).toFixed(8));
@@ -269,8 +275,8 @@ const Portfolio = () => {
       buyPrice,
       quantity,
       notes: '',
-      stopLossPct: form.stopLoss ? Number(parseNumericInput(form.stopLoss)) : null,
-      takeProfitPct: form.takeProfit ? Number(parseNumericInput(form.takeProfit)) : null
+      stopLossPct: slPct,
+      takeProfitPct: tpPct
     });
     setForm(emptyForm);
     setAssetQuery('');
@@ -665,7 +671,7 @@ const Portfolio = () => {
               onFocus={() => setForm((prev) => ({ ...prev, takeProfit: String(parseNumericInput(prev.takeProfit) ?? '') }))}
             />
           </label>
-          <button type="submit" disabled={!canSubmitPosition}>
+          <button type="submit">
             Agregar
           </button>
         </form>
