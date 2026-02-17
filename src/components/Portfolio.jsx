@@ -343,7 +343,7 @@ const Portfolio = () => {
     }
   };
 
-  const rows = tab === 'active' ? activeRows : tab === 'sold' ? soldRows : [];
+  const rows = tab === 'active' ? activeRows : tab === 'sold' ? soldRows : tab === 'all' ? [...activeRows, ...soldRows] : [];
   const visibleRows = rows.slice(0, visibleCount);
   const hasMoreRows = visibleRows.length < rows.length;
   const riskPulseBySymbol = useMemo(() => {
@@ -690,6 +690,9 @@ const Portfolio = () => {
           <div className="ai-filter-group">
             <span className="ai-filter-label">Posiciones</span>
             <div className="ai-filter-row">
+              <button type="button" className={`ai-filter-chip ${tab === 'all' ? 'is-active is-main' : ''}`} onClick={() => setTab('all')}>
+                Total
+              </button>
               <button type="button" className={`ai-filter-chip ${tab === 'active' ? 'is-active is-main' : ''}`} onClick={() => setTab('active')}>
                 Activas
               </button>
@@ -699,17 +702,6 @@ const Portfolio = () => {
             </div>
           </div>
         </div>
-        <label className="label" style={{ maxWidth: 240 }}>
-          <span className="muted">Exportar</span>
-          <select className="select-field" aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
-            <option value="all">Todas las posiciones</option>
-            <option value="active">Solo activas</option>
-            <option value="sold">Solo cerradas</option>
-          </select>
-        </label>
-        <button type="button" onClick={exportCsv} disabled={exporting}>
-          {exporting ? 'Exportando...' : 'Exportar CSV'}
-        </button>
       </section>
 
       {visibleRows.map((p) => (
@@ -730,6 +722,20 @@ const Portfolio = () => {
         </div>
       ) : null}
       {!rows.length && <div className="card muted">No hay posiciones en esta pestaña.</div>}
+
+      <section className="card portfolio-toolbar">
+        <label className="label" style={{ maxWidth: 280 }}>
+          <span className="muted">Exportar</span>
+          <select className="select-field" aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
+            <option value="all">Todas las posiciones</option>
+            <option value="active">Solo activas</option>
+            <option value="sold">Solo cerradas</option>
+          </select>
+        </label>
+        <button type="button" onClick={exportCsv} disabled={exporting}>
+          {exporting ? 'Exportando...' : 'Exportar CSV'}
+        </button>
+      </section>
 
       {sellModal.id && (
         <div className="modal-backdrop" role="presentation" onClick={() => setSellModal(emptySell)}>
