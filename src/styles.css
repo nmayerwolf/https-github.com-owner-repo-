@@ -787,6 +787,17 @@ a:focus-visible {
   align-items: flex-end;
 }
 
+.portfolio-export-card .select-field {
+  font-size: 0.74rem;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.portfolio-export-card button {
+  font-size: 0.74rem;
+  padding: 6px 10px;
+}
+
 .portfolio-asset-field {
   grid-column: 1 / -1;
 }

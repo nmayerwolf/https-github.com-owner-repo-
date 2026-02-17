@@ -723,7 +723,7 @@ const Portfolio = () => {
       ) : null}
       {!rows.length && <div className="card muted">No hay posiciones en esta pestaña.</div>}
 
-      <section className="card portfolio-toolbar">
+      <section className="card portfolio-toolbar portfolio-export-card">
         <label className="label" style={{ maxWidth: 280 }}>
           <span className="muted">Exportar</span>
           <select className="select-field" aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
