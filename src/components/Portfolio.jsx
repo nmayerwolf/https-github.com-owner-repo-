@@ -65,7 +65,7 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
       <div className="pos-info">
         <div className="pos-sym mono">{position.symbol}</div>
         <div className="pos-detail">
-          Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
+          Invertido {formatUSD(Number(position.buyPrice) * Number(position.quantity))} · Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
         </div>
         {!position.sellDate && Number.isFinite(stopPrice) && stopPrice > 0 ? (
           <div className="pos-detail">
