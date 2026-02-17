@@ -15,7 +15,7 @@ import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
 
 const AppContext = createContext(null);
 const ASSET_CACHE_KEY = 'nexusfin_assets_cache_v1';
-const INITIAL_BLOCKING_ASSET_LOAD = 1;
+const INITIAL_BLOCKING_ASSET_LOAD = 6;
 const BULK_SNAPSHOT_BATCH_SIZE = 3;
 
 const initialState = {
