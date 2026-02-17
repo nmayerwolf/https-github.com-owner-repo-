@@ -457,10 +457,10 @@ const Alerts = () => {
     <>
       <section className="card">
         <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
-        <div className="muted" style={{ marginBottom: 8 }}>Consultá contexto macro, riesgos y oportunidades en lenguaje natural.</div>
+        <div className="muted" style={{ marginBottom: 8 }}>Consultá el panorama de mercado y definí tu estrategia.</div>
         <div className="chat-area">
           {!chatMessages.length ? (
-            <div className="muted">Preguntale al agente sobre panorama de mercado, riesgos macro o estrategia.</div>
+            <div className="muted">Escribí tu consulta para empezar.</div>
           ) : null}
           {chatMessages.map((msg, idx) => (
             <div key={`${msg.role}-${idx}`} className={`chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-ai'}`}>
