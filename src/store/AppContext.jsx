@@ -369,6 +369,15 @@ export const AppProvider = ({ children }) => {
 
     const loaded = [];
     let failedLoads = 0;
+    let marketErrorRaised = false;
+    const pushMarketError = (message, key) => {
+      if (marketErrorRaised) return;
+      marketErrorRaised = true;
+      dispatch({
+        type: 'PUSH_UI_ERROR',
+        payload: makeUiError('Mercados', message, key)
+      });
+    };
     const pushAsset = (meta, data) => {
       loaded.push(
         withIndicators({
@@ -387,10 +396,7 @@ export const AppProvider = ({ children }) => {
         pushAsset(meta, data);
       } else {
         if (failedLoads < 3) {
-          dispatch({
-            type: 'PUSH_UI_ERROR',
-            payload: makeUiError('Mercados', 'No se pudieron cargar algunos activos del mercado.', 'markets-initial-load')
-          });
+          pushMarketError('No se pudieron cargar algunos activos del mercado.', 'markets-initial-load');
         }
         failedLoads += 1;
       }
@@ -417,10 +423,7 @@ export const AppProvider = ({ children }) => {
           pushAsset(meta, data);
         } else {
           if (failedLoads < 3) {
-            dispatch({
-              type: 'PUSH_UI_ERROR',
-              payload: makeUiError('Mercados', 'No se pudieron cargar algunos activos del mercado.', 'markets-initial-load')
-            });
+            pushMarketError('No se pudieron cargar algunos activos del mercado.', 'markets-initial-load');
           }
           failedLoads += 1;
         }
@@ -430,10 +433,7 @@ export const AppProvider = ({ children }) => {
       }
 
       if (failedSymbols.length && failedLoads < 3) {
-        dispatch({
-          type: 'PUSH_UI_ERROR',
-          payload: makeUiError('Mercados', `Sin datos para ${failedSymbols.slice(0, 2).join(', ')}.`, 'markets-snapshot-missing')
-        });
+        pushMarketError(`Sin datos para ${failedSymbols.slice(0, 2).join(', ')}.`, 'markets-snapshot-missing');
       }
 
       dispatch({ type: 'SET_ASSETS', payload: [...loaded] });
