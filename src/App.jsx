@@ -150,6 +150,15 @@ const OnboardingModal = ({ step, state, onChange, onPrev, onNext, onComplete, sa
   </div>
 );
 
+const WS_STATUS_LABEL = {
+  connected: 'tiempo real activo',
+  connecting: 'conectando tiempo real',
+  reconnecting: 'reconectando tiempo real',
+  disconnected: 'tiempo real desconectado',
+  error: 'error de tiempo real',
+  auth_error: 'sesión WS expirada'
+};
+
 const App = () => {
   const { state, actions } = useApp();
   const { isAuthenticated, user, logout, loading: authLoading, completeOnboarding } = useAuth();
@@ -360,6 +369,15 @@ const App = () => {
   const lastUpdatedLabel = state.lastUpdated
     ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
     : 'sin datos';
+  const wsLabel = WS_STATUS_LABEL[state.wsStatus] || state.wsStatus;
+  const wsTone =
+    state.wsStatus === 'connected'
+      ? { background: '#00E08E22', color: '#00E08E' }
+      : state.wsStatus === 'connecting' || state.wsStatus === 'reconnecting'
+        ? { background: '#8CC8FF22', color: '#8CC8FF' }
+        : state.wsStatus === 'auth_error'
+          ? { background: '#FF475722', color: '#FF4757' }
+          : { background: '#FBBF2422', color: '#FBBF24' };
   const backendLastOkLabel = backendLastOkAt
     ? new Date(backendLastOkAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : null;
@@ -434,6 +452,9 @@ const App = () => {
         </div>
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+          <span className="badge ws-badge" style={wsTone}>
+            {wsLabel}
+          </span>
           <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
             Actualizado: {lastUpdatedLabel}
           </span>
