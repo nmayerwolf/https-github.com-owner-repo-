@@ -478,7 +478,14 @@ const Portfolio = () => {
     [assetsBySymbol]
   );
 
-  const handleDelete = useCallback((id) => actions.deletePosition(id), [actions]);
+  const handleDelete = useCallback(
+    (id) => {
+      const confirmed = window.confirm('¿Seguro que querés eliminar esta posición? Esta acción no se puede deshacer.');
+      if (!confirmed) return;
+      actions.deletePosition(id);
+    },
+    [actions]
+  );
   const handleOpenRiskTargets = useCallback(
     (position) =>
       setRiskTargetsModal({
