@@ -251,6 +251,18 @@ const Portfolio = () => {
     setSellModal(emptySell);
   };
 
+  const sellQtyNumber = Number(parseNumericInput(sellModal.sellQuantity));
+  const sellMaxQtyNumber = Number(sellModal.maxQuantity || 0);
+  const sellRemainingQty =
+    Number.isFinite(sellQtyNumber) && Number.isFinite(sellMaxQtyNumber) ? Number((sellMaxQtyNumber - sellQtyNumber).toFixed(8)) : null;
+  const canSubmitSell =
+    !!sellModal.id &&
+    Number(parseNumericInput(sellModal.sellPrice)) > 0 &&
+    !!sellModal.sellDate &&
+    Number.isFinite(sellQtyNumber) &&
+    sellQtyNumber > 0 &&
+    sellQtyNumber <= sellMaxQtyNumber;
+
   const submitRiskTargets = (e) => {
     e.preventDefault();
     const stopLossPct = Number(parseNumericInput(riskTargetsModal.stopLoss));
@@ -661,7 +673,10 @@ const Portfolio = () => {
                   required
                   onChange={(e) => setSellModal({ ...sellModal, sellQuantity: e.target.value })}
                 />
-                <span className="muted">Disponible: {sellModal.maxQuantity}</span>
+                <span className="muted">
+                  Disponible: {sellModal.maxQuantity}
+                  {Number.isFinite(sellRemainingQty) ? ` · Saldo restante: ${Math.max(0, sellRemainingQty)}` : ''}
+                </span>
               </label>
               <label className="label">
                 <span className="muted">Precio de venta</span>
@@ -688,7 +703,9 @@ const Portfolio = () => {
                 <button type="button" onClick={() => setSellModal(emptySell)}>
                   Cancelar
                 </button>
-                <button type="submit">Confirmar venta</button>
+                <button type="submit" disabled={!canSubmitSell}>
+                  {canSubmitSell && sellRemainingQty === 0 ? 'Confirmar venta total' : 'Confirmar venta'}
+                </button>
               </div>
             </form>
           </section>
