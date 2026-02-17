@@ -791,6 +791,47 @@ a:focus-visible {
   grid-column: 1 / -1;
 }
 
+.portfolio-row-chip {
+  padding: 5px 10px;
+  font-size: 0.72rem;
+}
+
+.portfolio-risk-sl {
+  border-color: rgba(255, 71, 87, 0.75);
+  background: rgba(255, 71, 87, 0.14);
+  animation: portfolio-pulse-sl 1s ease-in-out infinite;
+}
+
+.portfolio-risk-tp {
+  border-color: rgba(0, 224, 142, 0.75);
+  background: rgba(0, 224, 142, 0.14);
+  animation: portfolio-pulse-tp 1s ease-in-out infinite;
+}
+
+@keyframes portfolio-pulse-sl {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 71, 87, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 71, 87, 0);
+  }
+}
+
+@keyframes portfolio-pulse-tp {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 224, 142, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(0, 224, 142, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 224, 142, 0);
+  }
+}
+
 /* AI chat */
 .chat-area {
   display: grid;

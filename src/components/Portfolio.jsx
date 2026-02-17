@@ -36,7 +36,7 @@ const normalizePercentInput = (value) => {
   return `${n.toFixed(2)}%`;
 };
 
-const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets }) {
+const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets, riskPulse = null }) {
   const slPct = Number(position.stopLossPct);
   const tpPct = Number(position.takeProfitPct);
 
@@ -59,10 +59,17 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
         </div>
         {!position.sellDate ? (
           <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => onOpenSell(position)}>
+            <button
+              type="button"
+              className={`ai-filter-chip portfolio-row-chip ${riskPulse === 'sl' ? 'portfolio-risk-sl' : riskPulse === 'tp' ? 'portfolio-risk-tp' : ''}`}
+              onClick={() => onOpenRiskTargets(position)}
+            >
+              SL / TP
+            </button>
+            <button type="button" className="ai-filter-chip portfolio-row-chip" onClick={() => onOpenSell(position)}>
               Vender
             </button>
-            <button type="button" onClick={() => onDelete(position.id)}>
+            <button type="button" className="ai-filter-chip portfolio-row-chip" onClick={() => onDelete(position.id)}>
               Eliminar
             </button>
           </div>
@@ -302,6 +309,17 @@ const Portfolio = () => {
   const rows = tab === 'active' ? activeRows : tab === 'sold' ? soldRows : [];
   const visibleRows = rows.slice(0, visibleCount);
   const hasMoreRows = visibleRows.length < rows.length;
+  const riskPulseBySymbol = useMemo(() => {
+    const out = {};
+    (state.alerts || []).forEach((alert) => {
+      const symbol = String(alert?.symbol || '').toUpperCase();
+      if (!symbol) return;
+      const type = String(alert?.type || '').toLowerCase();
+      if (type === 'stoploss' || type === 'stop_loss') out[symbol] = 'sl';
+      if (type === 'takeprofit' && !out[symbol]) out[symbol] = 'tp';
+    });
+    return out;
+  }, [state.alerts]);
 
   useEffect(() => {
     setVisibleCount(PORTFOLIO_PAGE_SIZE);
@@ -646,7 +664,14 @@ const Portfolio = () => {
       </section>
 
       {visibleRows.map((p) => (
-        <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} onOpenRiskTargets={handleOpenRiskTargets} />
+        <PositionRow
+          key={p.id}
+          position={p}
+          onOpenSell={handleOpenSell}
+          onDelete={handleDelete}
+          onOpenRiskTargets={handleOpenRiskTargets}
+          riskPulse={riskPulseBySymbol[String(p.symbol || '').toUpperCase()] || null}
+        />
       ))}
       {hasMoreRows ? (
         <div className="card portfolio-more">
