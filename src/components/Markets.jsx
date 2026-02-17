@@ -43,29 +43,30 @@ const Markets = () => {
   }, [state.assets, category, query]);
 
   const normalizedCandidate = String(candidate || '').trim().toUpperCase();
-  const universeOptions = useMemo(() => {
-    const q = String(candidate || '').trim().toLowerCase();
-    const taken = new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase()));
-    return (universe || [])
-      .filter((item) => !taken.has(String(item?.symbol || '').toUpperCase()))
-      .filter((item) => {
-        if (!q) return true;
-        const symbol = String(item?.symbol || '').toLowerCase();
-        const name = String(item?.name || '').toLowerCase();
-        return symbol.includes(q) || name.includes(q);
-      })
-      .slice(0, 12);
-  }, [universe, candidate, state.watchlistSymbols]);
+  const watchlistSet = useMemo(
+    () => new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase())),
+    [state.watchlistSymbols]
+  );
   const selectedUniverseMatch = useMemo(() => {
     const raw = String(candidate || '').trim().toLowerCase();
     if (!raw) return null;
-    const bySymbol = universeOptions.find((item) => String(item.symbol || '').toLowerCase() === raw);
+    const bySymbol = universe.find((item) => String(item.symbol || '').toLowerCase() === raw);
     if (bySymbol) return bySymbol;
-    const byExactName = universeOptions.find((item) => String(item.name || '').toLowerCase() === raw);
+    const byExactName = universe.find((item) => String(item.name || '').toLowerCase() === raw);
     if (byExactName) return byExactName;
-    const byNameContains = universeOptions.find((item) => String(item.name || '').toLowerCase().includes(raw));
+    const bySymbolPrefix = universe.find((item) => String(item.symbol || '').toLowerCase().startsWith(raw));
+    if (bySymbolPrefix) return bySymbolPrefix;
+    const byNamePrefix = universe.find((item) => String(item.name || '').toLowerCase().startsWith(raw));
+    if (byNamePrefix) return byNamePrefix;
+    const byNameContains = universe.find((item) => String(item.name || '').toLowerCase().includes(raw));
     return byNameContains || null;
-  }, [universeOptions, candidate]);
+  }, [universe, candidate]);
+  const isTickerInput = useMemo(() => /^[A-Z0-9._:-]{1,20}$/.test(normalizedCandidate), [normalizedCandidate]);
+  const isAlreadyInWatchlist = useMemo(() => {
+    if (selectedUniverseMatch?.symbol) return watchlistSet.has(String(selectedUniverseMatch.symbol).toUpperCase());
+    return watchlistSet.has(normalizedCandidate);
+  }, [selectedUniverseMatch, watchlistSet, normalizedCandidate]);
+  const canAddCandidate = !!normalizedCandidate && !isAlreadyInWatchlist && (!!selectedUniverseMatch || isTickerInput);
 
   const watchlistAssets = useMemo(() => {
     const bySymbol = Object.fromEntries(state.assets.map((asset) => [String(asset.symbol || '').toUpperCase(), asset]));
@@ -217,25 +218,28 @@ const Markets = () => {
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Agregar a watchlist</span>
             <input
-              list="watchlist-universe-options"
               value={candidate}
               onChange={(e) => setCandidate(e.target.value)}
               placeholder="Escribí activo o ticker (ej: Apple o AAPL)"
               aria-label="Activo para agregar a watchlist"
             />
-            <datalist id="watchlist-universe-options">
-              {universeOptions.map((x) => (
-                <option key={x.symbol} value={x.symbol}>
-                  {x.symbol} - {x.name}
-                </option>
-              ))}
-            </datalist>
+            {normalizedCandidate ? (
+              <span className="muted" style={{ marginTop: 4, display: 'block' }}>
+                {selectedUniverseMatch
+                  ? isAlreadyInWatchlist
+                    ? `${selectedUniverseMatch.symbol} ya está en watchlist.`
+                    : `Se agregará: ${selectedUniverseMatch.symbol} - ${selectedUniverseMatch.name}`
+                  : isTickerInput
+                    ? `Ticker manual: ${normalizedCandidate}`
+                    : 'No encontramos ese activo. Probá con nombre más específico o ticker.'}
+              </span>
+            ) : null}
           </label>
           <button
             type="button"
             className="markets-tools-btn"
             onClick={() => {
-              if (!normalizedCandidate) return;
+              if (!canAddCandidate) return;
               actions.addToWatchlist(
                 selectedUniverseMatch || {
                   symbol: normalizedCandidate,
@@ -250,7 +254,7 @@ const Markets = () => {
               );
               setCandidate('');
             }}
-            disabled={!normalizedCandidate}
+            disabled={!canAddCandidate}
           >
             Agregar
           </button>
