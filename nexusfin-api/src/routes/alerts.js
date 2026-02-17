@@ -59,6 +59,63 @@ router.post('/macro/refresh', async (req, res, next) => {
   }
 });
 
+router.get('/portfolio-advice', async (req, res, next) => {
+  try {
+    const portfolioAdvisor = req.app?.locals?.portfolioAdvisor;
+    if (!portfolioAdvisor?.getLatestForUser) {
+      return res.status(503).json({ error: 'PORTFOLIO_ADVISOR_UNAVAILABLE', message: 'Portfolio Advisor no disponible.' });
+    }
+
+    const latest = await portfolioAdvisor.getLatestForUser(req.user.id);
+    if (!latest) return res.json({ advice: null });
+
+    return res.json({
+      advice: {
+        id: latest.id,
+        healthScore: Number(latest.health_score || 0),
+        healthSummary: latest.health_summary || '',
+        concentrationRisk: latest.concentration_risk || 'medium',
+        allocationAnalysis: latest.allocation_analysis || {},
+        recommendations: Array.isArray(latest.recommendations) ? latest.recommendations : [],
+        aiModel: latest.ai_model,
+        createdAt: latest.created_at
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/portfolio-advice/refresh', async (req, res, next) => {
+  try {
+    const portfolioAdvisor = req.app?.locals?.portfolioAdvisor;
+    if (!portfolioAdvisor?.generateForUser) {
+      return res.status(503).json({ error: 'PORTFOLIO_ADVISOR_UNAVAILABLE', message: 'Portfolio Advisor no disponible.' });
+    }
+
+    const generated = await portfolioAdvisor.generateForUser(req.user.id);
+    if (generated?.skipped) {
+      return res.json({ advice: null, skipped: true, reason: generated.reason, minimumPositions: generated.minimumPositions, currentPositions: generated.currentPositions });
+    }
+
+    return res.status(201).json({
+      advice: {
+        id: generated.id,
+        healthScore: Number(generated.health_score || 0),
+        healthSummary: generated.health_summary || '',
+        concentrationRisk: generated.concentration_risk || 'medium',
+        allocationAnalysis: generated.allocation_analysis || {},
+        recommendations: Array.isArray(generated.recommendations) ? generated.recommendations : [],
+        aiModel: generated.ai_model,
+        createdAt: generated.created_at,
+        source: generated.source || 'ai'
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page || 1));

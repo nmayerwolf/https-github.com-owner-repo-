@@ -16,6 +16,7 @@ const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
 const { createPushNotifier } = require('./services/push');
 const { createMacroRadar } = require('./services/macroRadar');
+const { createPortfolioAdvisor } = require('./services/portfolioAdvisor');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -72,7 +73,8 @@ app.locals.getCronStatus = () => ({
   nextRun: null,
   errors: [],
   lastTask: null,
-  macroRuns: 0
+  macroRuns: 0,
+  portfolioRuns: 0
 });
 app.locals.getMobileHealthStatus = () => ({
   ok: true,
@@ -159,7 +161,8 @@ app.get('/api/health/cron', (_req, res) => {
       nextRun: null,
       errors: [],
       lastTask: null,
-      macroRuns: 0
+      macroRuns: 0,
+      portfolioRuns: 0
     }
   );
 });
@@ -385,7 +388,9 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const pushNotifier = createPushNotifier({ query, logger: console });
   const aiAgent = createAiAgent();
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
+  const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
   app.locals.macroRadar = macroRadar;
+  app.locals.portfolioAdvisor = portfolioAdvisor;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
@@ -409,7 +414,8 @@ const startHttpServer = ({ port = env.port } = {}) => {
     crypto: () => runMarketCycleWithOutcome({ categories: ['crypto'], includeStopLoss: false }),
     forex: () => runMarketCycleWithOutcome({ categories: ['fx'], includeStopLoss: false }),
     commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false }),
-    macroDaily: () => macroRadar.runGlobalDaily()
+    macroDaily: () => macroRadar.runGlobalDaily(),
+    portfolioDaily: () => portfolioAdvisor.runGlobalDaily()
   });
   const logCronRun = async ({
     event,
@@ -518,7 +524,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  return { server, wsHub, cronRuntime, wsPriceRuntime, alertEngine, pushNotifier, macroRadar };
+  return { server, wsHub, cronRuntime, wsPriceRuntime, alertEngine, pushNotifier, macroRadar, portfolioAdvisor };
 };
 
 if (require.main === module) {

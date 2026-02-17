@@ -16,10 +16,11 @@ describe('market cron scaffold', () => {
       cronCryptoIntervalMinutes: 11,
       cronForexIntervalMinutes: 13,
       cronCommodityIntervalMinutes: 17,
-      cronMacroDailySchedule: '0 8 * * *'
+      cronMacroDailySchedule: '0 8 * * *',
+      cronPortfolioDailySchedule: '15 8 * * *'
     });
 
-    expect(tasks.map((t) => t.schedule)).toEqual(['*/7 * * * *', '*/11 * * * *', '*/13 * * * *', '*/17 * * * *', '0 8 * * *']);
+    expect(tasks.map((t) => t.schedule)).toEqual(['*/7 * * * *', '*/11 * * * *', '*/13 * * * *', '*/17 * * * *', '0 8 * * *', '15 8 * * *']);
   });
 
   test('market hour helpers evaluate ET windows', () => {

@@ -48,6 +48,11 @@ const Portfolio = () => {
   const [exportFilter, setExportFilter] = useState('all');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorRefreshing, setAdvisorRefreshing] = useState(false);
+  const [advisorError, setAdvisorError] = useState('');
+  const [advisorData, setAdvisorData] = useState(null);
+  const [advisorSkipped, setAdvisorSkipped] = useState(null);
 
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
   const active = useMemo(() => state.positions.filter((p) => !p.sellDate), [state.positions]);
@@ -141,6 +146,48 @@ const Portfolio = () => {
     setVisibleCount(PORTFOLIO_PAGE_SIZE);
   }, [tab, rows.length]);
 
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setAdvisorLoading(true);
+      setAdvisorError('');
+      try {
+        const out = await api.getPortfolioAdvice();
+        if (!active) return;
+        setAdvisorData(out?.advice || null);
+        setAdvisorSkipped(out?.skipped ? out : null);
+      } catch {
+        if (!active) return;
+        setAdvisorError('No se pudo cargar Portfolio Advisor.');
+      } finally {
+        if (active) setAdvisorLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const refreshAdvisor = async () => {
+    setAdvisorRefreshing(true);
+    setAdvisorError('');
+    try {
+      const out = await api.refreshPortfolioAdvice();
+      if (out?.skipped) {
+        setAdvisorData(null);
+        setAdvisorSkipped(out);
+      } else {
+        setAdvisorData(out?.advice || null);
+        setAdvisorSkipped(null);
+      }
+    } catch {
+      setAdvisorError('No se pudo recalcular Portfolio Advisor.');
+    } finally {
+      setAdvisorRefreshing(false);
+    }
+  };
+
   const handleOpenSell = useCallback(
     (position) =>
       setSellModal({
@@ -204,6 +251,44 @@ const Portfolio = () => {
             <div className="ind-val mono">{worstPosition ? `${worstPosition.symbol} ${formatPct(worstPosition.pnlPctPos)}` : '-'}</div>
           </div>
         </div>
+      </section>
+
+      <section className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="section-title">Portfolio Advisor</h3>
+          <button type="button" onClick={refreshAdvisor} disabled={advisorRefreshing}>
+            {advisorRefreshing ? 'Analizando...' : 'Pedir análisis AI'}
+          </button>
+        </div>
+        {advisorLoading ? <div className="muted" style={{ marginTop: 8 }}>Cargando análisis...</div> : null}
+        {advisorError ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{advisorError}</div> : null}
+        {advisorSkipped ? (
+          <div className="muted" style={{ marginTop: 8 }}>
+            Necesitás al menos {advisorSkipped.minimumPositions || 2} posiciones activas para recibir recomendaciones.
+          </div>
+        ) : null}
+        {advisorData ? (
+          <div className="grid" style={{ marginTop: 8 }}>
+            <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+              <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+                Health {Number(advisorData.healthScore || 0)}/10
+              </span>
+              <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
+                Riesgo {advisorData.concentrationRisk || 'medium'}
+              </span>
+            </div>
+            <div className="muted">{advisorData.healthSummary}</div>
+            {(advisorData.recommendations || []).slice(0, 3).map((rec, idx) => (
+              <article key={`${rec.asset || 'asset'}-${idx}`} className="card">
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <strong>{rec.asset}</strong>
+                  <span className="muted">{rec.priority || 'medium'}</span>
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>{rec.detail}</div>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="card">

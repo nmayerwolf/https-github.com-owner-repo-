@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiMock, appCtxMock } = vi.hoisted(() => ({
   apiMock: {
-    exportPortfolioCsv: vi.fn()
+    exportPortfolioCsv: vi.fn(),
+    getPortfolioAdvice: vi.fn(),
+    refreshPortfolioAdvice: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -49,11 +51,15 @@ afterEach(() => {
 describe('Portfolio', () => {
   beforeEach(() => {
     apiMock.exportPortfolioCsv.mockReset();
+    apiMock.getPortfolioAdvice.mockReset();
+    apiMock.refreshPortfolioAdvice.mockReset();
     appCtxMock.actions.addPosition.mockReset();
     appCtxMock.actions.sellPosition.mockReset();
     appCtxMock.actions.deletePosition.mockReset();
 
     apiMock.exportPortfolioCsv.mockResolvedValue('Symbol,Name\nAAPL,Apple');
+    apiMock.getPortfolioAdvice.mockResolvedValue({ advice: null, skipped: true, minimumPositions: 2 });
+    apiMock.refreshPortfolioAdvice.mockResolvedValue({ advice: null, skipped: true, minimumPositions: 2 });
 
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:url'),
