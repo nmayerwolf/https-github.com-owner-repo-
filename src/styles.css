@@ -820,6 +820,59 @@ a:focus-visible {
   align-items: center;
 }
 
+.ai-filter-stack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ai-filter-group {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-filter-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.ai-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-filter-chip {
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 0.73rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ai-filter-chip:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--text-primary);
+}
+
+.ai-filter-chip.is-active {
+  color: var(--text-primary);
+}
+
+.ai-filter-chip.is-active.is-signal {
+  border-color: rgba(0, 224, 142, 0.7);
+  background: rgba(0, 224, 142, 0.12);
+}
+
+.ai-filter-chip.is-active.is-asset {
+  border-color: rgba(96, 165, 250, 0.7);
+  background: rgba(96, 165, 250, 0.12);
+}
+
 .alerts-history-card {
   border-color: var(--border);
 }
@@ -1103,6 +1156,11 @@ a:focus-visible {
   .portfolio-toolbar,
   .alerts-toolbar {
     gap: 6px;
+  }
+
+  .ai-filter-chip {
+    padding: 5px 10px;
+    font-size: 0.7rem;
   }
 }
 

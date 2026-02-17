@@ -547,24 +547,37 @@ const Alerts = () => {
           <h3 className="section-title">Activos financieros recomendados</h3>
         </div>
         <div className="muted" style={{ marginBottom: 8 }}>Senales operativas activas, filtradas por tipo.</div>
-        <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
-          {LIVE_TABS.map((t) => (
-            <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
-              {LIVE_TAB_LABEL[t]}
-            </button>
-          ))}
-        </div>
-        <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
-          {ASSET_CLASS_TABS.map((assetClass) => (
-            <button
-              key={assetClass}
-              type="button"
-              onClick={() => setLiveAssetClass(assetClass)}
-              style={{ borderColor: liveAssetClass === assetClass ? '#60A5FA' : undefined }}
-            >
-              {ASSET_CLASS_LABEL[assetClass]}
-            </button>
-          ))}
+        <div className="ai-filter-stack">
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Senal</span>
+            <div className="ai-filter-row">
+              {LIVE_TABS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`ai-filter-chip ${liveTab === t ? 'is-active is-signal' : ''}`}
+                  onClick={() => setLiveTab(t)}
+                >
+                  {LIVE_TAB_LABEL[t]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Clase de activo</span>
+            <div className="ai-filter-row">
+              {ASSET_CLASS_TABS.map((assetClass) => (
+                <button
+                  key={assetClass}
+                  type="button"
+                  className={`ai-filter-chip ${liveAssetClass === assetClass ? 'is-active is-asset' : ''}`}
+                  onClick={() => setLiveAssetClass(assetClass)}
+                >
+                  {ASSET_CLASS_LABEL[assetClass]}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="alerts-grid-list">
           {liveList.map((a) => (
