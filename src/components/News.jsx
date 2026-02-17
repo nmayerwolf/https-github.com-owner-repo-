@@ -88,10 +88,6 @@ const News = () => {
   const [visibleCount, setVisibleCount] = useState(15);
 
   const watchlistSymbols = state.watchlistSymbols || [];
-  const assetBySymbol = useMemo(
-    () => Object.fromEntries((state.assets || []).map((a) => [String(a.symbol || '').toUpperCase(), a])),
-    [state.assets]
-  );
   const filteredItems = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
     if (!q) return items;
@@ -173,14 +169,6 @@ const News = () => {
         <section className="card">
           <div className="news-list">
             {filteredItems.slice(0, visibleCount).map((item) => {
-              const relatedSymbols = String(item.related || '')
-                .split(',')
-                .map((s) => s.trim().toUpperCase())
-                .filter(Boolean);
-              const matched = relatedSymbols.filter((s) => watchlistSymbols.includes(s)).slice(0, 3);
-              const leadSymbol = relatedSymbols.find((s) => assetBySymbol[s]) || null;
-              const leadName = leadSymbol ? assetBySymbol[leadSymbol]?.name : null;
-
               return (
                 <button
                   key={item.id || item.url}
@@ -199,12 +187,6 @@ const News = () => {
                       <span className="badge" style={impactStyle(item.impactScore)}>
                         {item.impactLabel || 'Poco relevante'}
                       </span>
-                      {leadSymbol ? <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{leadSymbol}{leadName ? ` · ${leadName}` : ''}</span> : null}
-                      {matched.map((symbol) => (
-                        <span key={`${item.id || item.url}-${symbol}`} className="badge" style={{ background: '#00E08E22', color: '#00E08E' }}>
-                          Watchlist: {symbol}
-                        </span>
-                      ))}
                     </div>
                   </div>
                 </button>
