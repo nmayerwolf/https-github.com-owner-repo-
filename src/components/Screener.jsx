@@ -81,12 +81,22 @@ const Screener = () => {
           <h2 className="screen-title">Screener IA</h2>
           <p className="muted">Detectá oportunidades por categoría con prompts y contexto del mercado actual.</p>
         </div>
-        <div className="row screener-categories">
-          {CATEGORY_OPTIONS.map((x) => (
-            <button key={x} type="button" className={`pill ${category === x ? 'active' : ''}`} onClick={() => setCategory(x)}>
-              {x}
-            </button>
-          ))}
+        <div className="ai-filter-stack" style={{ marginTop: 8 }}>
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Clase de activo</span>
+            <div className="ai-filter-row">
+              {CATEGORY_OPTIONS.map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  className={`ai-filter-chip ${category === x ? 'is-active is-asset' : ''}`}
+                  onClick={() => setCategory(x)}
+                >
+                  {x}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

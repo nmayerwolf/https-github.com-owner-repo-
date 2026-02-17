@@ -143,12 +143,22 @@ const Markets = () => {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar símbolo o activo..." />
         </div>
 
-        <div className="pills">
-          {CATEGORY_OPTIONS.map((x) => (
-            <button key={x} type="button" className={`pill ${category === x ? 'active' : ''}`} onClick={() => setCategory(x)}>
-              {categoryLabel[x] || x}
-            </button>
-          ))}
+        <div className="ai-filter-stack" style={{ marginBottom: 8 }}>
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Clase de activo</span>
+            <div className="ai-filter-row">
+              {CATEGORY_OPTIONS.map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  className={`ai-filter-chip ${category === x ? 'is-active is-asset' : ''}`}
+                  onClick={() => setCategory(x)}
+                >
+                  {categoryLabel[x] || x}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="markets-tools">

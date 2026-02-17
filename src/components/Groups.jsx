@@ -342,13 +342,18 @@ const Groups = () => {
             </div>
           </div>
 
-          <section className="pills group-tabs">
-            <button type="button" className={`pill ${groupTab === 'members' ? 'active' : ''}`} onClick={() => setGroupTab('members')}>
-              Miembros
-            </button>
-            <button type="button" className={`pill ${groupTab === 'feed' ? 'active' : ''}`} onClick={() => setGroupTab('feed')}>
-              Feed
-            </button>
+          <section className="ai-filter-stack group-tabs">
+            <div className="ai-filter-group">
+              <span className="ai-filter-label">Vista de grupo</span>
+              <div className="ai-filter-row">
+                <button type="button" className={`ai-filter-chip ${groupTab === 'members' ? 'is-active is-main' : ''}`} onClick={() => setGroupTab('members')}>
+                  Miembros
+                </button>
+                <button type="button" className={`ai-filter-chip ${groupTab === 'feed' ? 'is-active is-main' : ''}`} onClick={() => setGroupTab('feed')}>
+                  Feed
+                </button>
+              </div>
+            </div>
           </section>
 
           {(detailLoading || feedLoading) && <div className="muted">Cargando detalle...</div>}

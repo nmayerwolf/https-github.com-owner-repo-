@@ -368,12 +368,19 @@ const Portfolio = () => {
       </section>
 
       <section className="card portfolio-toolbar">
-        <button type="button" onClick={() => setTab('active')} style={{ borderColor: tab === 'active' ? '#00E08E' : undefined }}>
-          Activas
-        </button>
-        <button type="button" onClick={() => setTab('sold')} style={{ borderColor: tab === 'sold' ? '#00E08E' : undefined }}>
-          Cerradas
-        </button>
+        <div className="ai-filter-stack" style={{ marginBottom: 0 }}>
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Posiciones</span>
+            <div className="ai-filter-row">
+              <button type="button" className={`ai-filter-chip ${tab === 'active' ? 'is-active is-main' : ''}`} onClick={() => setTab('active')}>
+                Activas
+              </button>
+              <button type="button" className={`ai-filter-chip ${tab === 'sold' ? 'is-active is-main' : ''}`} onClick={() => setTab('sold')}>
+                Cerradas
+              </button>
+            </div>
+          </div>
+        </div>
         <label className="label" style={{ maxWidth: 240 }}>
           <span className="muted">Exportar</span>
           <select className="select-field" aria-label="Filtro exportación" value={exportFilter} onChange={(e) => setExportFilter(e.target.value)}>
