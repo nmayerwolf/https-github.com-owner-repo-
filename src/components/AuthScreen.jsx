@@ -3,6 +3,27 @@ import { useAuth } from '../store/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+const OAUTH_ERROR_MAP = {
+  provider_disabled: 'Google OAuth no está configurado en backend.',
+  invalid_oauth_state: 'Sesión OAuth inválida. Reintentá el ingreso.',
+  google_callback_failed: 'No se pudo completar login con Google.',
+  oauth_email_required: 'No se pudo recuperar el email de tu cuenta Google.',
+  invalid_client: 'El cliente OAuth de Google es inválido o no existe.',
+  access_denied: 'Cancelaste el acceso con Google.',
+  server_error: 'Google devolvió un error temporal de autenticación.'
+};
+
+const formatOAuthError = (oauthError, oauthErrorDescription = '') => {
+  const normalized = String(oauthError || '').trim().toLowerCase();
+  const description = String(oauthErrorDescription || '').trim();
+  const fromMap = OAUTH_ERROR_MAP[normalized] || 'Error de autenticación social.';
+
+  if (description) {
+    return `${fromMap} (${description})`;
+  }
+  return fromMap;
+};
+
 const AuthScreen = () => {
   const { loading, sessionNotice, clearSessionNotice } = useAuth();
   const [error, setError] = useState('');
@@ -10,17 +31,12 @@ const AuthScreen = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get('oauth_error');
+    const oauthErrorDescription = params.get('oauth_error_description');
     if (!oauthError) return;
 
-    const map = {
-      provider_disabled: 'Proveedor OAuth no configurado.',
-      invalid_oauth_state: 'Sesión OAuth inválida, intentá nuevamente.',
-      google_callback_failed: 'No se pudo completar login con Google.',
-      oauth_email_required: 'No se pudo recuperar el email de tu cuenta Google.'
-    };
-
-    setError(map[oauthError] || 'Error de autenticación social.');
+    setError(formatOAuthError(oauthError, oauthErrorDescription));
     params.delete('oauth_error');
+    params.delete('oauth_error_description');
     window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
   }, []);
 
@@ -62,6 +78,21 @@ const AuthScreen = () => {
         </div>
 
         {error && <div className="card" style={{ marginTop: 10, borderColor: '#FF4757AA' }}>{error}</div>}
+        {error && (
+          <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setError('');
+                clearSessionNotice();
+                window.location.href = `${API_BASE}/auth/google`;
+              }}
+              disabled={loading}
+            >
+              Reintentar con Google
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );
