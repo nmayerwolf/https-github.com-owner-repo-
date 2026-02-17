@@ -18,7 +18,8 @@ const WS_STATUS_LABEL = {
   reconnecting: 'reconectando',
   connected: 'conectado',
   disconnected: 'desconectado',
-  error: 'error'
+  error: 'error',
+  auth_error: 'sesión expirada'
 };
 const SKELETON_ROWS = [1, 2, 3, 4];
 
@@ -40,6 +41,7 @@ const toLiveAlert = (incoming) => ({
 const getWsStatusTone = (status, palette) => {
   if (status === 'connected') return { backgroundColor: `${palette.positive}22`, color: palette.positive, borderColor: `${palette.positive}66` };
   if (status === 'connecting' || status === 'reconnecting') return { backgroundColor: `${palette.info}22`, color: palette.info, borderColor: `${palette.info}66` };
+  if (status === 'auth_error') return { backgroundColor: `${palette.danger}22`, color: palette.danger, borderColor: `${palette.danger}66` };
   return { backgroundColor: `${palette.warning}22`, color: palette.warning, borderColor: `${palette.warning}66` };
 };
 
@@ -160,7 +162,14 @@ const AlertsScreen = ({ theme = 'dark' }) => {
         setWsStatus('connected');
       };
       ws.onerror = () => setWsStatus('error');
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        const code = Number(event?.code || 0);
+        const reason = String(event?.reason || '');
+        const authFailure = code === 1008 && ['TOKEN_REQUIRED', 'TOKEN_EXPIRED', 'INVALID_SESSION'].includes(reason);
+        if (authFailure) {
+          setWsStatus('auth_error');
+          return;
+        }
         setWsStatus('disconnected');
         if (!stopped) reconnectTimer = setTimeout(connectWs, nextReconnectDelay());
       };
