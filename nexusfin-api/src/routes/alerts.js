@@ -190,6 +190,21 @@ router.get('/', async (req, res, next) => {
       [req.user.id]
     );
 
+    const byAssetClass = await query(
+      `SELECT
+         CASE
+           WHEN symbol LIKE '%USDT' THEN 'crypto'
+           WHEN symbol LIKE '%\\_%' ESCAPE '\\' THEN 'fx'
+           ELSE 'equity'
+         END AS asset_class,
+         COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+         COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
+       FROM alerts
+       WHERE user_id = $1
+       GROUP BY 1`,
+      [req.user.id]
+    );
+
     const recentClosed = await query(
       `SELECT symbol, type, outcome, created_at
        FROM alerts
@@ -276,6 +291,7 @@ router.get('/', async (req, res, next) => {
         hitRate7d: windowHitRate('wins_7d', 'losses_7d'),
         hitRate30d: windowHitRate('wins_30d', 'losses_30d'),
         byType: toRatioRows(byType.rows || [], 'type'),
+        byAssetClass: toRatioRows(byAssetClass.rows || [], 'asset_class'),
         byConfidence: toRatioRows(byConfidence.rows || [], 'bucket'),
         trendLast30,
         bestSignalMonth,
