@@ -16,8 +16,16 @@ const normalizeSearchText = (value) =>
     .replace(/[\u0300-\u036f]/g, '');
 
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenStopLoss }) {
-  const stopDistancePct = !position.sellDate && Number(position.stopLoss) > 0 && Number(position.current) > 0
-    ? ((Number(position.current) - Number(position.stopLoss)) / Number(position.current)) * 100
+  const slPct = Number(position.stopLossPct);
+  const legacySlPrice = Number(position.stopLoss);
+  const stopPrice =
+    !position.sellDate && Number.isFinite(slPct) && slPct > 0 && Number(position.buyPrice) > 0
+      ? Number(position.buyPrice) * (1 - slPct / 100)
+      : Number.isFinite(legacySlPrice) && legacySlPrice > 0
+        ? legacySlPrice
+        : null;
+  const stopDistancePct = !position.sellDate && Number.isFinite(stopPrice) && stopPrice > 0 && Number(position.current) > 0
+    ? ((Number(position.current) - Number(stopPrice)) / Number(position.current)) * 100
     : null;
 
   return (
@@ -28,9 +36,10 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
         <div className="pos-detail">
           Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
         </div>
-        {!position.sellDate && Number(position.stopLoss) > 0 ? (
+        {!position.sellDate && Number.isFinite(stopPrice) && stopPrice > 0 ? (
           <div className="pos-detail">
-            Stop loss {formatUSD(Number(position.stopLoss))}
+            Stop loss {Number.isFinite(slPct) && slPct > 0 ? `-${slPct.toFixed(2)}%` : formatUSD(Number(stopPrice))}
+            {Number.isFinite(slPct) && slPct > 0 ? ` (${formatUSD(Number(stopPrice))})` : ''}
             {stopDistancePct != null ? ` · Distancia ${formatPct(stopDistancePct)}` : ''}
           </div>
         ) : null}
@@ -186,7 +195,7 @@ const Portfolio = () => {
       buyPrice,
       quantity,
       notes: '',
-      stopLoss: form.stopLoss ? Number(form.stopLoss) : null
+      stopLossPct: form.stopLoss ? Number(form.stopLoss) : null
     });
     setForm(emptyForm);
     setAssetQuery('');
@@ -359,7 +368,7 @@ const Portfolio = () => {
       setStopLossModal({
         id: position.id,
         symbol: position.symbol,
-        stopLoss: position.stopLoss ? String(position.stopLoss) : ''
+        stopLoss: position.stopLossPct ? String(position.stopLossPct) : ''
       }),
     []
   );
@@ -504,7 +513,7 @@ const Portfolio = () => {
             <input type="number" step="0.01" value={form.amountUsd} required onChange={(e) => setForm({ ...form, amountUsd: e.target.value })} />
           </label>
           <label className="label">
-            <span className="muted">Stop loss (opcional)</span>
+            <span className="muted">Stop loss % (opcional)</span>
             <input type="number" step="0.0001" value={form.stopLoss} onChange={(e) => setForm({ ...form, stopLoss: e.target.value })} />
           </label>
           <button type="submit" disabled={!canSubmitPosition}>
@@ -593,7 +602,7 @@ const Portfolio = () => {
             <h3>Definir stop loss · {stopLossModal.symbol}</h3>
             <form onSubmit={submitStopLoss} className="grid" style={{ marginTop: 8 }}>
               <label className="label">
-                <span className="muted">Precio de stop loss</span>
+                <span className="muted">Stop loss %</span>
                 <input
                   type="number"
                   step="0.0001"

@@ -59,8 +59,10 @@ export const stopLossAlerts = (positions, assetsBySymbol) => {
       const rsi = asset.indicators.rsi;
       const mult = rsi > 60 ? 2 : rsi < 40 ? 2.5 : 2.2;
       const computedSl = p.buyPrice - asset.indicators.atr * mult;
-      const customSl = Number(p.stopLoss);
-      const sl = Number.isFinite(customSl) && customSl > 0 ? customSl : computedSl;
+      const customSlPct = Number(p.stopLossPct);
+      const legacyCustomSlPrice = Number(p.stopLoss);
+      const pctSl = Number.isFinite(customSlPct) && customSlPct > 0 ? p.buyPrice * (1 - customSlPct / 100) : null;
+      const sl = Number.isFinite(pctSl) && pctSl > 0 ? pctSl : Number.isFinite(legacyCustomSlPrice) && legacyCustomSlPrice > 0 ? legacyCustomSlPrice : computedSl;
       const drawdown = ((asset.price - p.buyPrice) / p.buyPrice) * 100;
 
       if (asset.price <= sl) {

@@ -204,21 +204,30 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
     .filter(Boolean);
 };
 
-const STOP_LOSS_TOKEN = /\[SL:([0-9]+(?:\.[0-9]+)?)\]/i;
+const STOP_LOSS_PCT_TOKEN = /\[SLP:([0-9]+(?:\.[0-9]+)?)\]/i;
+const STOP_LOSS_PRICE_TOKEN = /\[SL:([0-9]+(?:\.[0-9]+)?)\]/i;
 
-const parseStopLossFromNotes = (notes) => {
+const parseStopLossPctFromNotes = (notes) => {
   const text = String(notes || '');
-  const match = text.match(STOP_LOSS_TOKEN);
+  const match = text.match(STOP_LOSS_PCT_TOKEN);
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
 
-const withStopLossToken = (notes, stopLoss) => {
-  const base = String(notes || '').replace(STOP_LOSS_TOKEN, '').trim();
-  const value = Number(stopLoss);
+const parseStopLossPriceFromNotes = (notes) => {
+  const text = String(notes || '');
+  const match = text.match(STOP_LOSS_PRICE_TOKEN);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const withStopLossPctToken = (notes, stopLossPct) => {
+  const base = String(notes || '').replace(STOP_LOSS_PCT_TOKEN, '').replace(STOP_LOSS_PRICE_TOKEN, '').trim();
+  const value = Number(stopLossPct);
   if (!Number.isFinite(value) || value <= 0) return base;
-  const token = `[SL:${value}]`;
+  const token = `[SLP:${value}]`;
   return base ? `${token} ${base}` : token;
 };
 
@@ -233,7 +242,8 @@ const normalizePosition = (row) => ({
   sellDate: row.sellDate || row.sell_date || null,
   sellPrice: row.sellPrice || row.sell_price ? Number(row.sellPrice ?? row.sell_price) : null,
   notes: row.notes || '',
-  stopLoss: parseStopLossFromNotes(row.notes)
+  stopLossPct: parseStopLossPctFromNotes(row.notes),
+  stopLoss: parseStopLossPriceFromNotes(row.notes)
 });
 
 const fetchSnapshotViaProxy = async (meta) => {
@@ -655,7 +665,7 @@ export const AppProvider = ({ children }) => {
         dispatch({ type: 'SET_CONFIG', payload: config });
       },
       addPosition: async (position) => {
-        const mergedNotes = withStopLossToken(position.notes || '', position.stopLoss);
+        const mergedNotes = withStopLossPctToken(position.notes || '', position.stopLossPct);
         if (isAuthenticated) {
           try {
             const payload = {
@@ -676,14 +686,14 @@ export const AppProvider = ({ children }) => {
           }
         }
 
-        const next = [...state.positions, { ...position, notes: mergedNotes, stopLoss: Number(position.stopLoss) || null }];
+        const next = [...state.positions, { ...position, notes: mergedNotes, stopLossPct: Number(position.stopLossPct) || null, stopLoss: null }];
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
-      setPositionStopLoss: async (id, stopLoss) => {
+      setPositionStopLoss: async (id, stopLossPct) => {
         const current = state.positions.find((p) => p.id === id);
         if (!current) return;
-        const nextNotes = withStopLossToken(current.notes || '', stopLoss);
+        const nextNotes = withStopLossPctToken(current.notes || '', stopLossPct);
 
         if (isAuthenticated) {
           try {
@@ -697,7 +707,9 @@ export const AppProvider = ({ children }) => {
           }
         }
 
-        const next = state.positions.map((p) => (p.id === id ? { ...p, notes: nextNotes, stopLoss: Number(stopLoss) || null } : p));
+        const next = state.positions.map((p) =>
+          p.id === id ? { ...p, notes: nextNotes, stopLossPct: Number(stopLossPct) || null, stopLoss: null } : p
+        );
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
