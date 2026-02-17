@@ -668,20 +668,25 @@ const Alerts = () => {
 
   const renderHistory = () => (
     <>
-      <section className="card alerts-toolbar">
-        {HISTORY_TYPE_TABS.map((type) => (
-          <button
-            key={type}
-            type="button"
-            onClick={() => {
-              setHistoryType(type);
-              setHistoryPage(1);
-            }}
-            style={{ borderColor: historyType === type ? '#00E08E' : undefined }}
-          >
-            {HISTORY_TYPE_LABEL[type]}
-          </button>
-        ))}
+      <section className="card ai-filter-stack">
+        <div className="ai-filter-group">
+          <span className="ai-filter-label">Tipo de senal</span>
+          <div className="ai-filter-row">
+            {HISTORY_TYPE_TABS.map((type) => (
+              <button
+                key={type}
+                type="button"
+                className={`ai-filter-chip ${historyType === type ? 'is-active is-signal' : ''}`}
+                onClick={() => {
+                  setHistoryType(type);
+                  setHistoryPage(1);
+                }}
+              >
+                {HISTORY_TYPE_LABEL[type]}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       {historyLoading && <div className="card muted">Cargando historial...</div>}
@@ -870,17 +875,22 @@ const Alerts = () => {
           </div>
         </section>
 
-        <section className="card row" style={{ flexWrap: 'wrap' }}>
-          {OUTCOME_TABS.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setOutcomeFilter(type)}
-              style={{ borderColor: outcomeFilter === type ? '#00E08E' : undefined }}
-            >
-              {OUTCOME_LABEL[type]}
-            </button>
-          ))}
+        <section className="card ai-filter-stack">
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Resultado</span>
+            <div className="ai-filter-row">
+              {OUTCOME_TABS.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`ai-filter-chip ${outcomeFilter === type ? 'is-active is-signal' : ''}`}
+                  onClick={() => setOutcomeFilter(type)}
+                >
+                  {OUTCOME_LABEL[type]}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         {historyLoading && <div className="card muted">Cargando rendimiento...</div>}
@@ -1062,20 +1072,25 @@ const Alerts = () => {
 
       {mainTab === 'live' && renderLive()}
 
-      <section className="card alerts-toolbar">
-        {MAIN_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => {
-              setMainTab(t);
-              if (t !== 'live') setHistoryPage(1);
-            }}
-            style={{ borderColor: mainTab === t ? '#00E08E' : undefined }}
-          >
-            {MAIN_LABEL[t]}
-          </button>
-        ))}
+      <section className="card ai-filter-stack">
+        <div className="ai-filter-group">
+          <span className="ai-filter-label">Vista</span>
+          <div className="ai-filter-row">
+            {MAIN_TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`ai-filter-chip ${mainTab === t ? 'is-active is-main' : ''}`}
+                onClick={() => {
+                  setMainTab(t);
+                  if (t !== 'live') setHistoryPage(1);
+                }}
+              >
+                {MAIN_LABEL[t]}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       {mainTab === 'history' && renderHistory()}
