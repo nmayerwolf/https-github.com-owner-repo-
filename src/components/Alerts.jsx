@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../api/apiClient';
 import { fetchCompanyOverview } from '../api/alphavantage';
 import { askClaude } from '../api/claude';
@@ -63,8 +62,78 @@ const buildLocalHint = (assets = [], query = '') => {
   return `Top movimiento:\n${byChange.map((a) => `${a.symbol}: ${formatPct(a.changePercent || 0)}`).join('\n')}`;
 };
 
+const buildFundamentalOutlook = (assets = []) => {
+  const list = Array.isArray(assets) ? assets : [];
+  if (!list.length) {
+    return {
+      bullish: ['Todavia no hay datos de mercado suficientes para detectar drivers alcistas.'],
+      bearish: ['Todavia no hay datos de mercado suficientes para detectar riesgos bajistas.']
+    };
+  }
+
+  const valid = list
+    .map((a) => ({
+      category: String(a?.category || 'other').toLowerCase(),
+      sector: String(a?.sector || 'general').toLowerCase(),
+      change: Number(a?.changePercent || 0)
+    }))
+    .filter((a) => Number.isFinite(a.change));
+
+  const advancers = valid.filter((a) => a.change > 0).length;
+  const breadth = valid.length ? (advancers / valid.length) * 100 : 50;
+  const avgChange = valid.length ? valid.reduce((acc, a) => acc + a.change, 0) / valid.length : 0;
+  const avgAbsMove = valid.length ? valid.reduce((acc, a) => acc + Math.abs(a.change), 0) / valid.length : 0;
+
+  const byCategory = new Map();
+  const bySector = new Map();
+  for (const item of valid) {
+    const cat = byCategory.get(item.category) || { total: 0, count: 0 };
+    cat.total += item.change;
+    cat.count += 1;
+    byCategory.set(item.category, cat);
+
+    const sec = bySector.get(item.sector) || { total: 0, count: 0 };
+    sec.total += item.change;
+    sec.count += 1;
+    bySector.set(item.sector, sec);
+  }
+
+  const categoryAvg = [...byCategory.entries()].map(([key, value]) => ({
+    key,
+    avg: value.count ? value.total / value.count : 0
+  }));
+  const sectorAvg = [...bySector.entries()].map(([key, value]) => ({
+    key,
+    avg: value.count ? value.total / value.count : 0
+  }));
+
+  const topCategory = categoryAvg.slice().sort((a, b) => b.avg - a.avg)[0];
+  const weakCategory = categoryAvg.slice().sort((a, b) => a.avg - b.avg)[0];
+  const topSector = sectorAvg.slice().sort((a, b) => b.avg - a.avg)[0];
+  const weakSector = sectorAvg.slice().sort((a, b) => a.avg - b.avg)[0];
+
+  const bullish = [];
+  const bearish = [];
+
+  if (breadth >= 58) bullish.push(`Amplitud positiva: ${Math.round(breadth)}% del universo monitoreado opera en verde.`);
+  if (avgChange >= 0.35) bullish.push(`Sesgo de riesgo activo: variacion promedio de mercado en ${formatPct(avgChange)}.`);
+  if (topCategory && topCategory.avg > 0.5) bullish.push(`Liderazgo por clase de activo en ${topCategory.key} (${formatPct(topCategory.avg)} promedio).`);
+  if (topSector && topSector.avg > 0.5) bullish.push(`Impulso sectorial en ${topSector.key}, senal de rotacion hacia crecimiento.`);
+  if (avgAbsMove <= 1.2) bullish.push(`Volatilidad contenida (${formatPct(avgAbsMove)} promedio absoluto), favorable para continuidad de tendencia.`);
+
+  if (breadth <= 42) bearish.push(`Amplitud debil: solo ${Math.round(breadth)}% del universo muestra avance.`);
+  if (avgChange <= -0.35) bearish.push(`Sesgo defensivo: variacion promedio de mercado en ${formatPct(avgChange)}.`);
+  if (weakCategory && weakCategory.avg < -0.5) bearish.push(`Presion en ${weakCategory.key} (${formatPct(weakCategory.avg)} promedio), posible arrastre al resto del mercado.`);
+  if (weakSector && weakSector.avg < -0.5) bearish.push(`Deterioro relativo en ${weakSector.key}, senal de menor apetito por riesgo.`);
+  if (avgAbsMove >= 1.8) bearish.push(`Volatilidad elevada (${formatPct(avgAbsMove)} promedio absoluto), riesgo de movimientos bruscos.`);
+
+  return {
+    bullish: bullish.slice(0, 5).length ? bullish.slice(0, 5) : ['No se detectan drivers alcistas de alta conviccion en este momento.'],
+    bearish: bearish.slice(0, 5).length ? bearish.slice(0, 5) : ['No se detectan riesgos bajistas estructurales dominantes en este momento.']
+  };
+};
+
 const Alerts = () => {
-  const navigate = useNavigate();
   const { state, actions } = useApp();
 
   const [mainTab, setMainTab] = useState('live');
@@ -134,6 +203,7 @@ const Alerts = () => {
     }),
     [state.alerts, portfolio.invested, portfolio.pnl, portfolio.pnlPct]
   );
+  const outlook = useMemo(() => buildFundamentalOutlook(state.assets), [state.assets]);
   const selectedAsset = useMemo(() => {
     const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
     if (!symbol) return null;
@@ -383,34 +453,74 @@ const Alerts = () => {
 
   const renderLive = () => (
     <>
-      <section className="ai-card">
-        <div className="ai-card-title">Screener IA</div>
-        <div className="ai-card-sub">Lanzá búsquedas inteligentes con un clic.</div>
-        <div className="ai-suggestions">
-          {quickPrompts.map((prompt) => (
-            <button
-              key={`screener-${prompt}`}
-              type="button"
-              className="ai-sug"
-              onClick={() => {
-                const params = new URLSearchParams({
-                  q: prompt,
-                  autorun: '1'
-                });
-                navigate(`/screener?${params.toString()}`);
-              }}
-            >
-              {prompt}
-            </button>
+      <section className="card">
+        <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
+        <div className="muted" style={{ marginBottom: 8 }}>Consultá contexto macro, riesgos y oportunidades en lenguaje natural.</div>
+        <div className="chat-area">
+          {!chatMessages.length ? (
+            <div className="muted">Preguntale al agente sobre panorama de mercado, riesgos macro o estrategia.</div>
+          ) : null}
+          {chatMessages.map((msg, idx) => (
+            <div key={`${msg.role}-${idx}`} className={`chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-ai'}`}>
+              {msg.text}
+            </div>
           ))}
+        </div>
+        {!chatMessages.length ? (
+          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+            {quickPrompts.map((prompt) => (
+              <button key={prompt} type="button" onClick={() => askAgent(prompt)}>
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="row" style={{ marginTop: 8 }}>
+          <input
+            placeholder="Preguntale al agente..."
+            value={agentQuery}
+            onChange={(e) => setAgentQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') askAgent(agentQuery);
+            }}
+          />
+          <button type="button" onClick={() => askAgent(agentQuery)} disabled={agentLoading}>
+            {agentLoading ? 'Pensando...' : 'Enviar'}
+          </button>
         </div>
       </section>
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Recomendaciones del agente</h3>
+          <h3 className="section-title">Fundamentales bullish (macro)</h3>
         </div>
-        <div className="muted" style={{ marginBottom: 8 }}>Filtrá por tipo para ver oportunidades activas.</div>
+        <ul className="muted" style={{ marginTop: 8, paddingLeft: 18 }}>
+          {outlook.bullish.slice(0, 5).map((point, idx) => (
+            <li key={`bullish-${idx}`} style={{ marginBottom: 6 }}>
+              {point}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Fundamentales bearish (macro)</h3>
+        </div>
+        <ul className="muted" style={{ marginTop: 8, paddingLeft: 18 }}>
+          {outlook.bearish.slice(0, 5).map((point, idx) => (
+            <li key={`bearish-${idx}`} style={{ marginBottom: 6 }}>
+              {point}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Activos financieros recomendados</h3>
+        </div>
+        <div className="muted" style={{ marginBottom: 8 }}>Senales operativas activas, filtradas por tipo.</div>
         <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
           {LIVE_TABS.map((t) => (
             <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
@@ -431,8 +541,8 @@ const Alerts = () => {
                 <article className="card">
                   <div className="row" style={{ alignItems: 'flex-start' }}>
                     <div>
-                      <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Señal'}</h3>
-                      <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del Agente IA'}</div>
+                      <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Senal'}</h3>
+                      <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendacion del Agente IA'}</div>
                     </div>
                     <button type="button" onClick={() => setSelectedLiveAlert(null)}>
                       Ocultar detalle
@@ -440,7 +550,7 @@ const Alerts = () => {
                   </div>
                   <div className="grid" style={{ marginTop: 10 }}>
                     <div className="ind-cell trend-panel">
-                      <div className="ind-label">Evolución (45 velas)</div>
+                      <div className="ind-label">Evolucion (45 velas)</div>
                       <div className="trend-chart">
                         <Sparkline values={selectedSeries} color={Number(trendDeltaPct || 0) >= 0 ? '#00E08E' : '#FF4757'} height={56} />
                       </div>
@@ -470,7 +580,7 @@ const Alerts = () => {
                       <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
                     </div>
                     <div className="ind-cell">
-                      <div className="ind-label">Capitalización</div>
+                      <div className="ind-label">Capitalizacion</div>
                       <div className="ind-val mono">{selectedFundamentals.loading ? '...' : formatLargeNumber(selectedFundamentals.marketCap)}</div>
                     </div>
                     <div className="ind-cell">
@@ -494,49 +604,12 @@ const Alerts = () => {
                   onClick={() => openThesis(a)}
                   disabled={loadingId === a.id}
                 >
-                  {loadingId === a.id ? 'Generando...' : 'Ver tesis de inversión AI'}
+                  {loadingId === a.id ? 'Generando...' : 'Ver tesis de inversion AI'}
                 </button>
               ) : null}
             </section>
           ))}
           {!liveList.length ? <div className="card muted">No hay alertas para este filtro.</div> : null}
-        </div>
-      </section>
-
-      <section className="card">
-        <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
-        <div className="muted" style={{ marginBottom: 8 }}>Preguntá por oportunidades, riesgo o activos puntuales.</div>
-        <div className="chat-area">
-          {!chatMessages.length ? (
-            <div className="muted">Preguntale al agente sobre activos, señales o riesgo de portfolio.</div>
-          ) : null}
-          {chatMessages.map((msg, idx) => (
-            <div key={`${msg.role}-${idx}`} className={`chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-ai'}`}>
-              {msg.text}
-            </div>
-          ))}
-        </div>
-        {!chatMessages.length ? (
-          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-            {quickPrompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => askAgent(prompt)}>
-                {prompt}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className="row" style={{ marginTop: 8 }}>
-          <input
-            placeholder="Preguntale al agente..."
-            value={agentQuery}
-            onChange={(e) => setAgentQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') askAgent(agentQuery);
-            }}
-          />
-          <button type="button" onClick={() => askAgent(agentQuery)} disabled={agentLoading}>
-            {agentLoading ? 'Pensando...' : 'Enviar'}
-          </button>
         </div>
       </section>
     </>
