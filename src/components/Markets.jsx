@@ -30,7 +30,6 @@ const normalizeSearchText = (value) =>
 const Markets = () => {
   const { state, actions } = useApp();
   const [category, setCategory] = useState('all');
-  const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
   const [universe, setUniverse] = useState([]);
   const [remoteUniverse, setRemoteUniverse] = useState([]);
@@ -45,11 +44,9 @@ const Markets = () => {
   const filtered = useMemo(() => {
     return state.assets.filter((a) => {
       const okCategory = category === 'all' || a.category === category;
-      const q = query.toLowerCase();
-      const okText = !q || a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q);
-      return okCategory && okText;
+      return okCategory;
     });
-  }, [state.assets, category, query]);
+  }, [state.assets, category]);
 
   const normalizedCandidate = String(candidate || '').trim().toUpperCase();
   const searchableUniverse = useMemo(() => universe || [], [universe]);
@@ -119,13 +116,8 @@ const Markets = () => {
     return state.watchlistSymbols
       .map((symbol) => bySymbol[String(symbol || '').toUpperCase()])
       .filter(Boolean)
-      .filter((asset) => {
-        const okCategory = category === 'all' || asset.category === category;
-        const q = query.toLowerCase();
-        const okText = !q || asset.symbol.toLowerCase().includes(q) || asset.name.toLowerCase().includes(q);
-        return okCategory && okText;
-      });
-  }, [state.assets, state.watchlistSymbols, category, query]);
+      .filter((asset) => category === 'all' || asset.category === category);
+  }, [state.assets, state.watchlistSymbols, category]);
 
   const visibleAssets = useMemo(() => watchlistAssets.slice(0, visibleCount), [watchlistAssets, visibleCount]);
   const showStreamingNote = isStreamingLoad && (visibleAssets.length === 0 || remainingToLoad > 8);
@@ -145,7 +137,7 @@ const Markets = () => {
 
   useEffect(() => {
     setVisibleCount(8);
-  }, [category, query, state.watchlistSymbols.length]);
+  }, [category, state.watchlistSymbols.length]);
 
   useEffect(() => {
     let active = true;
@@ -274,10 +266,6 @@ const Markets = () => {
     <div className="grid markets-page">
       <section className="card">
         <h2 className="screen-title">Mercados</h2>
-
-        <div className="search-bar">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar activo (ej: Apple o AAPL)..." />
-        </div>
 
         <div className="ai-filter-stack" style={{ marginBottom: 8 }}>
           <div className="ai-filter-group">
