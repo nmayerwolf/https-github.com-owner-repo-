@@ -1070,8 +1070,6 @@ const Alerts = () => {
     <div className="grid">
       {thesis && <AIThesis thesis={thesis} symbol={thesisSymbol} onClose={() => setThesis(null)} />}
 
-      {mainTab === 'live' && renderLive()}
-
       <section className="card ai-filter-stack">
         <div className="ai-filter-group">
           <span className="ai-filter-label">Vista</span>
@@ -1092,6 +1090,8 @@ const Alerts = () => {
           </div>
         </div>
       </section>
+
+      {mainTab === 'live' && renderLive()}
 
       {mainTab === 'history' && renderHistory()}
       {mainTab === 'macro' && renderMacro()}
