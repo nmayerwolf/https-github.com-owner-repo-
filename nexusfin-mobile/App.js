@@ -192,9 +192,9 @@ const App = () => {
               accessibilityLabel={`Ir a ${TAB_LABEL[item] || item}`}
               hitSlop={8}
             >
-              <Text style={[styles.tabLabel, { color: palette.muted }, tab === item ? [styles.tabLabelActive, { color: palette.primary }] : null]}>
+              <TabLabel style={[styles.tabLabel, { color: palette.muted }, tab === item ? [styles.tabLabelActive, { color: palette.primary }] : null]}>
                 {TAB_LABEL[item] || item}
-              </Text>
+              </TabLabel>
               {tab === item ? <View style={[styles.activeDot, { backgroundColor: palette.primary }]} /> : null}
             </Pressable>
           ))}
@@ -203,6 +203,12 @@ const App = () => {
     </SafeAreaView>
   );
 };
+
+const TabLabel = ({ children, style }) => (
+  <Text numberOfLines={1} ellipsizeMode="tail" style={style}>
+    {children}
+  </Text>
+);
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -213,9 +219,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1
   },
-  tab: { flex: 1, minHeight: 58, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, minHeight: 58, paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
   tabActive: {},
-  tabLabel: { ...typography.caption },
+  tabLabel: { ...typography.caption, textAlign: 'center' },
   tabLabelActive: {},
   activeDot: {
     width: 6,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { api } from '../api/client';
 import { registerNativePush } from '../lib/push';
 import { clearPushSubscriptionId, savePushSubscriptionId } from '../store/auth';
@@ -178,7 +178,11 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.bg }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: palette.bg }]}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={[styles.title, { color: palette.text }]}>Ajustes</Text>
       <Text style={[styles.status, { color: palette.muted }]}>Personalizá la experiencia de Horsai.</Text>
       <Text style={[styles.status, { color: palette.muted }]}>Push: {pushEnabled ? 'activo' : 'inactivo'}</Text>
@@ -309,12 +313,13 @@ const SettingsScreen = ({ onLogout, theme = 'dark', onThemeChange }) => {
       )}
 
       {message ? <Text style={[styles.message, { color: palette.muted }]}>{message}</Text> : null}
-    </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
+  contentContainer: { paddingBottom: 28 },
   title: { ...typography.screenTitle, marginBottom: 12 },
   status: { ...typography.body, marginBottom: 8 },
   section: { ...typography.sectionTitle, marginTop: 14, marginBottom: 8 },
