@@ -102,10 +102,22 @@ const summarizePortfolio = (rows = []) => {
   return summary;
 };
 
+const buildAgentHistory = ({ stats = {}, latest = null }) => {
+  const wins = Number(stats.wins || 0);
+  const losses = Number(stats.losses || 0);
+  const count = Number(stats.count || 0);
+  const hitRatePct = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+  const lastSignalSummary = latest
+    ? `${latest.symbol || 'N/A'} ${latest.recommendation || ''} hace ${latest.daysAgo || 0}d (${latest.outcome || 'open'})`
+    : 'sin historial';
+  return { count, hitRatePct, lastSignalSummary };
+};
+
 const buildPrompt = ({ market, headlines, userContext }) => {
   const topHeadlines = headlines.slice(0, 12).map((item, idx) => `${idx + 1}. ${item?.headline || ''}`).join('\n');
   const profile = userContext?.config || {};
   const portfolioSummary = userContext?.portfolioSummary || { totalValue: 0, positionsCount: 0 };
+  const agentHistory = userContext?.agentHistory || { count: 0, hitRatePct: 0, lastSignalSummary: 'sin historial' };
 
   return [
     'Sos un estratega de inversion global del equipo de Horsai.',
@@ -125,6 +137,11 @@ const buildPrompt = ({ market, headlines, userContext }) => {
     `- Horizonte: ${profile.horizon || 'mediano'}`,
     `- Sectores: ${Array.isArray(profile.sectors) && profile.sectors.length ? profile.sectors.join(', ') : 'sin preferencia'}`,
     `- Portfolio actual: posiciones=${portfolioSummary.positionsCount}, valor=${portfolioSummary.totalValue.toFixed(2)}`,
+    '',
+    'HISTORIAL DEL AGENTE:',
+    `- Señales similares anteriores: ${Number(agentHistory.count || 0)}`,
+    `- Win rate en señales similares: ${Number(agentHistory.hitRatePct || 0).toFixed(2)}%`,
+    `- Última señal del agente: ${agentHistory.lastSignalSummary}`,
     '',
     'Responde en JSON estricto con:',
     '{"market_sentiment":"bullish|neutral|bearish","sentiment_reasoning":"string","themes":[{"theme":"string","direction":"bullish|bearish","conviction":1,"timeframe":"1w|1m|3m|6m|1y","reasoning":"string","catalysts":["string"],"risks":["string"],"suggested_assets":[{"symbol":"string","name":"string","why":"string"}],"relevance_to_user":"string"}],"key_events_ahead":[{"event":"string","date":"YYYY-MM-DD","potential_impact":"string","assets_affected":["string"]}]}'
@@ -180,15 +197,39 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
   };
 
   const getUserContext = async (userId) => {
-    const [configOut, positionsOut] = await Promise.all([
+    const [configOut, positionsOut, statsOut, latestOut] = await Promise.all([
       query('SELECT risk_profile, horizon, sectors FROM user_configs WHERE user_id = $1 LIMIT 1', [userId]),
-      query('SELECT symbol, quantity, buy_price FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL', [userId])
+      query('SELECT symbol, quantity, buy_price FROM positions WHERE user_id = $1 AND sell_date IS NULL AND deleted_at IS NULL', [userId]),
+      query(
+        `SELECT COUNT(*)::int AS count,
+                COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+                COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
+         FROM alerts
+         WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT symbol, recommendation, outcome, created_at
+         FROM alerts
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId]
+      )
     ]);
+    const latest = latestOut.rows?.[0] || null;
+    const latestInfo = latest
+      ? {
+          ...latest,
+          daysAgo: Math.max(0, Math.round((Date.now() - new Date(latest.created_at).getTime()) / (1000 * 60 * 60 * 24)))
+        }
+      : null;
 
     return {
       config: configOut.rows?.[0] || {},
       portfolioSummary: summarizePortfolio(positionsOut.rows || []),
-      positions: positionsOut.rows || []
+      positions: positionsOut.rows || [],
+      agentHistory: buildAgentHistory({ stats: statsOut.rows?.[0] || {}, latest: latestInfo })
     };
   };
 

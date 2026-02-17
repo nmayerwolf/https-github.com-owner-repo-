@@ -18,6 +18,8 @@ describe('portfolioAdvisor service', () => {
       .fn()
       .mockResolvedValueOnce({ rows: [{ symbol: 'AAPL', category: 'equity', quantity: 1, buy_price: 100 }] })
       .mockResolvedValueOnce({ rows: [{ risk_profile: 'moderado', horizon: 'mediano', sectors: ['tech'] }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ count: 0, wins: 0, losses: 0 }] })
       .mockResolvedValueOnce({ rows: [] });
 
     const service = createPortfolioAdvisor({ query, aiAgent: { configured: false } });
