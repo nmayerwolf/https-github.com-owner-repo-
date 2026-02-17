@@ -495,7 +495,7 @@ const Alerts = () => {
         {!chatMessages.length ? (
           <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
             {quickPrompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => askAgent(prompt)}>
+              <button key={prompt} type="button" className="ai-agent-suggestion-btn" onClick={() => askAgent(prompt)}>
                 {prompt}
               </button>
             ))}
