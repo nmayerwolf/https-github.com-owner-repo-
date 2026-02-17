@@ -1,9 +1,27 @@
 import React from 'react';
 import { useState } from 'react';
 
+const toList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean).map((item) => String(item));
+  if (typeof value === 'string') {
+    return value
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const toText = (value, fallback = '-') => {
+  const text = String(value ?? '').trim();
+  return text || fallback;
+};
+
 const AIThesis = ({ thesis, onClose, symbol }) => {
   const [expanded, setExpanded] = useState(false);
   if (!thesis) return null;
+  const catalysts = toList(thesis.catalysts);
+  const risks = toList(thesis.risks);
 
   return (
     <section className="card" style={{ borderColor: '#00E08E' }}>
@@ -26,7 +44,7 @@ const AIThesis = ({ thesis, onClose, symbol }) => {
         </span>
       </div>
       <p className="muted" style={{ marginTop: 8 }}>
-        Objetivo: {thesis.priceTarget}
+        Objetivo: {toText(thesis.priceTarget)}
       </p>
       <button type="button" onClick={() => setExpanded((v) => !v)}>
         {expanded ? 'Ver menos' : 'Ver detalle completo'}
@@ -37,7 +55,7 @@ const AIThesis = ({ thesis, onClose, symbol }) => {
           <div>
             <strong>Catalizadores</strong>
             <ul>
-              {(thesis.catalysts || []).map((x, i) => (
+              {catalysts.map((x, i) => (
                 <li key={`cat-${i}`}>{x}</li>
               ))}
             </ul>
@@ -45,19 +63,19 @@ const AIThesis = ({ thesis, onClose, symbol }) => {
           <div>
             <strong>Riesgos</strong>
             <ul>
-              {(thesis.risks || []).map((x, i) => (
+              {risks.map((x, i) => (
                 <li key={`risk-${i}`}>{x}</li>
               ))}
             </ul>
           </div>
           <p>
-            <strong>Técnico:</strong> {thesis.technicalView}
+            <strong>Técnico:</strong> {toText(thesis.technicalView)}
           </p>
           <p>
-            <strong>Fundamental:</strong> {thesis.fundamentalView}
+            <strong>Fundamental:</strong> {toText(thesis.fundamentalView)}
           </p>
           <p>
-            <strong>Adecuación:</strong> {thesis.suitability}
+            <strong>Adecuación:</strong> {toText(thesis.suitability)}
           </p>
         </div>
       )}
