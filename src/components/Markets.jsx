@@ -1,13 +1,14 @@
 import React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchCompanyOverview } from '../api/alphavantage';
+import { api } from '../api/apiClient';
 import { fetchCompanyProfile } from '../api/finnhub';
 import { useApp } from '../store/AppContext';
 import { formatUSD } from '../utils/format';
 import AssetRow from './common/AssetRow';
 import NewsSection from './NewsSection';
 import Sparkline from './common/Sparkline';
-import { CATEGORY_OPTIONS, WATCHLIST_CATALOG } from '../utils/constants';
+import { CATEGORY_OPTIONS } from '../utils/constants';
 
 const categoryLabel = {
   all: 'Todos',
@@ -24,6 +25,7 @@ const Markets = () => {
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
+  const [universe, setUniverse] = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [selectedFundamentals, setSelectedFundamentals] = useState({ loading: false, pe: '-', marketCap: '-' });
   const [visibleCount, setVisibleCount] = useState(8);
@@ -40,10 +42,30 @@ const Markets = () => {
     });
   }, [state.assets, category, query]);
 
-  const options = useMemo(
-    () => WATCHLIST_CATALOG.filter((x) => !state.watchlistSymbols.includes(x.symbol)),
-    [state.watchlistSymbols]
-  );
+  const normalizedCandidate = String(candidate || '').trim().toUpperCase();
+  const universeOptions = useMemo(() => {
+    const q = String(candidate || '').trim().toLowerCase();
+    const taken = new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase()));
+    return (universe || [])
+      .filter((item) => !taken.has(String(item?.symbol || '').toUpperCase()))
+      .filter((item) => {
+        if (!q) return true;
+        const symbol = String(item?.symbol || '').toLowerCase();
+        const name = String(item?.name || '').toLowerCase();
+        return symbol.includes(q) || name.includes(q);
+      })
+      .slice(0, 12);
+  }, [universe, candidate, state.watchlistSymbols]);
+  const selectedUniverseMatch = useMemo(() => {
+    const raw = String(candidate || '').trim().toLowerCase();
+    if (!raw) return null;
+    const bySymbol = universeOptions.find((item) => String(item.symbol || '').toLowerCase() === raw);
+    if (bySymbol) return bySymbol;
+    const byExactName = universeOptions.find((item) => String(item.name || '').toLowerCase() === raw);
+    if (byExactName) return byExactName;
+    const byNameContains = universeOptions.find((item) => String(item.name || '').toLowerCase().includes(raw));
+    return byNameContains || null;
+  }, [universeOptions, candidate]);
 
   const watchlistAssets = useMemo(() => {
     const bySymbol = Object.fromEntries(state.assets.map((asset) => [String(asset.symbol || '').toUpperCase(), asset]));
@@ -77,6 +99,36 @@ const Markets = () => {
   useEffect(() => {
     setVisibleCount(8);
   }, [category, query, state.watchlistSymbols.length]);
+
+  useEffect(() => {
+    let active = true;
+    const loadUniverse = async () => {
+      try {
+        const out = await api.marketUniverse();
+        if (!active) return;
+        const assets = Array.isArray(out?.assets) ? out.assets : [];
+        setUniverse(
+          assets.map((item) => ({
+            symbol: String(item?.symbol || '').toUpperCase(),
+            name: String(item?.name || ''),
+            category: String(item?.category || 'equity').toLowerCase() === 'etf' ? 'equity' : String(item?.category || 'equity').toLowerCase(),
+            source: String(item?.symbol || '').toUpperCase().endsWith('USDT')
+              ? 'finnhub_crypto'
+              : String(item?.symbol || '').toUpperCase().includes('_')
+                ? 'finnhub_fx'
+                : 'finnhub_stock'
+          }))
+        );
+      } catch {
+        if (!active) return;
+        setUniverse([]);
+      }
+    };
+    loadUniverse();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (selectedSymbol) return;
@@ -164,23 +216,41 @@ const Markets = () => {
         <div className="markets-tools">
           <label className="label" style={{ margin: 0, flex: 1 }}>
             <span className="muted">Agregar a watchlist</span>
-            <select className="select-field" aria-label="Activo para agregar a watchlist" value={candidate} onChange={(e) => setCandidate(e.target.value)}>
-              <option value="">Seleccioná un activo...</option>
-              {options.map((x) => (
+            <input
+              list="watchlist-universe-options"
+              value={candidate}
+              onChange={(e) => setCandidate(e.target.value)}
+              placeholder="Escribí activo o ticker (ej: Apple o AAPL)"
+              aria-label="Activo para agregar a watchlist"
+            />
+            <datalist id="watchlist-universe-options">
+              {universeOptions.map((x) => (
                 <option key={x.symbol} value={x.symbol}>
                   {x.symbol} - {x.name}
                 </option>
               ))}
-            </select>
+            </datalist>
           </label>
           <button
             type="button"
             className="markets-tools-btn"
             onClick={() => {
-              actions.addToWatchlist(candidate);
+              if (!normalizedCandidate) return;
+              actions.addToWatchlist(
+                selectedUniverseMatch || {
+                  symbol: normalizedCandidate,
+                  name: normalizedCandidate,
+                  category: normalizedCandidate.endsWith('USDT') ? 'crypto' : normalizedCandidate.includes('_') ? 'fx' : 'equity',
+                  source: normalizedCandidate.endsWith('USDT')
+                    ? 'finnhub_crypto'
+                    : normalizedCandidate.includes('_')
+                      ? 'finnhub_fx'
+                      : 'finnhub_stock'
+                }
+              );
               setCandidate('');
             }}
-            disabled={!candidate}
+            disabled={!normalizedCandidate}
           >
             Agregar
           </button>

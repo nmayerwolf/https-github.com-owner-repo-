@@ -124,6 +124,7 @@ export const api = {
     return request(`/market/commodity?${q.toString()}`);
   },
   profile: (symbol) => request(`/market/profile?symbol=${encodeURIComponent(symbol)}`),
+  marketUniverse: () => request('/market/universe'),
   marketNews: (arg1 = {}, fromArg, toArg) => {
     const q = new URLSearchParams();
     if (typeof arg1 === 'string') {

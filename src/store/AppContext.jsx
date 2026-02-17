@@ -188,7 +188,20 @@ export const mapServerAlertToLive = (alert) => {
 
 const resolveWatchlistAssets = (watchlistSymbols) => {
   const bySymbol = Object.fromEntries(WATCHLIST_CATALOG.map((x) => [x.symbol, x]));
-  return watchlistSymbols.map((s) => bySymbol[s]).filter(Boolean);
+  return watchlistSymbols
+    .map((symbol) => {
+      const normalized = String(symbol || '').toUpperCase();
+      if (bySymbol[normalized]) return bySymbol[normalized];
+      if (!normalized) return null;
+      if (normalized.endsWith('USDT')) {
+        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'finnhub_crypto' };
+      }
+      if (normalized.includes('_')) {
+        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'finnhub_fx' };
+      }
+      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'finnhub_stock' };
+    })
+    .filter(Boolean);
 };
 
 const STOP_LOSS_TOKEN = /\[SL:([0-9]+(?:\.[0-9]+)?)\]/i;
@@ -721,18 +734,45 @@ export const AppProvider = ({ children }) => {
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
-      addToWatchlist: async (symbol) => {
-        if (!symbol || state.watchlistSymbols.includes(symbol)) return;
-        const meta = WATCHLIST_CATALOG.find((x) => x.symbol === symbol);
+      addToWatchlist: async (entry) => {
+        const normalizedSymbol = String(typeof entry === 'string' ? entry : entry?.symbol || '')
+          .trim()
+          .toUpperCase();
+        if (!normalizedSymbol || state.watchlistSymbols.includes(normalizedSymbol)) return;
+
+        const fallbackMeta = WATCHLIST_CATALOG.find((x) => x.symbol === normalizedSymbol) || null;
+        const providedMeta =
+          typeof entry === 'object' && entry
+            ? {
+                symbol: normalizedSymbol,
+                name: String(entry.name || normalizedSymbol),
+                category: String(entry.category || fallbackMeta?.category || 'equity').toLowerCase(),
+                sector: String(entry.sector || fallbackMeta?.sector || 'general').toLowerCase(),
+                source: String(entry.source || fallbackMeta?.source || (normalizedSymbol.endsWith('USDT')
+                  ? 'finnhub_crypto'
+                  : normalizedSymbol.includes('_')
+                    ? 'finnhub_fx'
+                    : 'finnhub_stock'))
+              }
+            : null;
+        const inferredMeta = {
+          symbol: normalizedSymbol,
+          name: normalizedSymbol,
+          category: normalizedSymbol.endsWith('USDT') ? 'crypto' : normalizedSymbol.includes('_') ? 'fx' : 'equity',
+          sector: normalizedSymbol.endsWith('USDT') ? 'crypto' : normalizedSymbol.includes('_') ? 'fx' : 'general',
+          source: normalizedSymbol.endsWith('USDT') ? 'finnhub_crypto' : normalizedSymbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'
+        };
+        const meta = providedMeta || fallbackMeta || inferredMeta;
         if (!meta) return;
 
-        const nextWatchlist = [...state.watchlistSymbols, symbol];
+        const nextWatchlist = [...state.watchlistSymbols, normalizedSymbol];
 
         if (isAuthenticated) {
           try {
-            await api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type: 'stock', category: meta.category });
+            const type = meta.category === 'crypto' ? 'crypto' : meta.category === 'fx' ? 'forex' : 'stock';
+            await api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type, category: meta.category });
           } catch {
-            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${symbol} en backend.`) });
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol} en backend.`) });
             return;
           }
         } else {
@@ -743,7 +783,7 @@ export const AppProvider = ({ children }) => {
 
         const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
         if (!(data?.quote && data?.candles?.c?.length)) {
-          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${symbol}.`) });
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol}.`) });
           return;
         }
 
