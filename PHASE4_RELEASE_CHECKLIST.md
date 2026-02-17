@@ -1,6 +1,6 @@
 # PHASE 4 RELEASE CHECKLIST
 
-Fecha: 2026-02-15
+Fecha: 2026-02-17
 
 ## 1) Código y CI
 
@@ -8,6 +8,7 @@ Fecha: 2026-02-15
 - [ ] `./scripts/phase4_gate.sh` en verde local.
 - [ ] Sin conflictos contra `main`.
 - [ ] `PHASE4_CLOSEOUT.md` actualizado.
+- [ ] Sprint AI Agent v2 validado en UI/API (Macro + Portfolio Advisor + outcomes por ventana).
 
 ## 2) Seguridad
 
@@ -20,6 +21,9 @@ Fecha: 2026-02-15
 - [ ] WS hub autenticado (`/ws`) validado con subscribe/unsubscribe.
 - [ ] Cron (`/api/health/cron`) reporta `enabled=true`.
 - [ ] Outcome evaluation visible en alertas.
+- [ ] Outcome windows (`24h/7d/30d`) visibles en rendimiento.
+- [ ] Macro Radar operativo (`GET/POST /api/alerts/macro`).
+- [ ] Portfolio Advisor operativo (`GET/POST /api/alerts/portfolio-advice`).
 
 ## 4) Mobile release
 

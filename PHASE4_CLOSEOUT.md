@@ -1,7 +1,7 @@
 # PHASE 4 CLOSEOUT
 
-Fecha: 2026-02-15
-Branch de trabajo: `feat/websocket-hub`
+Fecha: 2026-02-17
+Branch de trabajo: `codex/release-notes-v1`
 
 ## 1. Estado general
 
@@ -12,6 +12,9 @@ Fase 4 quedó implementada a nivel producto/arquitectura en código para web, AP
 - WebSocket Hub backend autenticado (`/ws`) con suscripción por símbolos.
 - Cron server-side multi-activo y estado operativo (`GET /api/health/cron`).
 - Outcome evaluation de alertas (`win/loss/open`) en backend.
+- Outcome tracking extendido por ventana:
+  - `outcome_24h`, `outcome_7d`, `outcome_30d`
+  - `price_at_24h`, `price_at_7d`, `price_at_30d`
 - Export CSV de portfolio (`GET /api/export/portfolio?format=csv&filter=all|active|sold`).
 - Auth web con cookie `httpOnly` + CSRF para mutaciones.
 - Password reset completo:
@@ -23,6 +26,24 @@ Fase 4 quedó implementada a nivel producto/arquitectura en código para web, AP
   - `pnpm-workspace.yaml`
   - `packages/nexusfin-core/`
 - E2E web con Playwright (smoke + login->portfolio).
+- AI Agent v2 (Sprint 1 + Sprint 2):
+  - Señales contextuales (perfil, watchlist, posición abierta, historial y noticias).
+  - Señales de entrada fuera de watchlist (discovery) en ciclos cron.
+  - Macro Radar:
+    - tabla `macro_insights`
+    - `GET /api/alerts/macro`
+    - `POST /api/alerts/macro/refresh`
+    - sub-tab `Macro` en Agente IA.
+  - Portfolio Advisor:
+    - tabla `portfolio_advice`
+    - `GET /api/alerts/portfolio-advice`
+    - `POST /api/alerts/portfolio-advice/refresh`
+    - UI en Agente IA y Cartera.
+  - Performance del agente extendida:
+    - `hitRate24h`, `hitRate7d`, `hitRate30d`
+    - precisión por tipo y por asset class
+    - trend de últimas 30 señales cerradas
+    - mejor/peor señal del mes.
 - App Store readiness móvil:
   - `nexusfin-mobile/eas.json`
   - `nexusfin-mobile/app.json` con icon/splash/adaptive config
@@ -47,6 +68,12 @@ Esto no bloquea código, pero sí el release público:
   - `npx eas submit --platform android --profile production` (Play Internal)
 - Validación final en dispositivos reales (deep links, push, offline UX, onboarding).
 
-## 5. Nota de cobertura
+## 5. Pendiente Fase 4 (no bloqueante de este bloque)
+
+- Mobile release real en stores (TestFlight/Play Internal) con credenciales productivas.
+- Pulido UX móvil adicional (si se quiere) antes de release público.
+- Iteración de cobertura opcional en runtime WS/cron.
+
+## 6. Nota de cobertura
 
 Frontend queda sólido para gates del proyecto; backend tiene cobertura funcional completa en rutas críticas de Fase 4, con áreas técnicas de baja cobertura aún en módulos de runtime WS/cron que se pueden mejorar en iteración posterior.
