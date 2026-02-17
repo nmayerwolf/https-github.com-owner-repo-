@@ -14,6 +14,7 @@ import Sparkline from './common/Sparkline';
 
 const MAIN_TABS = ['live', 'macro', 'history', 'performance'];
 const LIVE_TABS = ['all', 'compra', 'venta'];
+const ASSET_CLASS_TABS = ['all', 'equity', 'crypto', 'metal', 'commodity', 'bond', 'fx'];
 const HISTORY_TYPE_TABS = ['all', ...ALERT_TYPES];
 const OUTCOME_TABS = ['all', ...ALERT_OUTCOMES];
 
@@ -23,10 +24,19 @@ const MAIN_LABEL = {
   history: 'Historial',
   performance: 'Rendimiento'
 };
-  const LIVE_TAB_LABEL = {
+const LIVE_TAB_LABEL = {
   all: 'all',
   compra: 'compra',
   venta: 'venta'
+};
+const ASSET_CLASS_LABEL = {
+  all: 'all',
+  equity: 'equity',
+  crypto: 'crypto',
+  metal: 'metal',
+  commodity: 'commodity',
+  bond: 'bond',
+  fx: 'fx'
 };
 
 const HISTORY_TYPE_LABEL = {
@@ -137,6 +147,7 @@ const Alerts = () => {
 
   const [mainTab, setMainTab] = useState('live');
   const [liveTab, setLiveTab] = useState('all');
+  const [liveAssetClass, setLiveAssetClass] = useState('all');
 
   const [loadingId, setLoadingId] = useState('');
   const [thesis, setThesis] = useState(null);
@@ -178,10 +189,23 @@ const Alerts = () => {
   const [portfolioAdviceSkipped, setPortfolioAdviceSkipped] = useState(null);
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
-  const liveList = useMemo(
-    () => state.alerts.filter((a) => a.type !== 'stoploss' && (liveTab === 'all' || a.type === liveTab)),
-    [liveTab, state.alerts]
+  const assetsBySymbol = useMemo(
+    () =>
+      Object.fromEntries(
+        (state.assets || []).map((asset) => [String(asset?.symbol || '').toUpperCase(), String(asset?.category || '').toLowerCase()])
+      ),
+    [state.assets]
   );
+  const liveList = useMemo(() => {
+    return state.alerts.filter((alert) => {
+      if (alert.type === 'stoploss') return false;
+      if (liveTab !== 'all' && alert.type !== liveTab) return false;
+      if (liveAssetClass === 'all') return true;
+      const symbol = String(alert?.symbol || '').toUpperCase();
+      const category = assetsBySymbol[symbol];
+      return category === liveAssetClass;
+    });
+  }, [liveTab, liveAssetClass, state.alerts, assetsBySymbol]);
   const portfolio = useMemo(() => {
     const assetsBySymbol = Object.fromEntries((state.assets || []).map((a) => [a.symbol, a]));
     const active = (state.positions || []).filter((p) => !p.sellDate);
@@ -527,6 +551,18 @@ const Alerts = () => {
           {LIVE_TABS.map((t) => (
             <button key={t} type="button" onClick={() => setLiveTab(t)} style={{ borderColor: liveTab === t ? '#00E08E' : undefined }}>
               {LIVE_TAB_LABEL[t]}
+            </button>
+          ))}
+        </div>
+        <div className="alerts-toolbar" style={{ marginBottom: 8 }}>
+          {ASSET_CLASS_TABS.map((assetClass) => (
+            <button
+              key={assetClass}
+              type="button"
+              onClick={() => setLiveAssetClass(assetClass)}
+              style={{ borderColor: liveAssetClass === assetClass ? '#60A5FA' : undefined }}
+            >
+              {ASSET_CLASS_LABEL[assetClass]}
             </button>
           ))}
         </div>
