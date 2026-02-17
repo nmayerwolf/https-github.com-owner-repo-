@@ -10,6 +10,10 @@ const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22
 const PORTFOLIO_PAGE_SIZE = 8;
 
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenStopLoss }) {
+  const stopDistancePct = !position.sellDate && Number(position.stopLoss) > 0 && Number(position.current) > 0
+    ? ((Number(position.current) - Number(position.stopLoss)) / Number(position.current)) * 100
+    : null;
+
   return (
     <article className="card pos-row">
       <div className="pos-icon">{String(position.symbol).slice(0, 3)}</div>
@@ -19,7 +23,10 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
           Cantidad {position.quantity} · Compra {formatUSD(position.buyPrice)} · {shortDate(position.buyDate)}
         </div>
         {!position.sellDate && Number(position.stopLoss) > 0 ? (
-          <div className="pos-detail">Stop loss {formatUSD(Number(position.stopLoss))}</div>
+          <div className="pos-detail">
+            Stop loss {formatUSD(Number(position.stopLoss))}
+            {stopDistancePct != null ? ` · Distancia ${formatPct(stopDistancePct)}` : ''}
+          </div>
         ) : null}
         {position.sellDate ? <div className="pos-detail">Venta {formatUSD(position.sellPrice)} · {shortDate(position.sellDate)}</div> : null}
       </div>
