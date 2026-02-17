@@ -140,7 +140,7 @@ const Markets = () => {
         <h2 className="screen-title">Mercados</h2>
 
         <div className="search-bar">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar símbolo o activo..." />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar activo (ej: Apple o AAPL)..." />
         </div>
 
         <div className="ai-filter-stack" style={{ marginBottom: 8 }}>
