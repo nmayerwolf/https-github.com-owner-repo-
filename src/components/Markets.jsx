@@ -29,6 +29,7 @@ const Markets = () => {
   const [visibleCount, setVisibleCount] = useState(8);
   const loadMoreRef = useRef(null);
   const isStreamingLoad = state.progress.loaded < state.progress.total;
+  const remainingToLoad = Math.max(0, Number(state.progress.total || 0) - Number(state.progress.loaded || 0));
 
   const filtered = useMemo(() => {
     return state.assets.filter((a) => {
@@ -58,6 +59,7 @@ const Markets = () => {
   }, [state.assets, state.watchlistSymbols, category, query]);
 
   const visibleAssets = useMemo(() => watchlistAssets.slice(0, visibleCount), [watchlistAssets, visibleCount]);
+  const showStreamingNote = isStreamingLoad && (visibleAssets.length === 0 || remainingToLoad > 8);
   const hasMore = visibleAssets.length < watchlistAssets.length;
   const selectedAsset = useMemo(() => {
     const symbol = String(selectedSymbol || '').toUpperCase();
@@ -240,9 +242,9 @@ const Markets = () => {
       </section>
 
       <section className="card">
-        {isStreamingLoad && (
+        {showStreamingNote && (
           <div className="markets-loading-note">
-            Cargando mercado en segundo plano: {state.progress.loaded}/{state.progress.total}
+            Cargando mercado en segundo plano: {state.progress.loaded}/{state.progress.total} (faltan {remainingToLoad})
           </div>
         )}
         <div className="asset-list">
