@@ -18,8 +18,18 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
   let reconnectTimer = null;
   let stopped = false;
   let hadOpen = false;
+  let reconnectAttempt = 0;
+
+  const nextReconnectDelay = () => {
+    const base = hadOpen ? 2000 : 1200;
+    const expo = Math.min(20000, base * 2 ** reconnectAttempt);
+    const jitter = Math.floor(Math.random() * 700);
+    reconnectAttempt += 1;
+    return expo + jitter;
+  };
 
   const connect = () => {
+    onStatus?.(hadOpen ? 'reconnecting' : 'connecting');
     const url = new URL(buildWsUrl());
     const token = getToken();
     if (token) url.searchParams.set('token', token);
@@ -28,6 +38,7 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
 
     ws.onopen = () => {
       hadOpen = true;
+      reconnectAttempt = 0;
       onStatus?.('connected');
     };
 
@@ -57,7 +68,9 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
       }
     };
 
-    ws.onerror = () => {};
+    ws.onerror = () => {
+      onStatus?.('error');
+    };
 
     ws.onclose = (event) => {
       const code = Number(event?.code || 0);
@@ -70,7 +83,7 @@ export const createBackendSocket = ({ symbols = [], onTrade, onAlert, onStatus }
       }
 
       onStatus?.('disconnected');
-      if (!stopped) reconnectTimer = setTimeout(connect, hadOpen ? 5000 : 2000);
+      if (!stopped) reconnectTimer = setTimeout(connect, nextReconnectDelay());
     };
   };
 
