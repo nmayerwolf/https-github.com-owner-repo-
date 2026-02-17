@@ -29,6 +29,13 @@ const normalizeSymbolList = (value) => {
   return Array.from(new Set(raw)).slice(0, 60);
 };
 
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
 const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
   const current = toFinite(price);
   const prev = toFinite(previousClose);
@@ -346,6 +353,68 @@ router.get('/universe', async (_req, res) => {
     categories,
     count: MARKET_UNIVERSE.length
   });
+});
+
+router.get('/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ items: [], count: 0, q });
+
+    const cachedUniverse = MARKET_UNIVERSE.filter((item) => {
+      const symbol = normalizeSearchText(item.symbol);
+      const name = normalizeSearchText(item.name);
+      const needle = normalizeSearchText(q);
+      return symbol.includes(needle) || name.includes(needle);
+    }).slice(0, 20);
+
+    const key = `market:search:${normalizeSearchText(q)}`;
+    const remote = await getOrSet(key, 600, async () => {
+      try {
+        const out = await finnhub.symbolSearch(q);
+        const rows = Array.isArray(out?.result) ? out.result : [];
+        return rows
+          .filter((item) => String(item?.symbol || '').trim() && String(item?.description || '').trim())
+          .slice(0, 20)
+          .map((item) => {
+            const symbol = String(item.symbol || '').trim().toUpperCase();
+            const description = String(item.description || '').trim();
+            const type = String(item.type || '').trim().toLowerCase();
+            const category = type.includes('crypto')
+              ? 'crypto'
+              : type.includes('forex') || symbol.includes('_')
+                ? 'fx'
+                : type.includes('etf')
+                  ? 'equity'
+                  : 'equity';
+            return {
+              symbol,
+              name: description,
+              category,
+              source: category === 'crypto' ? 'finnhub_crypto' : category === 'fx' ? 'finnhub_fx' : 'finnhub_stock'
+            };
+          });
+      } catch {
+        return [];
+      }
+    });
+
+    const merged = new Map();
+    [...cachedUniverse, ...(Array.isArray(remote) ? remote : [])].forEach((item) => {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol || merged.has(symbol)) return;
+      merged.set(symbol, {
+        symbol,
+        name: String(item?.name || ''),
+        category: String(item?.category || 'equity'),
+        source: String(item?.source || (symbol.endsWith('USDT') ? 'finnhub_crypto' : symbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+      });
+    });
+
+    const items = [...merged.values()].slice(0, 20);
+    return res.json({ items, count: items.length, q });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 module.exports = router;

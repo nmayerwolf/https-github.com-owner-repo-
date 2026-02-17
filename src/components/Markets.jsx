@@ -20,12 +20,21 @@ const categoryLabel = {
   bond: 'Bond'
 };
 
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
 const Markets = () => {
   const { state, actions } = useApp();
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [candidate, setCandidate] = useState('');
   const [universe, setUniverse] = useState([]);
+  const [remoteUniverse, setRemoteUniverse] = useState([]);
+  const [candidateLoading, setCandidateLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [selectedFundamentals, setSelectedFundamentals] = useState({ loading: false, pe: '-', marketCap: '-' });
   const [visibleCount, setVisibleCount] = useState(8);
@@ -44,24 +53,61 @@ const Markets = () => {
 
   const normalizedCandidate = String(candidate || '').trim().toUpperCase();
   const searchableUniverse = useMemo(() => universe || [], [universe]);
+  const localCandidateMatches = useMemo(() => {
+    const raw = normalizeSearchText(candidate);
+    if (!raw) return [];
+    return searchableUniverse
+      .filter((item) => {
+        const symbol = normalizeSearchText(item.symbol);
+        const name = normalizeSearchText(item.name);
+        return symbol.includes(raw) || name.includes(raw);
+      })
+      .sort((a, b) => {
+        const aSymbol = normalizeSearchText(a.symbol);
+        const bSymbol = normalizeSearchText(b.symbol);
+        const aName = normalizeSearchText(a.name);
+        const bName = normalizeSearchText(b.name);
+        const aScore = aSymbol === raw ? 0 : aName === raw ? 1 : aSymbol.startsWith(raw) ? 2 : aName.startsWith(raw) ? 3 : 4;
+        const bScore = bSymbol === raw ? 0 : bName === raw ? 1 : bSymbol.startsWith(raw) ? 2 : bName.startsWith(raw) ? 3 : 4;
+        if (aScore !== bScore) return aScore - bScore;
+        return aSymbol.localeCompare(bSymbol);
+      })
+      .slice(0, 8);
+  }, [searchableUniverse, candidate]);
+
+  const candidateSuggestions = useMemo(() => {
+    const map = new Map();
+    [...localCandidateMatches, ...(remoteUniverse || [])].forEach((item) => {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol || map.has(symbol)) return;
+      map.set(symbol, {
+        symbol,
+        name: String(item?.name || ''),
+        category: String(item?.category || 'equity'),
+        source: String(item?.source || (symbol.endsWith('USDT') ? 'finnhub_crypto' : symbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+      });
+    });
+    return [...map.values()].slice(0, 8);
+  }, [localCandidateMatches, remoteUniverse]);
+
   const watchlistSet = useMemo(
     () => new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase())),
     [state.watchlistSymbols]
   );
   const selectedUniverseMatch = useMemo(() => {
-    const raw = String(candidate || '').trim().toLowerCase();
+    const raw = normalizeSearchText(candidate);
     if (!raw) return null;
-    const bySymbol = searchableUniverse.find((item) => String(item.symbol || '').toLowerCase() === raw);
+    const bySymbol = candidateSuggestions.find((item) => normalizeSearchText(item.symbol) === raw);
     if (bySymbol) return bySymbol;
-    const byExactName = searchableUniverse.find((item) => String(item.name || '').toLowerCase() === raw);
+    const byExactName = candidateSuggestions.find((item) => normalizeSearchText(item.name) === raw);
     if (byExactName) return byExactName;
-    const bySymbolPrefix = searchableUniverse.find((item) => String(item.symbol || '').toLowerCase().startsWith(raw));
+    const bySymbolPrefix = candidateSuggestions.find((item) => normalizeSearchText(item.symbol).startsWith(raw));
     if (bySymbolPrefix) return bySymbolPrefix;
-    const byNamePrefix = searchableUniverse.find((item) => String(item.name || '').toLowerCase().startsWith(raw));
+    const byNamePrefix = candidateSuggestions.find((item) => normalizeSearchText(item.name).startsWith(raw));
     if (byNamePrefix) return byNamePrefix;
-    const byNameContains = searchableUniverse.find((item) => String(item.name || '').toLowerCase().includes(raw));
+    const byNameContains = candidateSuggestions.find((item) => normalizeSearchText(item.name).includes(raw));
     return byNameContains || null;
-  }, [searchableUniverse, candidate]);
+  }, [candidateSuggestions, candidate]);
   const isAlreadyInWatchlist = useMemo(() => {
     if (selectedUniverseMatch?.symbol) return watchlistSet.has(String(selectedUniverseMatch.symbol).toUpperCase());
     return watchlistSet.has(normalizedCandidate);
@@ -130,6 +176,43 @@ const Markets = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const raw = String(candidate || '').trim();
+    if (raw.length < 2) {
+      setRemoteUniverse([]);
+      setCandidateLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    setCandidateLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const out = await api.marketSearch(raw);
+        if (!active) return;
+        const items = Array.isArray(out?.items) ? out.items : [];
+        setRemoteUniverse(
+          items.map((item) => ({
+            symbol: String(item?.symbol || '').toUpperCase(),
+            name: String(item?.name || ''),
+            category: String(item?.category || 'equity').toLowerCase(),
+            source: String(item?.source || (String(item?.symbol || '').toUpperCase().includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+          }))
+        );
+      } catch {
+        if (!active) return;
+        setRemoteUniverse([]);
+      } finally {
+        if (active) setCandidateLoading(false);
+      }
+    }, 260);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [candidate]);
 
   useEffect(() => {
     if (selectedSymbol) return;
@@ -229,8 +312,25 @@ const Markets = () => {
                   ? isAlreadyInWatchlist
                     ? `${selectedUniverseMatch.symbol} ya está en watchlist.`
                     : `Se agregará: ${selectedUniverseMatch.symbol} - ${selectedUniverseMatch.name}`
-                  : 'No encontramos ese activo. Probá con nombre o ticker.'}
+                  : candidateLoading
+                    ? 'Buscando activos...'
+                    : 'No encontramos ese activo. Probá con nombre o ticker.'}
               </span>
+            ) : null}
+            {candidateSuggestions.length ? (
+              <div className="markets-watchlist-suggestions">
+                {candidateSuggestions.map((item) => (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    className={`markets-watchlist-suggestion ${selectedUniverseMatch?.symbol === item.symbol ? 'is-active' : ''}`}
+                    onClick={() => setCandidate(item.symbol)}
+                  >
+                    <span className="mono">{item.symbol}</span>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
             ) : null}
           </label>
           <button

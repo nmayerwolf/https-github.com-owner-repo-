@@ -10,6 +10,7 @@ jest.mock('../src/services/finnhub', () => ({
   cryptoCandles: jest.fn(),
   forexCandles: jest.fn(),
   profile: jest.fn(),
+  symbolSearch: jest.fn(),
   companyNews: jest.fn(),
   generalNews: jest.fn()
 }));
@@ -102,6 +103,28 @@ describe('market routes', () => {
     expect(res.body.categories).toContain('metal');
     expect(res.body.categories).toContain('crypto');
     expect(res.body.categories).toContain('fx');
+  });
+
+  it('returns market search results merged from universe and provider', async () => {
+    finnhub.symbolSearch.mockResolvedValueOnce({
+      result: [{ symbol: 'NSRGY', description: 'Nestle SA ADR', type: 'Common Stock' }]
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/search?q=nestle');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(res.body.items.some((item) => item.symbol === 'NSRGY')).toBe(true);
+  });
+
+  it('returns empty market search when query is too short', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/market/search?q=n');
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
+    expect(finnhub.symbolSearch).not.toHaveBeenCalled();
   });
 
   it('returns proxied company news list', async () => {

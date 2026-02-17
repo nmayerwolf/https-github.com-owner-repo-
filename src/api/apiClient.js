@@ -125,6 +125,7 @@ export const api = {
   },
   profile: (symbol) => request(`/market/profile?symbol=${encodeURIComponent(symbol)}`),
   marketUniverse: () => request('/market/universe'),
+  marketSearch: (q) => request(`/market/search?q=${encodeURIComponent(String(q || ''))}`),
   marketNews: (arg1 = {}, fromArg, toArg) => {
     const q = new URLSearchParams();
     if (typeof arg1 === 'string') {

@@ -1077,6 +1077,30 @@ a:focus-visible {
   align-self: end;
 }
 
+.markets-watchlist-suggestions {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.markets-watchlist-suggestion {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: var(--bg-card-hover);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+}
+
+.markets-watchlist-suggestion.is-active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
 .markets-selected-pick {
   margin-top: 10px;
 }
