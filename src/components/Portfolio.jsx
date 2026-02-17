@@ -149,17 +149,37 @@ const Portfolio = () => {
   const bestPosition = [...activeRows, ...soldRows].sort((a, b) => b.pnlPctPos - a.pnlPctPos)[0];
   const worstPosition = [...activeRows, ...soldRows].sort((a, b) => a.pnlPctPos - b.pnlPctPos)[0];
 
+  const searchableAssets = useMemo(() => {
+    if (Array.isArray(assetUniverse) && assetUniverse.length) return assetUniverse;
+    return (state.assets || []).map((item) => ({
+      symbol: String(item?.symbol || '').toUpperCase(),
+      name: String(item?.name || ''),
+      category: String(item?.category || 'equity').toLowerCase()
+    }));
+  }, [assetUniverse, state.assets]);
+
   const localAssetMatches = useMemo(() => {
     const raw = normalizeSearchText(assetQuery);
-    if (!raw) return [];
-    return (assetUniverse || [])
+    const base = searchableAssets || [];
+    if (!raw) return base.slice(0, 8);
+    return base
       .filter((item) => {
         const symbol = normalizeSearchText(item.symbol);
         const name = normalizeSearchText(item.name);
         return symbol.includes(raw) || name.includes(raw);
       })
+      .sort((a, b) => {
+        const aSymbol = normalizeSearchText(a.symbol);
+        const bSymbol = normalizeSearchText(b.symbol);
+        const aName = normalizeSearchText(a.name);
+        const bName = normalizeSearchText(b.name);
+        const aScore = aSymbol === raw ? 0 : aName === raw ? 1 : aSymbol.startsWith(raw) ? 2 : aName.startsWith(raw) ? 3 : 4;
+        const bScore = bSymbol === raw ? 0 : bName === raw ? 1 : bSymbol.startsWith(raw) ? 2 : bName.startsWith(raw) ? 3 : 4;
+        if (aScore !== bScore) return aScore - bScore;
+        return aSymbol.localeCompare(bSymbol);
+      })
       .slice(0, 8);
-  }, [assetUniverse, assetQuery]);
+  }, [searchableAssets, assetQuery]);
 
   const assetSuggestions = useMemo(() => {
     const map = new Map();
@@ -508,7 +528,9 @@ const Portfolio = () => {
                   ? `Se cargará: ${selectedAssetMatch.symbol} - ${selectedAssetMatch.name}`
                   : assetLoading
                     ? 'Buscando activos...'
-                    : 'No encontramos ese activo. Probá con nombre o ticker.'}
+                    : String(assetQuery || '').trim().length >= 2
+                      ? 'No encontramos ese activo. Probá con nombre o ticker.'
+                      : 'Escribí al menos 2 letras o elegí una sugerencia.'}
               </span>
             ) : null}
             {assetSuggestions.length ? (
