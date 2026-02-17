@@ -57,4 +57,19 @@ describe('alerts engine', () => {
     expect(out[0].type).toBe('stoploss');
     expect(out[0].symbol).toBe('AAA');
   });
+
+  it('triggers take-profit alert when price rises above buy-based target', () => {
+    const positions = [{ id: '1', symbol: 'AAA', buyPrice: 100, quantity: 1, takeProfitPct: 10 }];
+    const bySymbol = {
+      AAA: {
+        price: 111,
+        indicators: { atr: 2, rsi: 50 }
+      }
+    };
+
+    const out = stopLossAlerts(positions, bySymbol);
+    expect(out.length).toBe(1);
+    expect(out[0].type).toBe('takeprofit');
+    expect(out[0].symbol).toBe('AAA');
+  });
 });

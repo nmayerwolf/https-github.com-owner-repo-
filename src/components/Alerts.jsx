@@ -198,8 +198,8 @@ const Alerts = () => {
   );
   const liveList = useMemo(() => {
     return state.alerts.filter((alert) => {
-      if (alert.type === 'stoploss') return false;
-      if (liveTab !== 'all' && alert.type !== liveTab) return false;
+      if (liveTab === 'compra' && alert.type !== 'compra') return false;
+      if (liveTab === 'venta' && !['venta', 'stoploss', 'takeprofit'].includes(String(alert.type || '').toLowerCase())) return false;
       if (liveAssetClass === 'all') return true;
       const symbol = String(alert?.symbol || '').toUpperCase();
       const category = assetsBySymbol[symbol];

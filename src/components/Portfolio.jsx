@@ -3,9 +3,9 @@ import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
-const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', amountUsd: '', stopLoss: '' };
+const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', amountUsd: '', stopLoss: '', takeProfit: '' };
 const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10) };
-const emptyStopLoss = { id: '', symbol: '', stopLoss: '' };
+const emptyRiskTargets = { id: '', symbol: '', stopLoss: '', takeProfit: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
 const PORTFOLIO_PAGE_SIZE = 8;
 const normalizeSearchText = (value) =>
@@ -15,7 +15,7 @@ const normalizeSearchText = (value) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenStopLoss }) {
+const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets }) {
   const slPct = Number(position.stopLossPct);
   const legacySlPrice = Number(position.stopLoss);
   const stopPrice =
@@ -26,6 +26,17 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
         : null;
   const stopDistancePct = !position.sellDate && Number.isFinite(stopPrice) && stopPrice > 0 && Number(position.current) > 0
     ? ((Number(position.current) - Number(stopPrice)) / Number(position.current)) * 100
+    : null;
+  const tpPct = Number(position.takeProfitPct);
+  const legacyTpPrice = Number(position.takeProfit);
+  const takeProfitPrice =
+    !position.sellDate && Number.isFinite(tpPct) && tpPct > 0 && Number(position.buyPrice) > 0
+      ? Number(position.buyPrice) * (1 + tpPct / 100)
+      : Number.isFinite(legacyTpPrice) && legacyTpPrice > 0
+        ? legacyTpPrice
+        : null;
+  const takeProfitDistancePct = !position.sellDate && Number.isFinite(takeProfitPrice) && takeProfitPrice > 0 && Number(position.current) > 0
+    ? ((Number(takeProfitPrice) - Number(position.current)) / Number(position.current)) * 100
     : null;
 
   return (
@@ -43,6 +54,13 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
             {stopDistancePct != null ? ` · Distancia ${formatPct(stopDistancePct)}` : ''}
           </div>
         ) : null}
+        {!position.sellDate && Number.isFinite(takeProfitPrice) && takeProfitPrice > 0 ? (
+          <div className="pos-detail">
+            Take profit {Number.isFinite(tpPct) && tpPct > 0 ? `+${tpPct.toFixed(2)}%` : formatUSD(Number(takeProfitPrice))}
+            {Number.isFinite(tpPct) && tpPct > 0 ? ` (${formatUSD(Number(takeProfitPrice))})` : ''}
+            {takeProfitDistancePct != null ? ` · Distancia ${formatPct(takeProfitDistancePct)}` : ''}
+          </div>
+        ) : null}
         {position.sellDate ? <div className="pos-detail">Venta {formatUSD(position.sellPrice)} · {shortDate(position.sellDate)}</div> : null}
       </div>
       <div className="pos-vals">
@@ -52,8 +70,8 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
         </div>
         {!position.sellDate ? (
           <div className="row" style={{ marginTop: 6, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => onOpenStopLoss(position)}>
-              Stop loss
+            <button type="button" onClick={() => onOpenRiskTargets(position)}>
+              SL / TP
             </button>
             <button type="button" onClick={() => onOpenSell(position)}>
               Vender
@@ -78,7 +96,7 @@ const Portfolio = () => {
   const [assetRemote, setAssetRemote] = useState([]);
   const [assetLoading, setAssetLoading] = useState(false);
   const [sellModal, setSellModal] = useState(emptySell);
-  const [stopLossModal, setStopLossModal] = useState(emptyStopLoss);
+  const [riskTargetsModal, setRiskTargetsModal] = useState(emptyRiskTargets);
   const [exportFilter, setExportFilter] = useState('all');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -177,7 +195,8 @@ const Portfolio = () => {
     !!form.buyDate &&
     Number(form.buyPrice) > 0 &&
     Number(form.amountUsd) > 0 &&
-    (!form.stopLoss || Number(form.stopLoss) > 0);
+    (!form.stopLoss || Number(form.stopLoss) > 0) &&
+    (!form.takeProfit || Number(form.takeProfit) > 0);
 
   const submit = (e) => {
     e.preventDefault();
@@ -195,7 +214,8 @@ const Portfolio = () => {
       buyPrice,
       quantity,
       notes: '',
-      stopLossPct: form.stopLoss ? Number(form.stopLoss) : null
+      stopLossPct: form.stopLoss ? Number(form.stopLoss) : null,
+      takeProfitPct: form.takeProfit ? Number(form.takeProfit) : null
     });
     setForm(emptyForm);
     setAssetQuery('');
@@ -210,12 +230,18 @@ const Portfolio = () => {
     setSellModal(emptySell);
   };
 
-  const submitStopLoss = (e) => {
+  const submitRiskTargets = (e) => {
     e.preventDefault();
-    const value = Number(stopLossModal.stopLoss);
-    if (!stopLossModal.id || !Number.isFinite(value) || value <= 0) return;
-    actions.setPositionStopLoss(stopLossModal.id, value);
-    setStopLossModal(emptyStopLoss);
+    const stopLossPct = Number(riskTargetsModal.stopLoss);
+    const takeProfitPct = Number(riskTargetsModal.takeProfit);
+    const hasStopLoss = Number.isFinite(stopLossPct) && stopLossPct > 0;
+    const hasTakeProfit = Number.isFinite(takeProfitPct) && takeProfitPct > 0;
+    if (!riskTargetsModal.id || (!hasStopLoss && !hasTakeProfit)) return;
+    actions.setPositionRiskTargets(riskTargetsModal.id, {
+      stopLossPct: hasStopLoss ? stopLossPct : null,
+      takeProfitPct: hasTakeProfit ? takeProfitPct : null
+    });
+    setRiskTargetsModal(emptyRiskTargets);
   };
 
   const exportCsv = async () => {
@@ -363,12 +389,13 @@ const Portfolio = () => {
   );
 
   const handleDelete = useCallback((id) => actions.deletePosition(id), [actions]);
-  const handleOpenStopLoss = useCallback(
+  const handleOpenRiskTargets = useCallback(
     (position) =>
-      setStopLossModal({
+      setRiskTargetsModal({
         id: position.id,
         symbol: position.symbol,
-        stopLoss: position.stopLossPct ? String(position.stopLossPct) : ''
+        stopLoss: position.stopLossPct ? String(position.stopLossPct) : '',
+        takeProfit: position.takeProfitPct ? String(position.takeProfitPct) : ''
       }),
     []
   );
@@ -516,6 +543,10 @@ const Portfolio = () => {
             <span className="muted">Stop loss % (opcional)</span>
             <input type="number" step="0.0001" value={form.stopLoss} onChange={(e) => setForm({ ...form, stopLoss: e.target.value })} />
           </label>
+          <label className="label">
+            <span className="muted">Take profit % (opcional)</span>
+            <input type="number" step="0.0001" value={form.takeProfit} onChange={(e) => setForm({ ...form, takeProfit: e.target.value })} />
+          </label>
           <button type="submit" disabled={!canSubmitPosition}>
             Agregar
           </button>
@@ -550,7 +581,7 @@ const Portfolio = () => {
       </section>
 
       {visibleRows.map((p) => (
-        <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} onOpenStopLoss={handleOpenStopLoss} />
+        <PositionRow key={p.id} position={p} onOpenSell={handleOpenSell} onDelete={handleDelete} onOpenRiskTargets={handleOpenRiskTargets} />
       ))}
       {hasMoreRows ? (
         <div className="card portfolio-more">
@@ -596,26 +627,34 @@ const Portfolio = () => {
         </div>
       )}
 
-      {stopLossModal.id && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setStopLossModal(emptyStopLoss)}>
+      {riskTargetsModal.id && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setRiskTargetsModal(emptyRiskTargets)}>
           <section className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h3>Definir stop loss · {stopLossModal.symbol}</h3>
-            <form onSubmit={submitStopLoss} className="grid" style={{ marginTop: 8 }}>
+            <h3>Definir SL / TP · {riskTargetsModal.symbol}</h3>
+            <form onSubmit={submitRiskTargets} className="grid" style={{ marginTop: 8 }}>
               <label className="label">
                 <span className="muted">Stop loss %</span>
                 <input
                   type="number"
                   step="0.0001"
-                  value={stopLossModal.stopLoss}
-                  required
-                  onChange={(e) => setStopLossModal({ ...stopLossModal, stopLoss: e.target.value })}
+                  value={riskTargetsModal.stopLoss}
+                  onChange={(e) => setRiskTargetsModal({ ...riskTargetsModal, stopLoss: e.target.value })}
+                />
+              </label>
+              <label className="label">
+                <span className="muted">Take profit %</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={riskTargetsModal.takeProfit}
+                  onChange={(e) => setRiskTargetsModal({ ...riskTargetsModal, takeProfit: e.target.value })}
                 />
               </label>
               <div className="row">
-                <button type="button" onClick={() => setStopLossModal(emptyStopLoss)}>
+                <button type="button" onClick={() => setRiskTargetsModal(emptyRiskTargets)}>
                   Cancelar
                 </button>
-                <button type="submit">Guardar stop loss</button>
+                <button type="submit">Guardar SL / TP</button>
               </div>
             </form>
           </section>

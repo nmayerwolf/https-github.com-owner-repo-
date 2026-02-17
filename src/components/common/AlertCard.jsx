@@ -6,6 +6,7 @@ const labelByType = {
   compra: 'Compra fuerte',
   venta: 'Venta',
   stoploss: 'Stop loss',
+  takeprofit: 'Take profit',
   opportunity: 'Compra fuerte',
   bearish: 'Venta',
   stop_loss: 'Stop loss'
@@ -15,6 +16,7 @@ const toneByType = {
   compra: 'buy',
   venta: 'sell',
   stoploss: 'warning',
+  takeprofit: 'sell',
   opportunity: 'buy',
   bearish: 'sell',
   stop_loss: 'warning'

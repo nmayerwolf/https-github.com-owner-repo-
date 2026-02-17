@@ -205,7 +205,9 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
 };
 
 const STOP_LOSS_PCT_TOKEN = /\[SLP:([0-9]+(?:\.[0-9]+)?)\]/i;
+const TAKE_PROFIT_PCT_TOKEN = /\[TPP:([0-9]+(?:\.[0-9]+)?)\]/i;
 const STOP_LOSS_PRICE_TOKEN = /\[SL:([0-9]+(?:\.[0-9]+)?)\]/i;
+const TAKE_PROFIT_PRICE_TOKEN = /\[TP:([0-9]+(?:\.[0-9]+)?)\]/i;
 
 const parseStopLossPctFromNotes = (notes) => {
   const text = String(notes || '');
@@ -223,12 +225,36 @@ const parseStopLossPriceFromNotes = (notes) => {
   return Number.isFinite(value) && value > 0 ? value : null;
 };
 
-const withStopLossPctToken = (notes, stopLossPct) => {
-  const base = String(notes || '').replace(STOP_LOSS_PCT_TOKEN, '').replace(STOP_LOSS_PRICE_TOKEN, '').trim();
-  const value = Number(stopLossPct);
-  if (!Number.isFinite(value) || value <= 0) return base;
-  const token = `[SLP:${value}]`;
-  return base ? `${token} ${base}` : token;
+const parseTakeProfitPctFromNotes = (notes) => {
+  const text = String(notes || '');
+  const match = text.match(TAKE_PROFIT_PCT_TOKEN);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const parseTakeProfitPriceFromNotes = (notes) => {
+  const text = String(notes || '');
+  const match = text.match(TAKE_PROFIT_PRICE_TOKEN);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const withRiskTokens = (notes, stopLossPct, takeProfitPct) => {
+  const base = String(notes || '')
+    .replace(STOP_LOSS_PCT_TOKEN, '')
+    .replace(TAKE_PROFIT_PCT_TOKEN, '')
+    .replace(STOP_LOSS_PRICE_TOKEN, '')
+    .replace(TAKE_PROFIT_PRICE_TOKEN, '')
+    .trim();
+  const sl = Number(stopLossPct);
+  const tp = Number(takeProfitPct);
+  const tokens = [];
+  if (Number.isFinite(sl) && sl > 0) tokens.push(`[SLP:${sl}]`);
+  if (Number.isFinite(tp) && tp > 0) tokens.push(`[TPP:${tp}]`);
+  if (!tokens.length) return base;
+  return base ? `${tokens.join(' ')} ${base}` : tokens.join(' ');
 };
 
 const normalizePosition = (row) => ({
@@ -243,7 +269,9 @@ const normalizePosition = (row) => ({
   sellPrice: row.sellPrice || row.sell_price ? Number(row.sellPrice ?? row.sell_price) : null,
   notes: row.notes || '',
   stopLossPct: parseStopLossPctFromNotes(row.notes),
-  stopLoss: parseStopLossPriceFromNotes(row.notes)
+  stopLoss: parseStopLossPriceFromNotes(row.notes),
+  takeProfitPct: parseTakeProfitPctFromNotes(row.notes),
+  takeProfit: parseTakeProfitPriceFromNotes(row.notes)
 });
 
 const fetchSnapshotViaProxy = async (meta) => {
@@ -665,7 +693,7 @@ export const AppProvider = ({ children }) => {
         dispatch({ type: 'SET_CONFIG', payload: config });
       },
       addPosition: async (position) => {
-        const mergedNotes = withStopLossPctToken(position.notes || '', position.stopLossPct);
+        const mergedNotes = withRiskTokens(position.notes || '', position.stopLossPct, position.takeProfitPct);
         if (isAuthenticated) {
           try {
             const payload = {
@@ -686,14 +714,24 @@ export const AppProvider = ({ children }) => {
           }
         }
 
-        const next = [...state.positions, { ...position, notes: mergedNotes, stopLossPct: Number(position.stopLossPct) || null, stopLoss: null }];
+        const next = [
+          ...state.positions,
+          {
+            ...position,
+            notes: mergedNotes,
+            stopLossPct: Number(position.stopLossPct) || null,
+            stopLoss: null,
+            takeProfitPct: Number(position.takeProfitPct) || null,
+            takeProfit: null
+          }
+        ];
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
-      setPositionStopLoss: async (id, stopLossPct) => {
+      setPositionRiskTargets: async (id, { stopLossPct, takeProfitPct }) => {
         const current = state.positions.find((p) => p.id === id);
         if (!current) return;
-        const nextNotes = withStopLossPctToken(current.notes || '', stopLossPct);
+        const nextNotes = withRiskTokens(current.notes || '', stopLossPct, takeProfitPct);
 
         if (isAuthenticated) {
           try {
@@ -702,13 +740,22 @@ export const AppProvider = ({ children }) => {
             dispatch({ type: 'SET_POSITIONS', payload: state.positions.map((p) => (p.id === id ? updated : p)) });
             return;
           } catch {
-            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo guardar el stop loss de la posición.') });
+            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'No se pudo guardar SL/TP de la posición.') });
             return;
           }
         }
 
         const next = state.positions.map((p) =>
-          p.id === id ? { ...p, notes: nextNotes, stopLossPct: Number(stopLossPct) || null, stopLoss: null } : p
+          p.id === id
+            ? {
+                ...p,
+                notes: nextNotes,
+                stopLossPct: Number(stopLossPct) || null,
+                stopLoss: null,
+                takeProfitPct: Number(takeProfitPct) || null,
+                takeProfit: null
+              }
+            : p
         );
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
