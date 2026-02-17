@@ -4,7 +4,8 @@ import { useApp } from '../store/AppContext';
 import { WATCHLIST_CATALOG } from '../utils/constants';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
-const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', amountUsd: '', stopLoss: '', takeProfit: '' };
+const todayIsoDate = () => new Date().toISOString().slice(0, 10);
+const createEmptyForm = () => ({ symbol: '', name: '', category: 'equity', buyDate: todayIsoDate(), buyPrice: '', amountUsd: '', stopLoss: '', takeProfit: '' });
 const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10), sellQuantity: '', maxQuantity: 0 };
 const emptyRiskTargets = { id: '', symbol: '', stopLoss: '', takeProfit: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
@@ -99,7 +100,7 @@ const Portfolio = () => {
   const { state, actions } = useApp();
   const [tab, setTab] = useState('active');
   const [visibleCount, setVisibleCount] = useState(PORTFOLIO_PAGE_SIZE);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(createEmptyForm());
   const [assetQuery, setAssetQuery] = useState('');
   const [assetUniverse, setAssetUniverse] = useState([]);
   const [assetRemote, setAssetRemote] = useState([]);
@@ -278,7 +279,7 @@ const Portfolio = () => {
       stopLossPct: slPct,
       takeProfitPct: tpPct
     });
-    setForm(emptyForm);
+    setForm(createEmptyForm());
     setAssetQuery('');
     setAssetRemote([]);
     setFormError('');
