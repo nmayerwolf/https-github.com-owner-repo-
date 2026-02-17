@@ -754,49 +754,56 @@ const Alerts = () => {
     const hitRate7dPct = Number(stats.hitRate7d || 0) * 100;
     const hitRate30dPct = Number(stats.hitRate30d || 0) * 100;
     const trend = Array.isArray(stats.trendLast30) ? stats.trendLast30.map((v) => (Number(v) > 0 ? 1 : 0)) : [];
+    const metricClass = (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 'perf-val';
+      if (n > 0) return 'perf-val up';
+      if (n < 0) return 'perf-val down';
+      return 'perf-val';
+    };
 
     return (
       <>
         <section className="grid grid-2">
           <article className="card">
             <h3 className="section-title">Tasa de acierto</h3>
-            <div className="ind-val mono">{formatPct(agentPerformance.hitRate)}</div>
+            <div className={`ind-val mono ${metricClass(agentPerformance.hitRate)}`}>{formatPct(agentPerformance.hitRate)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Retorno Promedio</h3>
-            <div className="ind-val mono">{formatPct(agentPerformance.avgReturn)}</div>
+            <div className={`ind-val mono ${metricClass(agentPerformance.avgReturn)}`}>{formatPct(agentPerformance.avgReturn)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Pérdida promedio</h3>
-            <div className="ind-val mono">{formatPct(agentPerformance.avgLoss)}</div>
+            <div className={`ind-val mono ${metricClass(agentPerformance.avgLoss)}`}>{formatPct(agentPerformance.avgLoss)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Riesgo/Beneficio</h3>
-            <div className="ind-val mono">1:{agentPerformance.rr.toFixed(1)}</div>
+            <div className="ind-val mono perf-val">1:{agentPerformance.rr.toFixed(1)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Tasa de acierto (historial)</h3>
-            <div className="ind-val mono">{formatPct(hitRatePct)}</div>
+            <div className={`ind-val mono ${metricClass(hitRatePct)}`}>{formatPct(hitRatePct)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Retorno Promedio (historial)</h3>
-            <div className="ind-val mono">{formatPct(Number(stats.avgReturn || 0))}</div>
+            <div className={`ind-val mono ${metricClass(Number(stats.avgReturn || 0))}`}>{formatPct(Number(stats.avgReturn || 0))}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Hit Rate 24h</h3>
-            <div className="ind-val mono">{formatPct(hitRate24hPct)}</div>
+            <div className={`ind-val mono ${metricClass(hitRate24hPct)}`}>{formatPct(hitRate24hPct)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Hit Rate 7d</h3>
-            <div className="ind-val mono">{formatPct(hitRate7dPct)}</div>
+            <div className={`ind-val mono ${metricClass(hitRate7dPct)}`}>{formatPct(hitRate7dPct)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Hit Rate 30d</h3>
-            <div className="ind-val mono">{formatPct(hitRate30dPct)}</div>
+            <div className={`ind-val mono ${metricClass(hitRate30dPct)}`}>{formatPct(hitRate30dPct)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Total alertas</h3>
-            <div className="ind-val mono">{Number(stats.total || 0)}</div>
+            <div className="ind-val mono perf-val">{Number(stats.total || 0)}</div>
           </article>
           <article className="card">
             <h3 className="section-title">Desglose</h3>

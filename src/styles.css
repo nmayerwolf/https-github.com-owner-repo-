@@ -884,6 +884,10 @@ a:focus-visible {
   line-height: 1.15;
 }
 
+.perf-val {
+  font-weight: 500;
+}
+
 .alerts-history-card {
   border-color: var(--border);
 }
