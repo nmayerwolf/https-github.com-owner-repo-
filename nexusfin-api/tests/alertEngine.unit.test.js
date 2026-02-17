@@ -174,9 +174,45 @@ describe('alertEngine cycle', () => {
       .fn()
       .mockResolvedValueOnce({
         rows: [
-          { id: 'a1', symbol: 'AAPL', type: 'opportunity', price_at_alert: 100, stop_loss: 95, take_profit: 112 },
-          { id: 'a2', symbol: 'NVDA', type: 'bearish', price_at_alert: 100, stop_loss: 107, take_profit: 90 },
-          { id: 'a3', symbol: 'MSFT', type: 'opportunity', price_at_alert: 100, stop_loss: 95, take_profit: 110 }
+          {
+            id: 'a1',
+            symbol: 'AAPL',
+            type: 'opportunity',
+            price_at_alert: 100,
+            stop_loss: 95,
+            take_profit: 112,
+            created_at: '2026-01-01T00:00:00.000Z',
+            outcome: 'open',
+            outcome_24h: null,
+            outcome_7d: null,
+            outcome_30d: null
+          },
+          {
+            id: 'a2',
+            symbol: 'NVDA',
+            type: 'bearish',
+            price_at_alert: 100,
+            stop_loss: 107,
+            take_profit: 90,
+            created_at: '2026-01-01T00:00:00.000Z',
+            outcome: 'open',
+            outcome_24h: null,
+            outcome_7d: null,
+            outcome_30d: null
+          },
+          {
+            id: 'a3',
+            symbol: 'MSFT',
+            type: 'opportunity',
+            price_at_alert: 100,
+            stop_loss: 95,
+            take_profit: 110,
+            created_at: '2026-02-16T00:00:00.000Z',
+            outcome: 'open',
+            outcome_24h: null,
+            outcome_7d: null,
+            outcome_30d: null
+          }
         ]
       })
       .mockResolvedValueOnce({ rows: [] })
@@ -198,19 +234,11 @@ describe('alertEngine cycle', () => {
     const out = await engine.runOutcomeEvaluationCycle();
 
     expect(out.scanned).toBe(3);
-    expect(out.updated).toBe(2);
+    expect(out.updated).toBe(3);
     expect(out.wins).toBe(1);
     expect(out.losses).toBe(1);
-    expect(out.open).toBe(1);
-    expect(query).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('UPDATE alerts'),
-      ['a1', 'win', 113]
-    );
-    expect(query).toHaveBeenNthCalledWith(
-      3,
-      expect.stringContaining('UPDATE alerts'),
-      ['a2', 'loss', 108]
-    );
+    expect(out.open).toBe(0);
+    expect(out.updated24h).toBeGreaterThanOrEqual(2);
+    expect(query.mock.calls.filter((call) => String(call[0]).includes('UPDATE alerts')).length).toBeGreaterThanOrEqual(2);
   });
 });

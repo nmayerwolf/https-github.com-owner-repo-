@@ -619,6 +619,10 @@ const Alerts = () => {
   const renderPerformance = () => {
     const stats = historyData.stats || {};
     const hitRatePct = Number(stats.hitRate || 0) * 100;
+    const hitRate24hPct = Number(stats.hitRate24h || 0) * 100;
+    const hitRate7dPct = Number(stats.hitRate7d || 0) * 100;
+    const hitRate30dPct = Number(stats.hitRate30d || 0) * 100;
+    const trend = Array.isArray(stats.trendLast30) ? stats.trendLast30.map((v) => (Number(v) > 0 ? 1 : 0)) : [];
 
     return (
       <>
@@ -648,6 +652,18 @@ const Alerts = () => {
             <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(Number(stats.avgReturn || 0))}</div>
           </article>
           <article className="card">
+            <h3>Hit Rate 24h</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRate24hPct)}</div>
+          </article>
+          <article className="card">
+            <h3>Hit Rate 7d</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRate7dPct)}</div>
+          </article>
+          <article className="card">
+            <h3>Hit Rate 30d</h3>
+            <div style={{ fontSize: 22, marginTop: 6 }}>{formatPct(hitRate30dPct)}</div>
+          </article>
+          <article className="card">
             <h3>Total alertas</h3>
             <div style={{ fontSize: 22, marginTop: 6 }}>{Number(stats.total || 0)}</div>
           </article>
@@ -657,6 +673,60 @@ const Alerts = () => {
               Compra: {Number(stats.opportunities || 0)} · Venta: {Number(stats.bearish || 0)} · Stop loss: {Number(stats.stopLoss || 0)}
             </div>
           </article>
+        </section>
+
+        <section className="card">
+          <h3 style={{ marginBottom: 8 }}>Win rate últimas 30 señales cerradas</h3>
+          {trend.length ? (
+            <>
+              <Sparkline values={trend} color="#60A5FA" height={52} />
+              <div className="muted" style={{ marginTop: 8 }}>1 = win, 0 = loss</div>
+            </>
+          ) : (
+            <div className="muted">Todavía no hay señales cerradas suficientes.</div>
+          )}
+        </section>
+
+        <section className="grid grid-2">
+          <article className="card">
+            <h3>Mejor señal del mes</h3>
+            {stats.bestSignalMonth ? (
+              <div className="muted" style={{ marginTop: 6 }}>
+                {stats.bestSignalMonth.symbol} · {stats.bestSignalMonth.recommendation} · {formatPct(Number(stats.bestSignalMonth.realizedReturnPct || 0))}
+              </div>
+            ) : (
+              <div className="muted" style={{ marginTop: 6 }}>Sin datos del último mes.</div>
+            )}
+          </article>
+          <article className="card">
+            <h3>Peor señal del mes</h3>
+            {stats.worstSignalMonth ? (
+              <div className="muted" style={{ marginTop: 6 }}>
+                {stats.worstSignalMonth.symbol} · {stats.worstSignalMonth.recommendation} · {formatPct(Number(stats.worstSignalMonth.realizedReturnPct || 0))}
+              </div>
+            ) : (
+              <div className="muted" style={{ marginTop: 6 }}>Sin datos del último mes.</div>
+            )}
+          </article>
+        </section>
+
+        <section className="card">
+          <h3 style={{ marginBottom: 8 }}>Dónde el agente es más preciso</h3>
+          <div className="grid">
+            {Array.isArray(stats.byType) && stats.byType.length ? (
+              stats.byType
+                .slice()
+                .sort((a, b) => Number(b.hitRate || 0) - Number(a.hitRate || 0))
+                .slice(0, 3)
+                .map((row) => (
+                  <div key={`type-${row.type}`} className="muted">
+                    {row.type}: {formatPct(Number(row.hitRate || 0) * 100)} ({Number(row.wins || 0)}W/{Number(row.losses || 0)}L)
+                  </div>
+                ))
+            ) : (
+              <div className="muted">Sin datos de precisión por tipo todavía.</div>
+            )}
+          </div>
         </section>
 
         <section className="card row" style={{ flexWrap: 'wrap' }}>
