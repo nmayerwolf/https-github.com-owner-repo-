@@ -43,14 +43,7 @@ const Markets = () => {
   }, [state.assets, category, query]);
 
   const normalizedCandidate = String(candidate || '').trim().toUpperCase();
-  const searchableUniverse = useMemo(
-    () =>
-      (universe || []).filter((item) => {
-        if (category === 'all') return true;
-        return String(item?.category || '').toLowerCase() === category;
-      }),
-    [universe, category]
-  );
+  const searchableUniverse = useMemo(() => universe || [], [universe]);
   const watchlistSet = useMemo(
     () => new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase())),
     [state.watchlistSymbols]
@@ -236,7 +229,7 @@ const Markets = () => {
                   ? isAlreadyInWatchlist
                     ? `${selectedUniverseMatch.symbol} ya está en watchlist.`
                     : `Se agregará: ${selectedUniverseMatch.symbol} - ${selectedUniverseMatch.name}`
-                  : `No encontramos ese activo en ${categoryLabel[category] || category}. Probá con otro nombre.`}
+                  : 'No encontramos ese activo. Probá con nombre o ticker.'}
               </span>
             ) : null}
           </label>
