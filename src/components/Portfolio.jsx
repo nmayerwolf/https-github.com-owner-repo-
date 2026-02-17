@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
+import { WATCHLIST_CATALOG } from '../utils/constants';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
 const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', amountUsd: '', stopLoss: '', takeProfit: '' };
@@ -170,8 +171,20 @@ const Portfolio = () => {
   const worstPosition = [...activeRows, ...soldRows].sort((a, b) => a.pnlPctPos - b.pnlPctPos)[0];
 
   const searchableAssets = useMemo(() => {
-    if (Array.isArray(assetUniverse) && assetUniverse.length) return assetUniverse;
-    return (state.assets || []).map((item) => ({
+    const merged = new Map();
+    const push = (item) => {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol || merged.has(symbol)) return;
+      merged.set(symbol, {
+        symbol,
+        name: String(item?.name || ''),
+        category: String(item?.category || 'equity').toLowerCase()
+      });
+    };
+    (assetUniverse || []).forEach(push);
+    (state.assets || []).forEach(push);
+    (WATCHLIST_CATALOG || []).forEach(push);
+    return [...merged.values()].map((item) => ({
       symbol: String(item?.symbol || '').toUpperCase(),
       name: String(item?.name || ''),
       category: String(item?.category || 'equity').toLowerCase()
@@ -535,14 +548,25 @@ const Portfolio = () => {
         <h2>Nueva posición</h2>
         <p className="muted" style={{ marginTop: 6 }}>Cargá una posición para monitorear P&L y señales relacionadas.</p>
         <form onSubmit={submit} className="grid grid-2" style={{ marginTop: 8 }}>
-          <label className="label">
+          <label className="label portfolio-asset-field">
             <span className="muted">Activo</span>
             <input
+              list="portfolio-asset-suggestions"
               value={assetQuery}
               required
               onChange={(e) => setAssetQuery(e.target.value)}
+              onBlur={() => {
+                if (selectedAssetMatch?.symbol) setAssetQuery(selectedAssetMatch.symbol);
+              }}
               placeholder="Escribí activo o ticker (ej: Apple o AAPL)"
             />
+            <datalist id="portfolio-asset-suggestions">
+              {assetSuggestions.map((item) => (
+                <option key={item.symbol} value={item.symbol}>
+                  {item.name}
+                </option>
+              ))}
+            </datalist>
             {assetQuery ? (
               <span className="muted" style={{ marginTop: 4, display: 'block' }}>
                 {selectedAssetMatch

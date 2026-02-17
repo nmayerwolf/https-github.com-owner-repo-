@@ -787,6 +787,10 @@ a:focus-visible {
   align-items: flex-end;
 }
 
+.portfolio-asset-field {
+  grid-column: 1 / -1;
+}
+
 /* AI chat */
 .chat-area {
   display: grid;
