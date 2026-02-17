@@ -8,6 +8,12 @@ const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toIS
 const emptyStopLoss = { id: '', symbol: '', stopLoss: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
 const PORTFOLIO_PAGE_SIZE = 8;
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenStopLoss }) {
   const stopDistancePct = !position.sellDate && Number(position.stopLoss) > 0 && Number(position.current) > 0
@@ -58,6 +64,10 @@ const Portfolio = () => {
   const [tab, setTab] = useState('active');
   const [visibleCount, setVisibleCount] = useState(PORTFOLIO_PAGE_SIZE);
   const [form, setForm] = useState(emptyForm);
+  const [assetQuery, setAssetQuery] = useState('');
+  const [assetUniverse, setAssetUniverse] = useState([]);
+  const [assetRemote, setAssetRemote] = useState([]);
+  const [assetLoading, setAssetLoading] = useState(false);
   const [sellModal, setSellModal] = useState(emptySell);
   const [stopLossModal, setStopLossModal] = useState(emptyStopLoss);
   const [exportFilter, setExportFilter] = useState('all');
@@ -112,16 +122,70 @@ const Portfolio = () => {
   const bestPosition = [...activeRows, ...soldRows].sort((a, b) => b.pnlPctPos - a.pnlPctPos)[0];
   const worstPosition = [...activeRows, ...soldRows].sort((a, b) => a.pnlPctPos - b.pnlPctPos)[0];
 
+  const localAssetMatches = useMemo(() => {
+    const raw = normalizeSearchText(assetQuery);
+    if (!raw) return [];
+    return (assetUniverse || [])
+      .filter((item) => {
+        const symbol = normalizeSearchText(item.symbol);
+        const name = normalizeSearchText(item.name);
+        return symbol.includes(raw) || name.includes(raw);
+      })
+      .slice(0, 8);
+  }, [assetUniverse, assetQuery]);
+
+  const assetSuggestions = useMemo(() => {
+    const map = new Map();
+    [...localAssetMatches, ...(assetRemote || [])].forEach((item) => {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol || map.has(symbol)) return;
+      map.set(symbol, {
+        symbol,
+        name: String(item?.name || ''),
+        category: String(item?.category || 'equity').toLowerCase()
+      });
+    });
+    return [...map.values()].slice(0, 8);
+  }, [localAssetMatches, assetRemote]);
+
+  const selectedAssetMatch = useMemo(() => {
+    const raw = normalizeSearchText(assetQuery);
+    if (!raw) return null;
+    const bySymbol = assetSuggestions.find((item) => normalizeSearchText(item.symbol) === raw);
+    if (bySymbol) return bySymbol;
+    const byExactName = assetSuggestions.find((item) => normalizeSearchText(item.name) === raw);
+    if (byExactName) return byExactName;
+    const bySymbolPrefix = assetSuggestions.find((item) => normalizeSearchText(item.symbol).startsWith(raw));
+    if (bySymbolPrefix) return bySymbolPrefix;
+    const byNamePrefix = assetSuggestions.find((item) => normalizeSearchText(item.name).startsWith(raw));
+    if (byNamePrefix) return byNamePrefix;
+    const byNameContains = assetSuggestions.find((item) => normalizeSearchText(item.name).includes(raw));
+    return byNameContains || null;
+  }, [assetSuggestions, assetQuery]);
+
+  const canSubmitPosition =
+    !!selectedAssetMatch &&
+    !!form.buyDate &&
+    Number(form.buyPrice) > 0 &&
+    Number(form.quantity) > 0 &&
+    (!form.stopLoss || Number(form.stopLoss) > 0);
+
   const submit = (e) => {
     e.preventDefault();
+    if (!selectedAssetMatch) return;
     actions.addPosition({
       ...form,
+      symbol: selectedAssetMatch.symbol,
+      name: selectedAssetMatch.name,
+      category: selectedAssetMatch.category === 'etf' ? 'equity' : selectedAssetMatch.category,
       id: crypto.randomUUID(),
       buyPrice: Number(form.buyPrice),
       quantity: Number(form.quantity),
       stopLoss: form.stopLoss ? Number(form.stopLoss) : null
     });
     setForm(emptyForm);
+    setAssetQuery('');
+    setAssetRemote([]);
   };
 
   const submitSell = (e) => {
@@ -169,6 +233,67 @@ const Portfolio = () => {
   useEffect(() => {
     setVisibleCount(PORTFOLIO_PAGE_SIZE);
   }, [tab, rows.length]);
+
+  useEffect(() => {
+    let active = true;
+    const loadUniverse = async () => {
+      try {
+        const out = await api.marketUniverse();
+        if (!active) return;
+        const assets = Array.isArray(out?.assets) ? out.assets : [];
+        setAssetUniverse(
+          assets.map((item) => ({
+            symbol: String(item?.symbol || '').toUpperCase(),
+            name: String(item?.name || ''),
+            category: String(item?.category || 'equity').toLowerCase() === 'etf' ? 'equity' : String(item?.category || 'equity').toLowerCase()
+          }))
+        );
+      } catch {
+        if (!active) return;
+        setAssetUniverse([]);
+      }
+    };
+    loadUniverse();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const raw = String(assetQuery || '').trim();
+    if (raw.length < 2) {
+      setAssetRemote([]);
+      setAssetLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    setAssetLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const out = await api.marketSearch(raw);
+        if (!active) return;
+        const items = Array.isArray(out?.items) ? out.items : [];
+        setAssetRemote(
+          items.map((item) => ({
+            symbol: String(item?.symbol || '').toUpperCase(),
+            name: String(item?.name || ''),
+            category: String(item?.category || 'equity').toLowerCase()
+          }))
+        );
+      } catch {
+        if (!active) return;
+        setAssetRemote([]);
+      } finally {
+        if (active) setAssetLoading(false);
+      }
+    }, 260);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [assetQuery]);
 
   useEffect(() => {
     let active = true;
@@ -329,16 +454,46 @@ const Portfolio = () => {
         <p className="muted" style={{ marginTop: 6 }}>Cargá una posición para monitorear P&L y señales relacionadas.</p>
         <form onSubmit={submit} className="grid grid-2" style={{ marginTop: 8 }}>
           <label className="label">
-            <span className="muted">Símbolo</span>
-            <input value={form.symbol} required onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} />
-          </label>
-          <label className="label">
-            <span className="muted">Nombre</span>
-            <input value={form.name} required onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <span className="muted">Activo</span>
+            <input
+              value={assetQuery}
+              required
+              onChange={(e) => setAssetQuery(e.target.value)}
+              placeholder="Escribí activo o ticker (ej: Apple o AAPL)"
+            />
+            {assetQuery ? (
+              <span className="muted" style={{ marginTop: 4, display: 'block' }}>
+                {selectedAssetMatch
+                  ? `Se cargará: ${selectedAssetMatch.symbol} - ${selectedAssetMatch.name}`
+                  : assetLoading
+                    ? 'Buscando activos...'
+                    : 'No encontramos ese activo. Probá con nombre o ticker.'}
+              </span>
+            ) : null}
+            {assetSuggestions.length ? (
+              <div className="markets-watchlist-suggestions">
+                {assetSuggestions.map((item) => (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    className={`markets-watchlist-suggestion ${selectedAssetMatch?.symbol === item.symbol ? 'is-active' : ''}`}
+                    onClick={() => setAssetQuery(item.symbol)}
+                  >
+                    <span className="mono">{item.symbol}</span>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </label>
           <label className="label">
             <span className="muted">Categoría</span>
-            <select className="select-field" aria-label="Categoría de activo" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            <select
+              className="select-field"
+              aria-label="Categoría de activo"
+              value={selectedAssetMatch?.category || form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+            >
               <option value="equity">Acciones</option>
               <option value="crypto">Cripto</option>
               <option value="fx">FX</option>
@@ -363,7 +518,9 @@ const Portfolio = () => {
             <span className="muted">Stop loss (opcional)</span>
             <input type="number" step="0.0001" value={form.stopLoss} onChange={(e) => setForm({ ...form, stopLoss: e.target.value })} />
           </label>
-          <button type="submit">Agregar</button>
+          <button type="submit" disabled={!canSubmitPosition}>
+            Agregar
+          </button>
         </form>
       </section>
 
