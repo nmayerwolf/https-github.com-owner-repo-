@@ -43,7 +43,7 @@ const OUTCOME_LABEL = {
   open: 'Abierta'
 };
 
-const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Riesgo en watchlist'];
+const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Panorama macro global'];
 const formatLargeNumber = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return value || '-';
