@@ -345,7 +345,10 @@ export const AppProvider = ({ children }) => {
       dispatch({ type: 'SET_CONFIG', payload: configNext });
       dispatch({ type: 'SET_WATCHLIST', payload: symbols.length ? symbols : state.watchlistSymbols });
     } catch {
-      dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Sync', 'No se pudo sincronizar datos de usuario desde backend.') });
+      dispatch({
+        type: 'PUSH_UI_ERROR',
+        payload: makeUiError('Sync', 'No se pudo sincronizar datos de usuario desde backend.', 'sync-remote-user-data')
+      });
     }
   };
 

@@ -156,6 +156,8 @@ const App = () => {
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
+  const [backendLastOkAt, setBackendLastOkAt] = useState(null);
+  const [backendFailures, setBackendFailures] = useState(0);
   const [networkOffline, setNetworkOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
 
   const [onboardingOpen, setOnboardingOpen] = useState(false);
@@ -244,6 +246,8 @@ const App = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       setBackendOffline(false);
+      setBackendFailures(0);
+      setBackendLastOkAt(null);
       return undefined;
     }
 
@@ -251,9 +255,15 @@ const App = () => {
     const checkHealth = async () => {
       try {
         await api.health();
-        if (active) setBackendOffline(false);
+        if (active) {
+          setBackendOffline(false);
+          setBackendFailures(0);
+          setBackendLastOkAt(Date.now());
+        }
       } catch {
-        if (active) setBackendOffline(true);
+        if (active) {
+          setBackendFailures((prev) => prev + 1);
+        }
       }
     };
 
@@ -265,6 +275,14 @@ const App = () => {
       clearInterval(id);
     };
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const threshold = backendLastOkAt ? 2 : 1;
+    if (backendFailures >= threshold) {
+      setBackendOffline(true);
+    }
+  }, [backendFailures, backendLastOkAt, isAuthenticated]);
 
   useEffect(() => {
     const onOnline = () => setNetworkOffline(false);
@@ -342,6 +360,9 @@ const App = () => {
   const lastUpdatedLabel = state.lastUpdated
     ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
     : 'sin datos';
+  const backendLastOkLabel = backendLastOkAt
+    ? new Date(backendLastOkAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+    : null;
 
   return (
     <div className="app">
@@ -426,6 +447,14 @@ const App = () => {
                 ? 'Tu dispositivo está sin red. Mostramos datos guardados cuando están disponibles.'
                 : 'No se pudo conectar con el backend. Verificá tu conexión o VITE_API_URL.'}
             </div>
+            {!networkOffline && backendLastOkLabel ? (
+              <div className="muted" style={{ marginTop: 6 }}>
+                Última sincronización backend: {backendLastOkLabel}
+              </div>
+            ) : null}
+            {!networkOffline && backendFailures > 0 ? (
+              <div className="muted">Reintentos fallidos: {backendFailures}</div>
+            ) : null}
           </section>
         )}
 
