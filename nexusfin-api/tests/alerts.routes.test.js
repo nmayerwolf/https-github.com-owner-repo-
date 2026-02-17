@@ -62,7 +62,29 @@ describe('alerts routes', () => {
         ]
       })
       .mockResolvedValueOnce({ rows: [{ total: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ total: 1, opportunities: 1, bearish: 0, stop_loss: 0, wins: 0, losses: 0, avg_return: null }] });
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            total: 1,
+            opportunities: 1,
+            bearish: 0,
+            stop_loss: 0,
+            wins: 0,
+            losses: 0,
+            wins_24h: 0,
+            losses_24h: 0,
+            wins_7d: 0,
+            losses_7d: 0,
+            wins_30d: 0,
+            losses_30d: 0,
+            avg_return: null
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ type: 'opportunity', wins: 0, losses: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ bucket: 'high', wins: 0, losses: 0 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const app = makeApp();
     const res = await request(app).get('/api/alerts?page=1&limit=20');
@@ -73,6 +95,8 @@ describe('alerts routes', () => {
     expect(res.body.pagination.total).toBe(1);
     expect(res.body.stats.total).toBe(1);
     expect(res.body.stats.hitRate).toBe(0);
+    expect(res.body.stats.hitRate24h).toBe(0);
+    expect(Array.isArray(res.body.stats.byType)).toBe(true);
   });
 
   it('returns 404 on missing alert detail', async () => {

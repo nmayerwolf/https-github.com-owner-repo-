@@ -810,13 +810,17 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
   };
 
   const runOutcomeEvaluationCycle = async () => {
-    const openAlerts = await query(
-      `SELECT id, symbol, type, price_at_alert, stop_loss, take_profit
+    const candidates = await query(
+      `SELECT id, symbol, type, price_at_alert, stop_loss, take_profit, created_at,
+              outcome, outcome_24h, outcome_7d, outcome_30d
        FROM alerts
-       WHERE (outcome IS NULL OR outcome = 'open')
-         AND type IN ('opportunity', 'bearish')
+       WHERE type IN ('opportunity', 'bearish')
+         AND (
+           outcome IS NULL OR outcome = 'open' OR
+           outcome_24h IS NULL OR outcome_7d IS NULL OR outcome_30d IS NULL
+         )
        ORDER BY created_at DESC
-       LIMIT 500`
+       LIMIT 800`
     );
 
     const bySymbolPrice = new Map();
@@ -824,8 +828,12 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
     let losses = 0;
     let updated = 0;
     let errors = 0;
+    let updated24h = 0;
+    let updated7d = 0;
+    let updated30d = 0;
+    const nowMs = Date.now();
 
-    for (const alert of openAlerts.rows) {
+    for (const alert of candidates.rows) {
       try {
         const symbol = String(alert.symbol || '').toUpperCase();
         if (!bySymbolPrice.has(symbol)) {
@@ -841,18 +849,60 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
           currentPrice: livePrice
         });
 
-        if (!verdict.shouldUpdate) continue;
+        const createdAtMs = new Date(alert.created_at).getTime();
+        const ageMs = Number.isFinite(createdAtMs) ? Math.max(0, nowMs - createdAtMs) : 0;
+        const d1Ms = 24 * 60 * 60 * 1000;
+        const d7Ms = 7 * d1Ms;
+        const d30Ms = 30 * d1Ms;
 
-        await query(
-          `UPDATE alerts
-           SET outcome = $2, outcome_price = $3, outcome_date = NOW()
-           WHERE id = $1`,
-          [alert.id, verdict.outcome, livePrice]
-        );
+        let anyWindowChanged = false;
+        const windowUpdates = [];
+        if (!alert.outcome_24h && ageMs >= d1Ms) {
+          windowUpdates.push(['outcome_24h', verdict.outcome], ['price_at_24h', livePrice]);
+          updated24h += 1;
+          anyWindowChanged = true;
+        }
+        if (!alert.outcome_7d && ageMs >= d7Ms) {
+          windowUpdates.push(['outcome_7d', verdict.outcome], ['price_at_7d', livePrice]);
+          updated7d += 1;
+          anyWindowChanged = true;
+        }
+        if (!alert.outcome_30d && ageMs >= d30Ms) {
+          windowUpdates.push(['outcome_30d', verdict.outcome], ['price_at_30d', livePrice]);
+          updated30d += 1;
+          anyWindowChanged = true;
+        }
 
-        updated += 1;
-        if (verdict.outcome === 'win') wins += 1;
-        if (verdict.outcome === 'loss') losses += 1;
+        if (verdict.shouldUpdate || anyWindowChanged) {
+          const fields = [];
+          const params = [alert.id];
+          let idx = 2;
+
+          if (verdict.shouldUpdate) {
+            fields.push(`outcome = $${idx++}`);
+            params.push(verdict.outcome);
+            fields.push(`outcome_price = $${idx++}`);
+            params.push(livePrice);
+            fields.push('outcome_date = NOW()');
+          }
+
+          for (const [field, value] of windowUpdates) {
+            fields.push(`${field} = $${idx++}`);
+            params.push(value);
+          }
+
+          await query(
+            `UPDATE alerts
+             SET ${fields.join(', ')}
+             WHERE id = $1`,
+            params
+          );
+          updated += 1;
+          if (verdict.shouldUpdate) {
+            if (verdict.outcome === 'win') wins += 1;
+            if (verdict.outcome === 'loss') losses += 1;
+          }
+        }
       } catch (error) {
         errors += 1;
         logger.warn?.(`[alertEngine] outcome eval failed (${alert.id})`, error?.message || error);
@@ -860,11 +910,14 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
     }
 
     return {
-      scanned: openAlerts.rows.length,
+      scanned: candidates.rows.length,
       updated,
       wins,
       losses,
-      open: Math.max(0, openAlerts.rows.length - updated),
+      open: Math.max(0, candidates.rows.length - updated),
+      updated24h,
+      updated7d,
+      updated30d,
       errors
     };
   };

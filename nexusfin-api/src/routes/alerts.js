@@ -157,6 +157,12 @@ router.get('/', async (req, res, next) => {
          COUNT(*) FILTER (WHERE type = 'stop_loss')::int AS stop_loss,
          COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
          COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses,
+         COUNT(*) FILTER (WHERE outcome_24h = 'win')::int AS wins_24h,
+         COUNT(*) FILTER (WHERE outcome_24h = 'loss')::int AS losses_24h,
+         COUNT(*) FILTER (WHERE outcome_7d = 'win')::int AS wins_7d,
+         COUNT(*) FILTER (WHERE outcome_7d = 'loss')::int AS losses_7d,
+         COUNT(*) FILTER (WHERE outcome_30d = 'win')::int AS wins_30d,
+         COUNT(*) FILTER (WHERE outcome_30d = 'loss')::int AS losses_30d,
          AVG(((outcome_price - price_at_alert) / NULLIF(price_at_alert,0)) * 100)
            FILTER (WHERE outcome = 'win' AND outcome_price IS NOT NULL)::float AS avg_return
        FROM alerts
@@ -164,9 +170,92 @@ router.get('/', async (req, res, next) => {
       [req.user.id]
     );
 
+    const byType = await query(
+      `SELECT type,
+              COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+              COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
+       FROM alerts
+       WHERE user_id = $1
+       GROUP BY type`,
+      [req.user.id]
+    );
+
+    const byConfidence = await query(
+      `SELECT COALESCE(NULLIF(ai_confidence, ''), confidence) AS bucket,
+              COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
+              COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
+       FROM alerts
+       WHERE user_id = $1
+       GROUP BY COALESCE(NULLIF(ai_confidence, ''), confidence)`,
+      [req.user.id]
+    );
+
+    const recentClosed = await query(
+      `SELECT symbol, type, outcome, created_at
+       FROM alerts
+       WHERE user_id = $1
+         AND outcome IN ('win','loss')
+       ORDER BY created_at DESC
+       LIMIT 30`,
+      [req.user.id]
+    );
+
+    const bestWorstMonth = await query(
+      `SELECT symbol, type, recommendation, created_at,
+              CASE
+                WHEN type = 'bearish' AND outcome_price IS NOT NULL
+                  THEN ((price_at_alert - outcome_price) / NULLIF(price_at_alert,0)) * 100
+                WHEN outcome_price IS NOT NULL
+                  THEN ((outcome_price - price_at_alert) / NULLIF(price_at_alert,0)) * 100
+                ELSE NULL
+              END AS realized_return_pct
+       FROM alerts
+       WHERE user_id = $1
+         AND created_at >= NOW() - INTERVAL '30 days'
+         AND outcome_price IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 200`,
+      [req.user.id]
+    );
+
     const s = stats.rows[0] || {};
     const wins = Number(s.wins || 0);
     const losses = Number(s.losses || 0);
+    const windowHitRate = (winKey, lossKey) => {
+      const w = Number(s[winKey] || 0);
+      const l = Number(s[lossKey] || 0);
+      return w + l > 0 ? w / (w + l) : 0;
+    };
+    const toRatioRows = (rows, labelKey) =>
+      rows.map((row) => {
+        const w = Number(row.wins || 0);
+        const l = Number(row.losses || 0);
+        return {
+          [labelKey]: row[labelKey],
+          wins: w,
+          losses: l,
+          hitRate: w + l > 0 ? w / (w + l) : 0
+        };
+      });
+    const trendLast30 = recentClosed.rows
+      .slice()
+      .reverse()
+      .map((row) => (String(row.outcome || '').toLowerCase() === 'win' ? 1 : 0));
+    const monthlyReturns = bestWorstMonth.rows
+      .map((row) => ({
+        symbol: row.symbol,
+        type: row.type,
+        recommendation: row.recommendation,
+        createdAt: row.created_at,
+        realizedReturnPct: Number(row.realized_return_pct)
+      }))
+      .filter((row) => Number.isFinite(row.realizedReturnPct));
+    const bestSignalMonth = monthlyReturns.length
+      ? monthlyReturns.reduce((best, cur) => (cur.realizedReturnPct > best.realizedReturnPct ? cur : best), monthlyReturns[0])
+      : null;
+    const worstSignalMonth = monthlyReturns.length
+      ? monthlyReturns.reduce((worst, cur) => (cur.realizedReturnPct < worst.realizedReturnPct ? cur : worst), monthlyReturns[0])
+      : null;
 
     return res.json({
       alerts: list.rows.map(normalizeAlertSummary),
@@ -182,7 +271,15 @@ router.get('/', async (req, res, next) => {
         bearish: Number(s.bearish || 0),
         stopLoss: Number(s.stop_loss || 0),
         hitRate: wins + losses > 0 ? wins / (wins + losses) : 0,
-        avgReturn: Number.isFinite(s.avg_return) ? Number(s.avg_return) : 0
+        avgReturn: Number.isFinite(s.avg_return) ? Number(s.avg_return) : 0,
+        hitRate24h: windowHitRate('wins_24h', 'losses_24h'),
+        hitRate7d: windowHitRate('wins_7d', 'losses_7d'),
+        hitRate30d: windowHitRate('wins_30d', 'losses_30d'),
+        byType: toRatioRows(byType.rows || [], 'type'),
+        byConfidence: toRatioRows(byConfidence.rows || [], 'bucket'),
+        trendLast30,
+        bestSignalMonth,
+        worstSignalMonth
       }
     });
   } catch (error) {
