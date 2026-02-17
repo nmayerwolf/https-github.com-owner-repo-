@@ -1,7 +1,7 @@
 # Phase 4 Smoke Runbook
 
-Fecha: 2026-02-15
-Branch objetivo: `feat/websocket-hub`
+Fecha: 2026-02-17
+Branch objetivo: `codex/release-notes-v1`
 
 ## 1) Gate automático previo
 
@@ -50,6 +50,11 @@ Esperado:
 - Crear posición y validar que aparece.
 - Markets realtime con suscripción WS.
 - Alerts en vivo/historial/performance.
+- Agente IA:
+  - En vivo: señales contextuales.
+  - Macro: carga de insight macro + refresh manual.
+  - Portfolio Advisor: visible si hay >=2 posiciones, con refresh manual.
+  - Rendimiento: hit rate 24h/7d/30d + precisión por clase de activo.
 - Theme toggle persistente.
 - Logout y re-login.
 
@@ -67,6 +72,11 @@ Esperado:
 - Realtime:
   - WS `/ws` con auth válida.
   - subscribe/unsubscribe símbolos.
+- AI Agent v2:
+  - `GET /api/alerts/macro` devuelve último insight o `null`.
+  - `POST /api/alerts/macro/refresh` genera insight.
+  - `GET /api/alerts/portfolio-advice` devuelve advice o `null`.
+  - `POST /api/alerts/portfolio-advice/refresh` genera advice o `skipped` si faltan posiciones.
 
 ## 5) Smoke funcional mobile
 
@@ -75,7 +85,7 @@ Esperado:
 - Push mobile (subscribe + test push + unsubscribe).
 - Markets multi-activo.
 - Watchlist add/remove.
-- Alerts tabs y share a grupos.
+- Alerts tabs (En vivo, Macro, Historial, Rendimiento) y share a grupos.
 - Theme persistente.
 
 ## 6) App Store readiness
