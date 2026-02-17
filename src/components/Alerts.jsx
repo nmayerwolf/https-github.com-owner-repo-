@@ -421,7 +421,73 @@ const Alerts = () => {
         <div className="alerts-grid-list">
           {liveList.map((a) => (
             <section key={a.id} className="grid" style={{ gap: 8 }}>
-              <AlertCard alert={a} onClick={() => setSelectedLiveAlert(a)} />
+              <AlertCard
+                alert={a}
+                onClick={() => {
+                  setSelectedLiveAlert((prev) => (prev?.id === a.id ? null : a));
+                }}
+              />
+              {selectedLiveAlert?.id === a.id ? (
+                <article className="card">
+                  <div className="row" style={{ alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Señal'}</h3>
+                      <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del Agente IA'}</div>
+                    </div>
+                    <button type="button" onClick={() => setSelectedLiveAlert(null)}>
+                      Ocultar detalle
+                    </button>
+                  </div>
+                  <div className="grid" style={{ marginTop: 10 }}>
+                    <div className="ind-cell trend-panel">
+                      <div className="ind-label">Evolución (45 velas)</div>
+                      <div className="trend-chart">
+                        <Sparkline values={selectedSeries} color={Number(trendDeltaPct || 0) >= 0 ? '#00E08E' : '#FF4757'} height={56} />
+                      </div>
+                      <div className={`trend-meta mono ${Number(trendDeltaPct || 0) >= 0 ? 'up' : 'down'}`}>
+                        {trendDeltaPct == null ? '-' : `${trendDeltaPct.toFixed(2)}%`}
+                      </div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Confluencia</div>
+                      <div className="ind-val mono">
+                        {Number(selectedLiveAlert.net ?? selectedLiveAlert.confluenceBull ?? 0) - Number(selectedLiveAlert.confluenceBear ?? 0)}
+                      </div>
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        Confluencia = puntos alcistas - puntos bajistas. Valor negativo implica sesgo bajista.
+                      </div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Apertura</div>
+                      <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]))}</div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Cierre</div>
+                      <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]))}</div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">P/E</div>
+                      <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Capitalización</div>
+                      <div className="ind-val mono">{selectedFundamentals.loading ? '...' : formatLargeNumber(selectedFundamentals.marketCap)}</div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Stop loss</div>
+                      <div className="ind-val mono">{selectedLiveAlert.stopLoss ? formatUSD(selectedLiveAlert.stopLoss) : '-'}</div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Take profit</div>
+                      <div className="ind-val mono">{selectedLiveAlert.takeProfit ? formatUSD(selectedLiveAlert.takeProfit) : '-'}</div>
+                    </div>
+                    <div className="ind-cell">
+                      <div className="ind-label">Confianza</div>
+                      <div className="ind-val mono">{String(selectedLiveAlert.confidence || 'high')}</div>
+                    </div>
+                  </div>
+                </article>
+              ) : null}
               {(a.type === 'compra' || a.type === 'venta') ? (
                 <button
                   type="button"
@@ -473,70 +539,6 @@ const Alerts = () => {
           </button>
         </div>
       </section>
-
-      {selectedLiveAlert ? (
-        <section className="modal-backdrop" role="presentation" onClick={() => setSelectedLiveAlert(null)}>
-          <article className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="row" style={{ alignItems: 'flex-start' }}>
-              <div>
-                <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Señal'}</h3>
-                <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendación del Agente IA'}</div>
-              </div>
-              <button type="button" onClick={() => setSelectedLiveAlert(null)}>
-                Cerrar
-              </button>
-            </div>
-            <div className="grid" style={{ marginTop: 10 }}>
-              <div className="ind-cell trend-panel">
-                <div className="ind-label">Evolución (45 velas)</div>
-                <div className="trend-chart">
-                  <Sparkline values={selectedSeries} color={Number(trendDeltaPct || 0) >= 0 ? '#00E08E' : '#FF4757'} height={56} />
-                </div>
-                <div className={`trend-meta mono ${Number(trendDeltaPct || 0) >= 0 ? 'up' : 'down'}`}>
-                  {trendDeltaPct == null ? '-' : `${trendDeltaPct.toFixed(2)}%`}
-                </div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Confluencia</div>
-                <div className="ind-val mono">
-                  {Number(selectedLiveAlert.net ?? selectedLiveAlert.confluenceBull ?? 0) - Number(selectedLiveAlert.confluenceBear ?? 0)}
-                </div>
-                <div className="muted" style={{ marginTop: 6 }}>
-                  Confluencia = puntos alcistas - puntos bajistas. Valor negativo implica sesgo bajista.
-                </div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Apertura</div>
-                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.o?.[selectedAsset?.candles?.o?.length - 1]))}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Cierre</div>
-                <div className="ind-val mono">{formatUSD(Number(selectedAsset?.candles?.c?.[selectedAsset?.candles?.c?.length - 1]))}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">P/E</div>
-                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : selectedFundamentals.pe}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Capitalización</div>
-                <div className="ind-val mono">{selectedFundamentals.loading ? '...' : formatLargeNumber(selectedFundamentals.marketCap)}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Stop loss</div>
-                <div className="ind-val mono">{selectedLiveAlert.stopLoss ? formatUSD(selectedLiveAlert.stopLoss) : '-'}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Take profit</div>
-                <div className="ind-val mono">{selectedLiveAlert.takeProfit ? formatUSD(selectedLiveAlert.takeProfit) : '-'}</div>
-              </div>
-              <div className="ind-cell">
-                <div className="ind-label">Confianza</div>
-                <div className="ind-val mono">{String(selectedLiveAlert.confidence || 'high')}</div>
-              </div>
-            </div>
-          </article>
-        </section>
-      ) : null}
     </>
   );
 
