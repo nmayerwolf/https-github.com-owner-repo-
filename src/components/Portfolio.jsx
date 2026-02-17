@@ -3,7 +3,7 @@ import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
 
-const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', quantity: 1, stopLoss: '' };
+const emptyForm = { symbol: '', name: '', category: 'equity', buyDate: '', buyPrice: '', amountUsd: '', stopLoss: '' };
 const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10) };
 const emptyStopLoss = { id: '', symbol: '', stopLoss: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
@@ -167,20 +167,25 @@ const Portfolio = () => {
     !!selectedAssetMatch &&
     !!form.buyDate &&
     Number(form.buyPrice) > 0 &&
-    Number(form.quantity) > 0 &&
+    Number(form.amountUsd) > 0 &&
     (!form.stopLoss || Number(form.stopLoss) > 0);
 
   const submit = (e) => {
     e.preventDefault();
     if (!selectedAssetMatch) return;
+    const buyPrice = Number(form.buyPrice);
+    const amountUsd = Number(form.amountUsd);
+    if (!Number.isFinite(buyPrice) || buyPrice <= 0 || !Number.isFinite(amountUsd) || amountUsd <= 0) return;
+    const quantity = Number((amountUsd / buyPrice).toFixed(8));
     actions.addPosition({
-      ...form,
       symbol: selectedAssetMatch.symbol,
       name: selectedAssetMatch.name,
       category: selectedAssetMatch.category === 'etf' ? 'equity' : selectedAssetMatch.category,
+      buyDate: form.buyDate,
       id: crypto.randomUUID(),
-      buyPrice: Number(form.buyPrice),
-      quantity: Number(form.quantity),
+      buyPrice,
+      quantity,
+      notes: '',
       stopLoss: form.stopLoss ? Number(form.stopLoss) : null
     });
     setForm(emptyForm);
@@ -486,12 +491,6 @@ const Portfolio = () => {
               </div>
             ) : null}
           </label>
-          <div className="label" style={{ display: 'grid', alignContent: 'end' }}>
-            <span className="muted">Categoría</span>
-            <div className="badge" style={{ width: 'fit-content', marginTop: 8 }}>
-              {selectedAssetMatch ? (selectedAssetMatch.category === 'etf' ? 'equity' : selectedAssetMatch.category) : 'automática'}
-            </div>
-          </div>
           <label className="label">
             <span className="muted">Fecha compra</span>
             <input type="date" value={form.buyDate} required onChange={(e) => setForm({ ...form, buyDate: e.target.value })} />
@@ -501,8 +500,8 @@ const Portfolio = () => {
             <input type="number" step="0.0001" value={form.buyPrice} required onChange={(e) => setForm({ ...form, buyPrice: e.target.value })} />
           </label>
           <label className="label">
-            <span className="muted">Cantidad</span>
-            <input type="number" step="0.0001" value={form.quantity} required onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+            <span className="muted">Monto total (USD)</span>
+            <input type="number" step="0.01" value={form.amountUsd} required onChange={(e) => setForm({ ...form, amountUsd: e.target.value })} />
           </label>
           <label className="label">
             <span className="muted">Stop loss (opcional)</span>
