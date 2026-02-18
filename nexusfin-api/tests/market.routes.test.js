@@ -17,7 +17,10 @@ jest.mock('../src/services/finnhub', () => ({
 
 jest.mock('../src/services/alphavantage', () => ({
   commodity: jest.fn(),
-  overview: jest.fn()
+  overview: jest.fn(),
+  globalQuote: jest.fn(),
+  fxRate: jest.fn(),
+  digitalDaily: jest.fn()
 }));
 
 const finnhub = require('../src/services/finnhub');
@@ -222,6 +225,35 @@ describe('market routes', () => {
     expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
     expect(Array.isArray(res.body.errors)).toBe(true);
     expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'SNAPSHOT_FAILED' })]));
+  });
+
+  it('falls back to alphavantage quote on finnhub unavailable in snapshot', async () => {
+    const unavailable = new Error('forbidden');
+    unavailable.status = 403;
+    finnhub.quote.mockRejectedValueOnce(unavailable);
+    av.globalQuote.mockResolvedValueOnce({
+      'Global Quote': {
+        '05. price': '201.50',
+        '08. previous close': '200.00',
+        '10. change percent': '0.75%'
+      }
+    });
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.items[0]).toEqual(
+      expect.objectContaining({
+        symbol: 'AAPL',
+        quote: expect.objectContaining({
+          c: 201.5,
+          pc: 200,
+          dp: 0.75
+        })
+      })
+    );
   });
 
   it('stores and summarizes news telemetry per user', async () => {

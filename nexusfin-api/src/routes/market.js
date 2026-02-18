@@ -169,6 +169,49 @@ const syntheticQuote = (symbol, retryAfterMs = 0) => {
   };
 };
 
+const resolveAlphaFallbackQuote = async (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  try {
+    if (upper.includes('_')) {
+      const [fromCurrency, toCurrency] = upper.split('_');
+      if (!fromCurrency || !toCurrency) return null;
+      const raw = await av.fxRate(fromCurrency, toCurrency);
+      const node = raw?.['Realtime Currency Exchange Rate'] || {};
+      const price = toFinite(node?.['5. Exchange Rate']);
+      if (!Number.isFinite(price) || price <= 0) return null;
+      return { c: price, pc: price, dp: 0, fallback: true, provider: 'alphavantage' };
+    }
+
+    if (upper.endsWith('USDT')) {
+      const base = upper.replace(/USDT$/, '');
+      if (!base) return null;
+      const raw = await av.digitalDaily(base, 'USD');
+      const series = raw?.['Time Series (Digital Currency Daily)'];
+      const rows = series && typeof series === 'object' ? Object.values(series) : [];
+      const current = toFinite(rows?.[0]?.['4a. close (USD)']);
+      const previous = toFinite(rows?.[1]?.['4a. close (USD)']);
+      if (!Number.isFinite(current) || current <= 0) return null;
+      const pc = Number.isFinite(previous) && previous > 0 ? previous : current;
+      const dp = pc > 0 ? ((current - pc) / pc) * 100 : 0;
+      return { c: current, pc, dp, fallback: true, provider: 'alphavantage' };
+    }
+
+    const raw = await av.globalQuote(upper);
+    const node = raw?.['Global Quote'] || {};
+    const price = toFinite(node?.['05. price']);
+    const previousClose = toFinite(node?.['08. previous close']);
+    const changePercentRaw = String(node?.['10. change percent'] || '').replace('%', '');
+    const parsedChange = toFinite(changePercentRaw);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
+    const dp = Number.isFinite(parsedChange) ? parsedChange : pc > 0 ? ((price - pc) / pc) * 100 : 0;
+    return { c: price, pc, dp, fallback: true, provider: 'alphavantage' };
+  } catch {
+    return null;
+  }
+};
+
 router.get('/quote', async (req, res, next) => {
   try {
     if (!req.query.symbol) throw badRequest('symbol requerido');
@@ -177,7 +220,7 @@ router.get('/quote', async (req, res, next) => {
       data = await finnhub.quote(req.query.symbol);
     } catch (error) {
       if (!isFinnhubUnavailable(error)) throw error;
-      data = syntheticQuote(req.query.symbol, error?.retryAfterMs);
+      data = (await resolveAlphaFallbackQuote(req.query.symbol)) || syntheticQuote(req.query.symbol, error?.retryAfterMs);
     }
     return res.json(data);
   } catch (error) {
@@ -272,7 +315,7 @@ router.get('/snapshot', async (req, res, next) => {
           quote = await finnhub.quote(quoteSymbol);
         } catch (error) {
           if (!isFinnhubUnavailable(error)) throw error;
-          quote = syntheticQuote(symbol, error?.retryAfterMs);
+          quote = (await resolveAlphaFallbackQuote(symbol)) || syntheticQuote(symbol, error?.retryAfterMs);
         }
         const price = toFinite(quote?.c);
         const previousClose = toFinite(quote?.pc);
