@@ -38,7 +38,7 @@ const verifyCsrfToken = (rawToken, csrfToken) => {
 
 const cookieOptions = () => ({
   httpOnly: true,
-  sameSite: 'strict',
+  sameSite: env.nodeEnv === 'production' ? 'none' : 'strict',
   secure: env.nodeEnv === 'production',
   path: '/',
   maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -47,7 +47,7 @@ const cookieOptions = () => ({
 
 const clearCookieOptions = () => ({
   httpOnly: true,
-  sameSite: 'strict',
+  sameSite: env.nodeEnv === 'production' ? 'none' : 'strict',
   secure: env.nodeEnv === 'production',
   path: '/',
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
@@ -55,7 +55,7 @@ const clearCookieOptions = () => ({
 
 const legacyApiClearCookieOptions = () => ({
   httpOnly: true,
-  sameSite: 'strict',
+  sameSite: env.nodeEnv === 'production' ? 'none' : 'strict',
   secure: env.nodeEnv === 'production',
   path: '/api',
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
