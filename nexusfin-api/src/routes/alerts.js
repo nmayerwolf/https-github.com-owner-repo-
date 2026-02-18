@@ -2,7 +2,7 @@ const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
 const { createPushNotifier } = require('../services/push');
-const { ALERT_TYPES, normalizeAlertSummary } = require('../../../packages/nexusfin-core/contracts.cjs');
+const { ALERT_TYPES, normalizeAlertSummary } = require('../constants/contracts');
 
 const router = express.Router();
 const pushNotifier = createPushNotifier({ query, logger: console });

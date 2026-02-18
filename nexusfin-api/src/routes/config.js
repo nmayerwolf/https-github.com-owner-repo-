@@ -1,7 +1,7 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest } = require('../utils/errors');
-const { DEFAULT_USER_CONFIG, validateUserConfigInput } = require('../../../packages/nexusfin-core/contracts.cjs');
+const { DEFAULT_USER_CONFIG, validateUserConfigInput } = require('../constants/contracts');
 
 const router = express.Router();
 
