@@ -45,6 +45,7 @@ const MACRO_SYMBOL_TO_REQUEST = {
 const AV_SYMBOL_PREFIX = 'AV:';
 
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(
