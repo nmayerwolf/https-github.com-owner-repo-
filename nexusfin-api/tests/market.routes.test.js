@@ -42,9 +42,16 @@ const makeApp = () => {
 };
 
 describe('market routes', () => {
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     cache.flushAll();
     jest.clearAllMocks();
+    global.fetch = originalFetch;
+  });
+
+  afterAll(() => {
+    global.fetch = originalFetch;
   });
 
   it('returns 422 when quote symbol is missing', async () => {
@@ -251,6 +258,37 @@ describe('market routes', () => {
           c: 201.5,
           pc: 200,
           dp: 0.75
+        })
+      })
+    );
+  });
+
+  it('falls back to yahoo quote when finnhub is unavailable and alphavantage has no quote', async () => {
+    const unavailable = new Error('forbidden');
+    unavailable.status = 403;
+    finnhub.quote.mockRejectedValueOnce(unavailable);
+    av.globalQuote.mockResolvedValueOnce({});
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        quoteResponse: {
+          result: [{ regularMarketPrice: 199.2, regularMarketPreviousClose: 198.1, regularMarketChangePercent: 0.56 }]
+        }
+      })
+    }));
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.items[0]).toEqual(
+      expect.objectContaining({
+        symbol: 'AAPL',
+        quote: expect.objectContaining({
+          c: 199.2,
+          pc: 198.1,
+          dp: 0.56
         })
       })
     );

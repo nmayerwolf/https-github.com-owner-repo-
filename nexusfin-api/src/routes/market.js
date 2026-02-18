@@ -169,6 +169,21 @@ const syntheticQuote = (symbol, retryAfterMs = 0) => {
   };
 };
 
+const toYahooSymbol = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.includes('_')) {
+    const [fromCurrency, toCurrency] = upper.split('_');
+    if (!fromCurrency || !toCurrency) return null;
+    return `${fromCurrency}${toCurrency}=X`;
+  }
+  if (upper.endsWith('USDT')) {
+    const base = upper.replace(/USDT$/, '');
+    return base ? `${base}-USD` : null;
+  }
+  return upper;
+};
+
 const resolveAlphaFallbackQuote = async (symbol) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
@@ -212,6 +227,28 @@ const resolveAlphaFallbackQuote = async (symbol) => {
   }
 };
 
+const resolveYahooFallbackQuote = async (symbol) => {
+  const yahooSymbol = toYahooSymbol(symbol);
+  if (!yahooSymbol) return null;
+  try {
+    const qs = new URLSearchParams({ symbols: yahooSymbol });
+    const res = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?${qs.toString()}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const item = json?.quoteResponse?.result?.[0];
+    if (!item) return null;
+    const price = toFinite(item.regularMarketPrice);
+    const previousClose = toFinite(item.regularMarketPreviousClose);
+    const changePercent = toFinite(item.regularMarketChangePercent);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
+    const dp = Number.isFinite(changePercent) ? changePercent : pc > 0 ? ((price - pc) / pc) * 100 : 0;
+    return { c: price, pc, dp, fallback: true, provider: 'yahoo' };
+  } catch {
+    return null;
+  }
+};
+
 router.get('/quote', async (req, res, next) => {
   try {
     if (!req.query.symbol) throw badRequest('symbol requerido');
@@ -220,7 +257,10 @@ router.get('/quote', async (req, res, next) => {
       data = await finnhub.quote(req.query.symbol);
     } catch (error) {
       if (!isFinnhubUnavailable(error)) throw error;
-      data = (await resolveAlphaFallbackQuote(req.query.symbol)) || syntheticQuote(req.query.symbol, error?.retryAfterMs);
+      data =
+        (await resolveAlphaFallbackQuote(req.query.symbol)) ||
+        (await resolveYahooFallbackQuote(req.query.symbol)) ||
+        syntheticQuote(req.query.symbol, error?.retryAfterMs);
     }
     return res.json(data);
   } catch (error) {
@@ -315,7 +355,7 @@ router.get('/snapshot', async (req, res, next) => {
           quote = await finnhub.quote(quoteSymbol);
         } catch (error) {
           if (!isFinnhubUnavailable(error)) throw error;
-          quote = (await resolveAlphaFallbackQuote(symbol)) || syntheticQuote(symbol, error?.retryAfterMs);
+          quote = (await resolveAlphaFallbackQuote(symbol)) || (await resolveYahooFallbackQuote(symbol)) || syntheticQuote(symbol, error?.retryAfterMs);
         }
         const price = toFinite(quote?.c);
         const previousClose = toFinite(quote?.pc);
