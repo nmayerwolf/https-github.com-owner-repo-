@@ -408,6 +408,7 @@ export const AppProvider = ({ children }) => {
   const assetsRef = useRef([]);
   const macroLoadedRef = useRef(false);
   const realtimeMapRef = useRef({});
+  const refreshInFlightRef = useRef(false);
   const auth = useAuth();
   const isAuthenticated = !!auth?.isAuthenticated;
 
@@ -668,6 +669,53 @@ export const AppProvider = ({ children }) => {
     })();
   };
 
+  const refreshAssetPrices = async (watchlistSymbols = state.watchlistSymbols, positions = state.positions) => {
+    if (refreshInFlightRef.current) return;
+    const current = assetsRef.current;
+    if (!Array.isArray(current) || !current.length) return;
+    const marketSymbols = resolveMarketSymbols(watchlistSymbols, positions);
+    const metas = resolveWatchlistAssets(marketSymbols);
+    if (!metas.length) return;
+
+    refreshInFlightRef.current = true;
+    try {
+      const updates = new Map();
+      if (isAuthenticated) {
+        for (let i = 0; i < metas.length; i += BULK_SNAPSHOT_BATCH_SIZE) {
+          const batch = metas.slice(i, i + BULK_SNAPSHOT_BATCH_SIZE);
+          const { okBySymbol } = await fetchSnapshotBatchViaProxy(batch);
+          for (const meta of batch) {
+            const symbol = String(meta.symbol || '').toUpperCase();
+            const data = okBySymbol[symbol];
+            if (data?.quote && data?.candles?.c?.length) updates.set(symbol, { meta, data });
+          }
+        }
+      } else {
+        for (const meta of metas) {
+          const data = await fetchAssetSnapshot(meta);
+          if (data?.quote && data?.candles?.c?.length) updates.set(String(meta.symbol || '').toUpperCase(), { meta, data });
+        }
+      }
+      if (!updates.size) return;
+
+      const next = current.map((asset) => {
+        const update = updates.get(String(asset.symbol || '').toUpperCase());
+        if (!update) return asset;
+        const { data } = update;
+        return withIndicators({
+          ...asset,
+          price: data.quote.c,
+          prevClose: data.quote.pc,
+          changePercent: data.quote.dp,
+          candles: data.candles
+        });
+      });
+      dispatch({ type: 'SET_ASSETS', payload: next });
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
       let syncedPositions = state.positions;
@@ -693,6 +741,14 @@ export const AppProvider = ({ children }) => {
     if (!marketUniverseKey) return;
     loadAssets(state.watchlistSymbols, state.positions);
   }, [marketUniverseKey]);
+
+  useEffect(() => {
+    if (state.loading || !state.assets.length) return undefined;
+    const id = setInterval(() => {
+      refreshAssetPrices(state.watchlistSymbols, state.positions);
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, [state.loading, state.assets.length, state.watchlistSymbols, state.positions, isAuthenticated]);
 
   useEffect(() => {
     if (state.loading || !state.assets.length || macroLoadedRef.current) return;
