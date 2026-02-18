@@ -1,5 +1,6 @@
 const express = require('express');
 const { cache } = require('../config/cache');
+const { query } = require('../config/db');
 const av = require('../services/alphavantage');
 const finnhub = require('../services/finnhub');
 const { rankNews } = require('../services/newsRanker');
@@ -7,6 +8,7 @@ const { badRequest } = require('../utils/errors');
 const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
 
 const router = express.Router();
+let newsTelemetryReady = false;
 
 const getOrSet = async (key, ttlSec, fn) => {
   const cached = cache.get(key);
@@ -14,6 +16,52 @@ const getOrSet = async (key, ttlSec, fn) => {
   const value = await fn();
   cache.set(key, value, ttlSec);
   return value;
+};
+
+const ensureNewsTelemetryTable = async () => {
+  if (newsTelemetryReady) return;
+  await query(
+    `CREATE TABLE IF NOT EXISTS news_telemetry_events (
+      id SERIAL PRIMARY KEY,
+      user_id UUID NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('impression','click')),
+      item_key TEXT NOT NULL,
+      theme TEXT NOT NULL DEFAULT 'global',
+      score NUMERIC,
+      headline TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`
+  );
+  await query('CREATE INDEX IF NOT EXISTS idx_news_telemetry_user_created ON news_telemetry_events(user_id, created_at DESC)');
+  await query('CREATE INDEX IF NOT EXISTS idx_news_telemetry_user_theme ON news_telemetry_events(user_id, theme)');
+  newsTelemetryReady = true;
+};
+
+const getThemeCtrBoost = async (userId, days = 14) => {
+  try {
+    await ensureNewsTelemetryTable();
+    const out = await query(
+      `SELECT
+         theme,
+         COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+         COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks
+       FROM news_telemetry_events
+       WHERE user_id = $1
+         AND created_at >= NOW() - ($2::text || ' days')::interval
+       GROUP BY theme`,
+      [userId, String(days)]
+    );
+    const boosts = {};
+    for (const row of out.rows || []) {
+      const impressions = Number(row.impressions || 0);
+      const clicks = Number(row.clicks || 0);
+      if (impressions < 5) continue;
+      boosts[String(row.theme || 'global')] = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    }
+    return boosts;
+  } catch {
+    return {};
+  }
 };
 
 const toFinite = (value) => {
@@ -312,11 +360,18 @@ router.get('/news/recommended', async (req, res, next) => {
     const minId = Number.isFinite(Number(req.query.minId)) ? Number(req.query.minId) : 0;
     const minScore = Number.isFinite(Number(req.query.minScore)) ? Number(req.query.minScore) : 6;
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 60;
+    const maxAgeHours = Number.isFinite(Number(req.query.maxAgeHours)) ? Number(req.query.maxAgeHours) : 48;
+    const strictImpact = String(req.query.strictImpact || '1') !== '0';
     const to = String(req.query.to || new Date().toISOString().slice(0, 10));
     const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
 
-    const generalKey = `news:recommended:general:${category}:${minId}`;
-    const general = await getOrSet(generalKey, 900, () => finnhub.generalNews(category, minId));
+    const recommendedCategories = Array.from(new Set([category, 'general', 'forex', 'crypto']));
+    const categoryBuckets = await Promise.all(
+      recommendedCategories.map((cat) => {
+        const key = `news:recommended:general:${cat}:${minId}`;
+        return getOrSet(key, 900, () => finnhub.generalNews(cat, minId)).catch(() => []);
+      })
+    );
 
     const companyBuckets = await Promise.all(
       symbols.map((symbol) => {
@@ -326,25 +381,132 @@ router.get('/news/recommended', async (req, res, next) => {
     );
 
     const merged = new Map();
-    for (const item of [...(Array.isArray(general) ? general : []), ...companyBuckets.flat()]) {
+    for (const item of [...categoryBuckets.flat(), ...companyBuckets.flat()]) {
       const key = item?.id || item?.url;
       if (!key || merged.has(key)) continue;
       merged.set(key, item);
     }
 
+    const themeCtrBoost = await getThemeCtrBoost(req.user?.id, 14);
     const ranked = rankNews([...merged.values()], {
       watchlistSymbols: symbols,
       minScore,
-      limit
+      limit,
+      maxAgeHours,
+      strictImpact,
+      themeCtrBoost
     });
 
     return res.json({
       mode: 'ai',
       minScore,
+      maxAgeHours,
+      strictImpact,
       total: merged.size,
       count: ranked.length,
       items: ranked
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/news/telemetry', async (req, res, next) => {
+  try {
+    const eventType = String(req.body?.eventType || '').trim().toLowerCase();
+    if (!['impression', 'click'].includes(eventType)) throw badRequest('eventType inválido');
+    const incoming = Array.isArray(req.body?.items) ? req.body.items : [];
+    const items = incoming.slice(0, 60).map((item) => ({
+      itemKey: String(item?.id || item?.url || item?.headline || '').trim().slice(0, 255),
+      theme: String(item?.theme || item?.aiTheme || 'global').trim().toLowerCase().slice(0, 64) || 'global',
+      score: Number.isFinite(Number(item?.score ?? item?.aiScore)) ? Number(item?.score ?? item?.aiScore) : null,
+      headline: String(item?.headline || '').trim().slice(0, 500)
+    })).filter((item) => item.itemKey);
+    if (!items.length) return res.status(201).json({ ok: true, inserted: 0 });
+
+    try {
+      await ensureNewsTelemetryTable();
+      for (const item of items) {
+        // Keep simple inserts; volume is low and easier to reason about on failures.
+        await query(
+          `INSERT INTO news_telemetry_events (user_id, event_type, item_key, theme, score, headline)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [req.user.id, eventType, item.itemKey, item.theme, item.score, item.headline || null]
+        );
+      }
+    } catch {
+      // Best effort telemetry: never block market/news UX.
+      return res.status(201).json({ ok: true, inserted: 0, persisted: false });
+    }
+
+    return res.status(201).json({ ok: true, inserted: items.length, persisted: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/news/telemetry/summary', async (req, res, next) => {
+  try {
+    const days = Math.max(1, Math.min(30, Number(req.query.days || 7)));
+    try {
+      await ensureNewsTelemetryTable();
+      const [totalsOut, byThemeOut] = await Promise.all([
+        query(
+          `SELECT
+             COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks
+           FROM news_telemetry_events
+           WHERE user_id = $1 AND created_at >= NOW() - ($2::text || ' days')::interval`,
+          [req.user.id, String(days)]
+        ),
+        query(
+          `SELECT
+             theme,
+             COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks
+           FROM news_telemetry_events
+           WHERE user_id = $1 AND created_at >= NOW() - ($2::text || ' days')::interval
+           GROUP BY theme
+           ORDER BY clicks DESC, impressions DESC`,
+          [req.user.id, String(days)]
+        )
+      ]);
+      const totals = totalsOut.rows[0] || { impressions: 0, clicks: 0 };
+      const impressions = Number(totals.impressions || 0);
+      const clicks = Number(totals.clicks || 0);
+      return res.json({
+        days,
+        impressions,
+        clicks,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        byTheme: (byThemeOut.rows || []).map((row) => {
+          const imp = Number(row.impressions || 0);
+          const clk = Number(row.clicks || 0);
+          return {
+            theme: row.theme,
+            impressions: imp,
+            clicks: clk,
+            ctr: imp > 0 ? (clk / imp) * 100 : 0
+          };
+        })
+      });
+    } catch {
+      return res.json({ days, impressions: 0, clicks: 0, ctr: 0, byTheme: [], persisted: false });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete('/news/telemetry/summary', async (req, res, next) => {
+  try {
+    try {
+      await ensureNewsTelemetryTable();
+      await query('DELETE FROM news_telemetry_events WHERE user_id = $1', [req.user.id]);
+      return res.json({ ok: true, persisted: true });
+    } catch {
+      return res.json({ ok: true, persisted: false });
+    }
   } catch (error) {
     return next(error);
   }

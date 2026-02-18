@@ -60,6 +60,13 @@ export const normalizeAlertSummary = (row) => ({
   priceChange: null,
   outcome: normalizeAlertOutcome(row.outcome),
   aiThesis: row.ai_thesis || null,
+  aiReasoning: row.ai_reasoning || null,
+  aiConfidence: row.ai_confidence || null,
+  aiValidated: row.ai_validated == null ? null : !!row.ai_validated,
+  aiAdjustedStop: toNumberOrNull(row.ai_adjusted_stop),
+  aiAdjustedTarget: toNumberOrNull(row.ai_adjusted_target),
+  snapshot: row.snapshot || null,
+  scanSource: row?.snapshot?.scanSource || null,
   createdAt: row.created_at,
   notified: !!row.notified
 });

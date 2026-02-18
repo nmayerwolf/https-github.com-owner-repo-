@@ -1,20 +1,44 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
+import { recordRecommendedClick, recordRecommendedImpressions } from '../store/newsAnalyticsStore';
 
-const MAX_ITEMS = 60;
+const MAX_RECOMMENDED = 40;
+const MAX_ALL = 120;
 const WATCHLIST_SYMBOL_LIMIT = 8;
 const REFRESH_MS = 45000;
-const IMPACT_HIGH_KEYWORDS = [
-  'earnings', 'guidance', 'merger', 'acquisition', 'ipo', 'rate', 'inflation', 'fed', 'ecb',
-  'tariff', 'sanction', 'war', 'ceasefire', 'election', 'opec', 'default', 'stimulus',
-  'regulation', 'antitrust', 'launch', 'funding', 'round', 'geopolitical', 'bankrupt',
-  'recession', 'gdp', 'treasury'
-];
-const IMPACT_MEDIUM_KEYWORDS = [
-  'forecast', 'outlook', 'policy', 'tax', 'strike', 'supply', 'demand', 'upgrade',
-  'downgrade', 'contract', 'deal'
-];
+const WINDOW_HOURS = 48;
+const NEWS_PREFS_KEY = 'horsai_news_ui_prefs_v1';
+
+const loadNewsPrefs = () => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return { recommendedQuery: '', allQuery: '' };
+    const raw = window.localStorage.getItem(NEWS_PREFS_KEY);
+    if (!raw) return { recommendedQuery: '', allQuery: '' };
+    const parsed = JSON.parse(raw);
+    return {
+      recommendedQuery: String(parsed?.recommendedQuery || ''),
+      allQuery: String(parsed?.allQuery || '')
+    };
+  } catch {
+    return { recommendedQuery: '', allQuery: '' };
+  }
+};
+
+const saveNewsPrefs = (prefs = {}) => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(
+      NEWS_PREFS_KEY,
+      JSON.stringify({
+        recommendedQuery: String(prefs.recommendedQuery || ''),
+        allQuery: String(prefs.allQuery || '')
+      })
+    );
+  } catch {
+    // noop
+  }
+};
 
 const timeAgoEs = (unixSeconds) => {
   const ts = Number(unixSeconds || 0) * 1000;
@@ -32,109 +56,160 @@ const dedupeNews = (items = []) => {
   const map = new Map();
   for (const item of items) {
     const key = item?.id || item?.url;
-    if (!key) continue;
-    if (!map.has(key)) map.set(key, item);
+    if (!key || map.has(key)) continue;
+    map.set(key, item);
   }
   return [...map.values()];
 };
 
-const computeImpactScore = (item = {}, watchlistSymbols = []) => {
-  const text = `${String(item?.headline || '').toLowerCase()} ${String(item?.summary || '').toLowerCase()}`;
-  const related = String(item?.related || '')
-    .split(',')
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
-  const watchlist = new Set((watchlistSymbols || []).map((s) => String(s || '').toUpperCase()));
-  const matchedWatchlist = related.filter((s) => watchlist.has(s));
-
-  let score = Number(item?.aiScore || 0);
-  for (const keyword of IMPACT_HIGH_KEYWORDS) {
-    if (text.includes(keyword)) score += 3;
-  }
-  for (const keyword of IMPACT_MEDIUM_KEYWORDS) {
-    if (text.includes(keyword)) score += 1;
-  }
-  if (matchedWatchlist.length) score += matchedWatchlist.length * 4;
-  if (related.length >= 2) score += 2;
-
-  const ts = Number(item?.datetime || 0);
-  if (Number.isFinite(ts) && ts > 0) {
-    const ageMinutes = Math.max(1, Math.floor((Date.now() - ts * 1000) / 60000));
-    if (ageMinutes <= 60) score += 3;
-    else if (ageMinutes <= 240) score += 1;
-  }
-
-  return Math.max(0, score);
+const withinHours = (unixSeconds, hours) => {
+  const ts = Number(unixSeconds || 0);
+  if (!Number.isFinite(ts) || ts <= 0) return false;
+  const maxAgeSec = Number(hours) * 3600;
+  const ageSec = Math.floor(Date.now() / 1000) - ts;
+  return ageSec >= 0 && ageSec <= maxAgeSec;
 };
 
 const impactLabel = (score) => {
-  if (Number(score) >= 12) return 'Muy relevante';
-  if (Number(score) >= 7) return 'Relevante';
+  if (Number(score) >= 16) return 'Muy relevante';
+  if (Number(score) >= 10) return 'Relevante';
   return 'Poco relevante';
 };
 
 const impactStyle = (score) => {
-  if (Number(score) >= 12) return { background: '#FF7A9B22', color: '#FF7A9B' };
-  if (Number(score) >= 7) return { background: '#8CC8FF22', color: '#8CC8FF' };
+  if (Number(score) >= 16) return { background: '#FF7A9B22', color: '#FF7A9B' };
+  if (Number(score) >= 10) return { background: '#8CC8FF22', color: '#8CC8FF' };
   return { background: '#8FA3BF22', color: '#A7B5C8' };
 };
 
+const themeLabel = (theme) => {
+  const key = String(theme || '').toLowerCase();
+  if (key === 'macro') return 'Macro';
+  if (key === 'geopolitics') return 'Geopolítica';
+  if (key === 'commodities') return 'Commodities';
+  if (key === 'fx') return 'FX';
+  if (key === 'crypto') return 'Crypto';
+  if (key === 'equity') return 'Equity';
+  return 'Global';
+};
+
+const themeStyle = (theme) => {
+  const key = String(theme || '').toLowerCase();
+  if (key === 'macro') return { background: '#FBBF2422', color: '#FBBF24' };
+  if (key === 'geopolitics') return { background: '#FB718522', color: '#FB7185' };
+  if (key === 'commodities') return { background: '#22D3EE22', color: '#22D3EE' };
+  if (key === 'fx') return { background: '#A78BFA22', color: '#A78BFA' };
+  if (key === 'crypto') return { background: '#00E08E22', color: '#00E08E' };
+  if (key === 'equity') return { background: '#60A5FA22', color: '#60A5FA' };
+  return { background: '#8FA3BF22', color: '#A7B5C8' };
+};
+
+const normalizeRecommended = (item = {}) => ({
+  ...item,
+  impactScore: Number(item?.aiScore || 0),
+  impactLabel: impactLabel(item?.aiScore || 0)
+});
+
 const News = () => {
   const { state } = useApp();
+  const initialPrefs = loadNewsPrefs();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [items, setItems] = useState([]);
-  const [query, setQuery] = useState('');
-  const [visibleCount, setVisibleCount] = useState(15);
+  const [recommendedItems, setRecommendedItems] = useState([]);
+  const [allItems, setAllItems] = useState([]);
+  const [recommendedQuery, setRecommendedQuery] = useState(initialPrefs.recommendedQuery);
+  const [allQuery, setAllQuery] = useState(initialPrefs.allQuery);
+  const [visibleRecommended, setVisibleRecommended] = useState(12);
+  const [visibleAll, setVisibleAll] = useState(15);
 
   const watchlistSymbols = state.watchlistSymbols || [];
-  const filteredItems = useMemo(() => {
-    const q = String(query || '').trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => {
+
+  const filteredRecommended = useMemo(() => {
+    const q = String(recommendedQuery || '').trim().toLowerCase();
+    return recommendedItems.filter((item) => {
+      if (!q) return true;
+      const haystack = [item?.headline, item?.summary, item?.source, item?.related, ...(item?.aiReasons || [])]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [recommendedItems, recommendedQuery]);
+
+  const filteredAll = useMemo(() => {
+    const q = String(allQuery || '').trim().toLowerCase();
+    if (!q) return allItems;
+    return allItems.filter((item) => {
       const haystack = [item?.headline, item?.summary, item?.source, item?.related].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [items, query]);
+  }, [allItems, allQuery]);
 
   useEffect(() => {
     let active = true;
     let timer = null;
 
-    const fetchAllNews = async () => {
+    const fetchNews = async () => {
       try {
         setError('');
-        if (!items.length) setLoading(true);
+        if (!recommendedItems.length && !allItems.length) setLoading(true);
 
         const symbols = watchlistSymbols.slice(0, WATCHLIST_SYMBOL_LIMIT);
-        const requests = [api.marketNews({ category: 'general', minId: 0 }), ...symbols.map((symbol) => api.marketNews({ symbol }))];
-        const responses = await Promise.all(requests.map((p) => p.catch(() => [])));
+
+        const [recommendedRes, allGeneralRes] = await Promise.all([
+          api.marketNewsRecommended({
+            symbols,
+            category: 'general',
+            minScore: 10,
+            limit: MAX_RECOMMENDED,
+            maxAgeHours: WINDOW_HOURS,
+            strictImpact: true
+          }),
+          api.marketNews({ category: 'general', minId: 0 })
+        ]);
         if (!active) return;
 
-        const merged = dedupeNews(responses.flat().filter(Boolean));
-        const ranked = merged
-          .map((item) => {
-            const score = computeImpactScore(item, watchlistSymbols);
-            return { ...item, impactScore: score, impactLabel: impactLabel(score) };
-          })
+        const recommended = Array.isArray(recommendedRes?.items) ? recommendedRes.items : [];
+        const normalizedRecommended = recommended
+          .filter((item) => withinHours(item?.datetime, WINDOW_HOURS))
+          .map(normalizeRecommended)
           .sort((a, b) => {
+            const sb = Number(b.impactScore || 0);
+            const sa = Number(a.impactScore || 0);
+            if (sb !== sa) return sb - sa;
             return Number(b.datetime || 0) - Number(a.datetime || 0);
           })
-          .slice(0, MAX_ITEMS);
+          .slice(0, MAX_RECOMMENDED);
 
-        setItems(ranked);
+        const allMerged = dedupeNews(Array.isArray(allGeneralRes) ? allGeneralRes : [])
+          .filter((item) => withinHours(item?.datetime, WINDOW_HOURS))
+          .sort((a, b) => Number(b.datetime || 0) - Number(a.datetime || 0))
+          .slice(0, MAX_ALL);
+
+        setRecommendedItems(normalizedRecommended);
+        setAllItems(allMerged);
+        recordRecommendedImpressions(normalizedRecommended);
+        api
+          .trackNewsTelemetry({
+            eventType: 'impression',
+            items: normalizedRecommended.map((item) => ({
+              id: item.id || item.url,
+              aiTheme: item.aiTheme || 'global',
+              aiScore: Number(item.impactScore || item.aiScore || 0),
+              headline: item.headline || ''
+            }))
+          })
+          .catch(() => {});
       } catch {
         if (!active) return;
-        setError('No se pudieron cargar noticias relevantes.');
+        setError('No se pudieron cargar noticias.');
       } finally {
         if (active) setLoading(false);
-        if (active) {
-          timer = setTimeout(fetchAllNews, REFRESH_MS);
-        }
+        if (active) timer = setTimeout(fetchNews, REFRESH_MS);
       }
     };
 
-    fetchAllNews();
+    fetchNews();
     return () => {
       active = false;
       if (timer) clearTimeout(timer);
@@ -142,8 +217,16 @@ const News = () => {
   }, [watchlistSymbols.join(',')]);
 
   useEffect(() => {
-    setVisibleCount(15);
-  }, [query]);
+    setVisibleRecommended(12);
+  }, [recommendedQuery]);
+
+  useEffect(() => {
+    setVisibleAll(15);
+  }, [allQuery]);
+
+  useEffect(() => {
+    saveNewsPrefs({ recommendedQuery, allQuery });
+  }, [recommendedQuery, allQuery]);
 
   return (
     <div className="grid">
@@ -151,51 +234,123 @@ const News = () => {
         <div className="section-header-inline">
           <h2 className="screen-title">Noticias</h2>
         </div>
-        <div className="muted">Todas las noticias de mercado, ordenadas de más reciente a más antigua.</div>
-        <div className="search-bar" style={{ marginTop: 10 }}>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar noticia (ej: inflación, OPEP, Apple, earnings...)"
-          />
-        </div>
+        <div className="muted">Cobertura global para mercados, filtrada en ventana de últimas {WINDOW_HOURS}h.</div>
       </section>
 
       {loading ? <section className="card muted">Cargando noticias...</section> : null}
       {error ? <section className="card" style={{ borderColor: '#FF4757AA' }}>{error}</section> : null}
-      {!loading && !filteredItems.length && !error ? <section className="card muted">Sin noticias para este filtro.</section> : null}
 
-      {!loading && !!filteredItems.length ? (
+      {!loading ? (
         <section className="card">
-          <div className="news-list">
-            {filteredItems.slice(0, visibleCount).map((item) => {
-              return (
-                <button
-                  key={item.id || item.url}
-                  type="button"
-                  className="news-item"
-                  onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
-                >
-                  <img className="news-image" src={item.image || 'https://placehold.co/72x72/151C2C/8899AA?text=N'} alt="" />
-                  <div className="news-body">
-                    <div className="news-headline">{item.headline}</div>
-                    {item.summary ? <div className="muted" style={{ marginTop: 4 }}>{String(item.summary).slice(0, 220)}...</div> : null}
-                    <div className="news-meta mono">
-                      {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · score {Number(item.impactScore || 0)}
-                    </div>
-                    <div className="row" style={{ marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-                      <span className="badge" style={impactStyle(item.impactScore)}>
-                        {item.impactLabel || 'Poco relevante'}
-                      </span>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+          <div className="section-header-inline">
+            <h3 className="section-title">Recomendadas por IA</h3>
           </div>
-          {visibleCount < filteredItems.length ? (
+          <div className="muted">Solo noticias de alto impacto potencial para mercados globales (curadas por IA).</div>
+          <div className="search-bar" style={{ marginTop: 10 }}>
+            <input
+              value={recommendedQuery}
+              onChange={(event) => setRecommendedQuery(event.target.value)}
+              placeholder="Buscar en recomendadas (ej: inflación, Fed, petróleo, guerra...)"
+            />
+          </div>
+
+          <div className="news-list" style={{ marginTop: 8 }}>
+            {!filteredRecommended.length ? <div className="card muted">Sin noticias recomendadas para este filtro.</div> : null}
+            {filteredRecommended.slice(0, visibleRecommended).map((item) => (
+              <button
+                key={item.id || item.url}
+                type="button"
+                className="news-item"
+                onClick={() => {
+                  recordRecommendedClick(item);
+                  api
+                    .trackNewsTelemetry({
+                      eventType: 'click',
+                      items: [
+                        {
+                          id: item.id || item.url,
+                          aiTheme: item.aiTheme || 'global',
+                          aiScore: Number(item.impactScore || item.aiScore || 0),
+                          headline: item.headline || ''
+                        }
+                      ]
+                    })
+                    .catch(() => {});
+                  window.open(item.url, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                <img className="news-image" src={item.image || 'https://placehold.co/72x72/151C2C/8899AA?text=N'} alt="" />
+                <div className="news-body">
+                  <div className="news-headline">{item.headline}</div>
+                  {item.summary ? <div className="muted" style={{ marginTop: 4 }}>{String(item.summary).slice(0, 220)}...</div> : null}
+                  <div className="news-meta mono">
+                    {item.source || 'Fuente'} · {timeAgoEs(item.datetime)} · score {Number(item.impactScore || 0)}
+                  </div>
+                  <div className="row" style={{ marginTop: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                    <span className="badge" style={impactStyle(item.impactScore)}>
+                      {item.impactLabel}
+                    </span>
+                    <span className="badge" style={themeStyle(item.aiTheme)}>
+                      {themeLabel(item.aiTheme)}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {visibleRecommended < filteredRecommended.length ? (
             <div className="news-load-more">
-              <button type="button" className="inline-link-btn" onClick={() => setVisibleCount((prev) => Math.min(prev + 15, filteredItems.length))}>
+              <button
+                type="button"
+                className="inline-link-btn"
+                onClick={() => setVisibleRecommended((prev) => Math.min(prev + 12, filteredRecommended.length))}
+              >
+                Ver más recomendadas
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {!loading ? (
+        <section className="card">
+          <div className="section-header-inline">
+            <h3 className="section-title">Todas las noticias</h3>
+          </div>
+          <div className="muted">Feed completo de noticias de mercado global en últimas {WINDOW_HOURS}h.</div>
+          <div className="search-bar" style={{ marginTop: 10 }}>
+            <input
+              value={allQuery}
+              onChange={(event) => setAllQuery(event.target.value)}
+              placeholder="Buscar en todas (ej: Apple, China, tasas, OPEP...)"
+            />
+          </div>
+
+          <div className="news-list" style={{ marginTop: 8 }}>
+            {!filteredAll.length ? <div className="card muted">Sin noticias para este filtro.</div> : null}
+            {filteredAll.slice(0, visibleAll).map((item) => (
+              <button
+                key={item.id || item.url}
+                type="button"
+                className="news-item"
+                onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
+              >
+                <img className="news-image" src={item.image || 'https://placehold.co/72x72/151C2C/8899AA?text=N'} alt="" />
+                <div className="news-body">
+                  <div className="news-headline">{item.headline}</div>
+                  {item.summary ? <div className="muted" style={{ marginTop: 4 }}>{String(item.summary).slice(0, 220)}...</div> : null}
+                  <div className="news-meta mono">
+                    {item.source || 'Fuente'} · {timeAgoEs(item.datetime)}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {visibleAll < filteredAll.length ? (
+            <div className="news-load-more">
+              <button type="button" className="inline-link-btn" onClick={() => setVisibleAll((prev) => Math.min(prev + 15, filteredAll.length))}>
                 Ver más noticias
               </button>
             </div>

@@ -139,7 +139,9 @@ router.get('/', async (req, res, next) => {
 
     const listQuery = `
       SELECT id, symbol, name, type, recommendation, confidence, confluence_bull, confluence_bear,
-             signals, price_at_alert, stop_loss, take_profit, outcome, ai_thesis, notified, created_at
+             signals, price_at_alert, stop_loss, take_profit, outcome,
+             ai_thesis, ai_reasoning, ai_confidence, ai_validated, ai_adjusted_stop, ai_adjusted_target,
+             snapshot, notified, created_at
       FROM alerts
       WHERE ${whereSql}
       ORDER BY created_at DESC
@@ -308,7 +310,8 @@ router.get('/:id', async (req, res, next) => {
     const out = await query(
       `SELECT id, symbol, name, type, recommendation, confidence, confluence_bull, confluence_bear,
               signals, price_at_alert, stop_loss, take_profit, outcome, outcome_price, outcome_date,
-              ai_thesis, snapshot, notified, created_at
+              ai_thesis, ai_reasoning, ai_confidence, ai_validated, ai_adjusted_stop, ai_adjusted_target,
+              snapshot, notified, created_at
        FROM alerts
        WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.id]

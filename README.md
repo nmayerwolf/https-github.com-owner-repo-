@@ -96,6 +96,16 @@ Workflow: `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`
 - build web,
 - escaneo de secretos en `dist/`.
 
+## Deploy producción
+
+- Runbook: `/Users/nmayerwolf/Documents/nexusfin/DEPLOY_PRODUCTION_RUNBOOK.md`
+- Preflight local:
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret ./scripts/deploy_preflight.sh
+```
+
 ## Documentación de cierre
 
 - `/Users/nmayerwolf/Documents/nexusfin/PHASE3_CLOSEOUT.md`

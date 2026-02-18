@@ -27,6 +27,15 @@ const AlertCard = ({ alert, onClick = null }) => {
   const tone = toneByType[String(alert.type || '').toLowerCase()] || 'hold';
   const label = labelByType[String(alert.type || '').toLowerCase()] || 'Señal';
   const net = Number(alert.net ?? alert.confluenceBull ?? 0) - Number(alert.confluenceBear ?? 0);
+  const scanSource = String(alert.scanSource || '').toLowerCase();
+  const sourceLabel =
+    scanSource === 'discovery'
+      ? 'Descubrimiento'
+      : scanSource === 'watchlist'
+        ? 'Watchlist'
+        : scanSource === 'portfolio'
+          ? 'Portfolio'
+          : '';
 
   return (
     <article
@@ -47,7 +56,10 @@ const AlertCard = ({ alert, onClick = null }) => {
     >
       <div className="alert-top">
         <span className="alert-symbol mono">{alert.symbol || 'N/A'}</span>
-        <span className={`badge ${tone}`}>{label}</span>
+        <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+          {sourceLabel ? <span className="badge" style={{ background: '#60A5FA22', color: '#8CC8FF' }}>{sourceLabel}</span> : null}
+          <span className={`badge ${tone}`}>{label}</span>
+        </div>
       </div>
       <div className="alert-body">{alert.title || alert.recommendation || 'Nueva señal del agente.'}</div>
       <ConfluenceBar net={Number.isFinite(net) ? net : 0} />
@@ -77,6 +89,7 @@ const areEqualAlertCard = (prevProps, nextProps) => {
     prev.net === next.net &&
     prev.confluenceBull === next.confluenceBull &&
     prev.confluenceBear === next.confluenceBear &&
+    prev.scanSource === next.scanSource &&
     prevProps.onClick === nextProps.onClick
   );
 };

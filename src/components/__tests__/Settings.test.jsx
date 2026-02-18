@@ -7,7 +7,9 @@ const { apiMock, appCtxMock, subscribeBrowserPushMock, themeCtxMock } = vi.hoist
   apiMock: {
     resetPassword: vi.fn(),
     getNotificationPreferences: vi.fn(),
-    updateNotificationPreferences: vi.fn()
+    updateNotificationPreferences: vi.fn(),
+    getNewsTelemetrySummary: vi.fn(),
+    resetNewsTelemetry: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -58,6 +60,8 @@ describe('Settings', () => {
     apiMock.resetPassword.mockReset();
     apiMock.getNotificationPreferences.mockReset();
     apiMock.updateNotificationPreferences.mockReset();
+    apiMock.getNewsTelemetrySummary.mockReset();
+    apiMock.resetNewsTelemetry.mockReset();
     appCtxMock.actions.setConfig.mockReset();
     subscribeBrowserPushMock.mockReset();
     themeCtxMock.setTheme.mockReset();
@@ -69,6 +73,13 @@ describe('Settings', () => {
       quietHoursStart: null,
       quietHoursEnd: null
     });
+    apiMock.getNewsTelemetrySummary.mockResolvedValue({
+      impressions: 0,
+      clicks: 0,
+      ctr: 0,
+      byTheme: []
+    });
+    apiMock.resetNewsTelemetry.mockResolvedValue({ ok: true });
   });
 
   it('switches theme to light', async () => {

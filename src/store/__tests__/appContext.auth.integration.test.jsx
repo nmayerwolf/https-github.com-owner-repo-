@@ -104,7 +104,10 @@ describe('AppContext authenticated integration', () => {
     createBackendSocketMock.mockReset();
     fetchMacroAssetsMock.mockReset();
 
-    apiMock.getPortfolio.mockResolvedValue({ positions: [] });
+    apiMock.getPortfolio.mockResolvedValue({
+      portfolios: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Tech', is_default: false }],
+      positions: []
+    });
     apiMock.getConfig.mockResolvedValue({ riskProfile: 'moderado', horizon: 'mediano', rsiOS: 30, rsiOB: 70, volThresh: 2, minConfluence: 2 });
     apiMock.getWatchlist.mockResolvedValue({
       symbols: [
@@ -128,6 +131,7 @@ describe('AppContext authenticated integration', () => {
     apiMock.updateConfig.mockResolvedValue({ riskProfile: 'agresivo', horizon: 'corto', rsiOS: 25, rsiOB: 75, volThresh: 1.8, minConfluence: 3 });
     apiMock.addPosition.mockResolvedValue({
       id: 'p1',
+      portfolio_id: '11111111-1111-4111-8111-111111111111',
       symbol: 'AAPL',
       name: 'Apple',
       category: 'equity',
@@ -140,6 +144,7 @@ describe('AppContext authenticated integration', () => {
     });
     apiMock.updatePosition.mockResolvedValue({
       id: 'p1',
+      portfolio_id: '11111111-1111-4111-8111-111111111111',
       symbol: 'AAPL',
       name: 'Apple',
       category: 'equity',
@@ -175,7 +180,7 @@ describe('AppContext authenticated integration', () => {
       buyPrice: 100,
       quantity: 1
     });
-    await getLatest().actions.sellPosition('p1', 125, '2026-02-15');
+    await getLatest().actions.sellPosition('p1', 125, '2026-02-15', 1);
     await getLatest().actions.deletePosition('p1');
 
     expect(apiMock.updateConfig).toHaveBeenCalledTimes(1);
@@ -203,7 +208,7 @@ describe('AppContext authenticated integration', () => {
       buyPrice: 100,
       quantity: 1
     });
-    await getLatest().actions.sellPosition('p1', 125, '2026-02-15');
+    await getLatest().actions.sellPosition('p1', 125, '2026-02-15', 1);
     await getLatest().actions.deletePosition('p1');
 
     await waitFor(() => {

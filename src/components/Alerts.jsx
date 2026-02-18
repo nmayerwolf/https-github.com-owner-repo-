@@ -52,6 +52,14 @@ const OUTCOME_LABEL = {
   loss: 'Perdida',
   open: 'Abierta'
 };
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+const RECOMMENDATION_TYPE_LABEL = {
+  reduce: 'Reducir',
+  increase: 'Aumentar',
+  add: 'Agregar',
+  close: 'Cerrar',
+  hold: 'Mantener'
+};
 
 const quickPrompts = ['Acciones oversold', 'Crypto momentum hoy', 'Mejores señales de compra', 'Panorama macro global'];
 const formatLargeNumber = (value) => {
@@ -187,6 +195,8 @@ const Alerts = () => {
   const [portfolioAdviceError, setPortfolioAdviceError] = useState('');
   const [portfolioAdvice, setPortfolioAdvice] = useState(null);
   const [portfolioAdviceSkipped, setPortfolioAdviceSkipped] = useState(null);
+  const [watchlistAddingSymbol, setWatchlistAddingSymbol] = useState('');
+  const [liveActionMessage, setLiveActionMessage] = useState('');
   const askAgentFn = typeof askClaude === 'function' ? askClaude : async () => ({ text: '' });
 
   const assetsBySymbol = useMemo(
@@ -196,16 +206,44 @@ const Alerts = () => {
       ),
     [state.assets]
   );
+  const watchlistSet = useMemo(
+    () => new Set((state.watchlistSymbols || []).map((symbol) => String(symbol || '').toUpperCase())),
+    [state.watchlistSymbols]
+  );
+  const activePositionBySymbol = useMemo(() => {
+    const out = {};
+    (state.positions || [])
+      .filter((p) => !p.sellDate)
+      .forEach((p) => {
+        const symbol = String(p.symbol || '').toUpperCase();
+        if (!symbol) return;
+        const qty = Number(p.quantity || 0);
+        const buyPrice = Number(p.buyPrice || 0);
+        if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(buyPrice) || buyPrice <= 0) return;
+        if (!out[symbol]) out[symbol] = { quantity: 0, totalCost: 0 };
+        out[symbol].quantity += qty;
+        out[symbol].totalCost += qty * buyPrice;
+      });
+    return out;
+  }, [state.positions]);
   const liveList = useMemo(() => {
-    return state.alerts.filter((alert) => {
+    return state.alerts
+      .filter((alert) => {
       if (liveTab === 'compra' && alert.type !== 'compra') return false;
       if (liveTab === 'venta' && !['venta', 'stoploss', 'takeprofit'].includes(String(alert.type || '').toLowerCase())) return false;
       if (liveAssetClass === 'all') return true;
       const symbol = String(alert?.symbol || '').toUpperCase();
       const category = assetsBySymbol[symbol];
       return category === liveAssetClass;
-    });
-  }, [liveTab, liveAssetClass, state.alerts, assetsBySymbol]);
+      })
+      .map((alert) => {
+        if (alert.scanSource) return alert;
+        const symbol = String(alert?.symbol || '').toUpperCase();
+        const type = String(alert?.type || '').toLowerCase();
+        const fallbackSource = type === 'stoploss' || type === 'takeprofit' ? 'portfolio' : watchlistSet.has(symbol) ? 'watchlist' : 'discovery';
+        return { ...alert, scanSource: fallbackSource };
+      });
+  }, [liveTab, liveAssetClass, state.alerts, assetsBySymbol, watchlistSet]);
   const portfolio = useMemo(() => {
     const assetsBySymbol = Object.fromEntries((state.assets || []).map((a) => [a.symbol, a]));
     const active = (state.positions || []).filter((p) => !p.sellDate);
@@ -235,6 +273,21 @@ const Alerts = () => {
     if (!symbol) return null;
     return (state.assets || []).find((item) => String(item.symbol || '').toUpperCase() === symbol) || null;
   }, [selectedLiveAlert, state.assets]);
+  const selectedPositionContext = useMemo(() => {
+    const symbol = String(selectedLiveAlert?.symbol || '').toUpperCase();
+    if (!symbol) return null;
+    const row = activePositionBySymbol[symbol];
+    if (!row || !row.quantity) return null;
+    const avgBuy = row.totalCost / row.quantity;
+    const current = Number(selectedAsset?.price);
+    const pnlPct = Number.isFinite(current) && avgBuy > 0 ? ((current - avgBuy) / avgBuy) * 100 : null;
+    return {
+      quantity: row.quantity,
+      avgBuy,
+      current: Number.isFinite(current) ? current : null,
+      pnlPct
+    };
+  }, [selectedLiveAlert, activePositionBySymbol, selectedAsset]);
   const selectedSeries = selectedAsset?.candles?.c?.slice(-45) || [];
   const trendStart = Number(selectedSeries?.[0]);
   const trendEnd = Number(selectedSeries?.[selectedSeries.length - 1]);
@@ -448,6 +501,40 @@ const Alerts = () => {
     }
   };
 
+  const buildWatchlistEntry = (symbol, name = '') => {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (!normalized) return null;
+    const currentAsset = (state.assets || []).find((asset) => String(asset.symbol || '').toUpperCase() === normalized);
+    if (currentAsset) {
+      return {
+        symbol: normalized,
+        name: currentAsset.name || name || normalized,
+        category: currentAsset.category || 'equity',
+        sector: currentAsset.sector || 'general',
+        source: currentAsset.source || 'finnhub_stock'
+      };
+    }
+    const category = normalized.endsWith('USDT') ? 'crypto' : normalized.includes('_') ? 'fx' : 'equity';
+    const source = category === 'crypto' ? 'finnhub_crypto' : category === 'fx' ? 'finnhub_fx' : 'finnhub_stock';
+    return { symbol: normalized, name: name || normalized, category, sector: category, source };
+  };
+
+  const addSymbolToWatchlist = async (symbol, name = '') => {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (!normalized || watchlistSet.has(normalized)) return;
+    setLiveActionMessage('');
+    setWatchlistAddingSymbol(normalized);
+    try {
+      const entry = buildWatchlistEntry(normalized, name);
+      await actions.addToWatchlist(entry || normalized);
+      setLiveActionMessage(`${normalized} agregado a watchlist.`);
+    } catch {
+      setLiveActionMessage(`No se pudo agregar ${normalized} a watchlist.`);
+    } finally {
+      setWatchlistAddingSymbol('');
+    }
+  };
+
   const renderShareControls = (alertId) => {
     if (!groups.length) {
       if (groupsLoading) return <div className="muted">Cargando grupos...</div>;
@@ -582,6 +669,20 @@ const Alerts = () => {
         <div className="alerts-grid-list">
           {liveList.map((a) => (
             <section key={a.id} className="grid" style={{ gap: 8 }}>
+              {!watchlistSet.has(String(a.symbol || '').toUpperCase()) ? (
+                <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+                  <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
+                    Oportunidad de entrada fuera de watchlist
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => addSymbolToWatchlist(a.symbol)}
+                    disabled={watchlistAddingSymbol === String(a.symbol || '').toUpperCase()}
+                  >
+                    {watchlistAddingSymbol === String(a.symbol || '').toUpperCase() ? 'Agregando...' : 'Agregar a watchlist'}
+                  </button>
+                </div>
+              ) : null}
               <AlertCard
                 alert={a}
                 onClick={() => {
@@ -594,12 +695,45 @@ const Alerts = () => {
                     <div>
                       <h3 style={{ marginBottom: 6 }}>{selectedLiveAlert.symbol || 'Senal'}</h3>
                       <div className="muted">{selectedLiveAlert.title || selectedLiveAlert.recommendation || 'Recomendacion del Agente IA'}</div>
+                      {selectedLiveAlert.scanSource ? (
+                        <div className="row" style={{ justifyContent: 'flex-start', marginTop: 6 }}>
+                          <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+                            Origen: {selectedLiveAlert.scanSource === 'discovery' ? 'descubrimiento de mercado' : selectedLiveAlert.scanSource}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                     <button type="button" onClick={() => setSelectedLiveAlert(null)}>
                       Ocultar detalle
                     </button>
                   </div>
                   <div className="grid" style={{ marginTop: 10 }}>
+                    <div className="ind-cell" style={{ gridColumn: '1 / -1' }}>
+                      <div className="ind-label">Contexto de posición</div>
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        {selectedPositionContext
+                          ? `Tenés ${selectedPositionContext.quantity.toFixed(4)} ${selectedLiveAlert.symbol} con precio promedio ${formatUSD(selectedPositionContext.avgBuy)}. `
+                            + `${selectedPositionContext.current != null ? `Precio actual ${formatUSD(selectedPositionContext.current)}. ` : ''}`
+                            + `${selectedPositionContext.pnlPct == null ? '' : `Resultado actual ${formatPct(selectedPositionContext.pnlPct)}.`}`
+                          : `No tenés posición abierta en ${selectedLiveAlert.symbol}. Señal de entrada/salida para evaluar según tu estrategia.`}
+                      </div>
+                    </div>
+                    {selectedLiveAlert.aiReasoning ? (
+                      <div className="ind-cell" style={{ gridColumn: '1 / -1' }}>
+                        <div className="ind-label">Tesis AI</div>
+                        <div className="muted" style={{ marginTop: 6 }}>{selectedLiveAlert.aiReasoning}</div>
+                        {selectedLiveAlert.actionSuggestion ? (
+                          <div className="muted" style={{ marginTop: 6 }}>
+                            <strong>Sugerencia:</strong> {selectedLiveAlert.actionSuggestion}
+                          </div>
+                        ) : null}
+                        {selectedLiveAlert.portfolioImpact ? (
+                          <div className="muted" style={{ marginTop: 6 }}>
+                            <strong>Impacto en cartera:</strong> {selectedLiveAlert.portfolioImpact}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="ind-cell trend-panel">
                       <div className="ind-label">Evolucion (45 velas)</div>
                       <div className="trend-chart">
@@ -661,6 +795,7 @@ const Alerts = () => {
             </section>
           ))}
           {!liveList.length ? <div className="card muted">No hay alertas para este filtro.</div> : null}
+          {!!liveActionMessage ? <div className="card" style={{ borderColor: '#60A5FA88' }}>{liveActionMessage}</div> : null}
         </div>
       </section>
     </>
@@ -707,9 +842,25 @@ const Alerts = () => {
               <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                 <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{HISTORY_TYPE_LABEL[a.type] || a.type}</span>
                 <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>{a.outcome || 'open'}</span>
+                {a.scanSource ? (
+                  <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+                    {a.scanSource === 'discovery' ? 'Descubrimiento' : a.scanSource === 'watchlist' ? 'Watchlist' : a.scanSource}
+                  </span>
+                ) : null}
                 <span className="muted mono" style={{ minWidth: 128, textAlign: 'right' }}>Precio alerta: {formatUSD(a.priceAtAlert)}</span>
                 <span className="muted">Confianza: {a.confidence}</span>
               </div>
+              {a.aiReasoning ? <div className="muted" style={{ marginTop: 8 }}>{a.aiReasoning}</div> : null}
+              {a.aiThesis?.actionSuggestion || a.aiThesis?.action_suggestion ? (
+                <div className="muted" style={{ marginTop: 6 }}>
+                  <strong>Sugerencia:</strong> {a.aiThesis?.actionSuggestion || a.aiThesis?.action_suggestion}
+                </div>
+              ) : null}
+              {a.aiThesis?.portfolioImpact || a.aiThesis?.portfolio_impact ? (
+                <div className="muted" style={{ marginTop: 6 }}>
+                  <strong>Impacto en cartera:</strong> {a.aiThesis?.portfolioImpact || a.aiThesis?.portfolio_impact}
+                </div>
+              ) : null}
               {renderShareControls(a.id)}
               <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start' }}>
                 <button type="button" onClick={() => exportAlertReport(a.id, a.symbol)} disabled={exportLoadingId === a.id}>
@@ -911,7 +1062,9 @@ const Alerts = () => {
                 <span className="muted">{a.recommendation}</span>
                 <span className="muted">{shortDate(a.createdAt)}</span>
                 <span className="muted">Resultado: {a.outcome}</span>
+                {a.scanSource ? <span className="muted">Origen: {a.scanSource === 'discovery' ? 'Descubrimiento' : a.scanSource}</span> : null}
                 <span className="muted mono" style={{ minWidth: 108, textAlign: 'right' }}>Precio: {formatUSD(a.priceAtAlert)}</span>
+                {a.aiReasoning ? <span className="muted">AI: {a.aiReasoning}</span> : null}
               </article>
             ))}
 
@@ -956,6 +1109,16 @@ const Alerts = () => {
 
   const renderMacro = () => {
     const insight = macroInsight;
+    const sortedAdvice = Array.isArray(portfolioAdvice?.recommendations)
+      ? portfolioAdvice.recommendations
+          .slice()
+          .sort((a, b) => {
+            const pa = PRIORITY_ORDER[String(a?.priority || '').toLowerCase()] ?? 99;
+            const pb = PRIORITY_ORDER[String(b?.priority || '').toLowerCase()] ?? 99;
+            if (pa !== pb) return pa - pb;
+            return String(a?.asset || '').localeCompare(String(b?.asset || ''));
+          })
+      : [];
 
     return (
       <>
@@ -996,11 +1159,27 @@ const Alerts = () => {
                   </div>
                   <div className="muted" style={{ marginTop: 8 }}>{theme.reasoning}</div>
                   {(theme.suggested_assets || []).length ? (
-                    <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                    <div className="grid" style={{ marginTop: 8, gap: 8 }}>
                       {theme.suggested_assets.map((asset) => (
-                        <span key={`${theme.theme}-${asset.symbol}`} className="badge" style={{ background: '#00E08E22', color: '#00E08E' }}>
-                          {asset.symbol}
-                        </span>
+                        <div key={`${theme.theme}-${asset.symbol}`} className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+                          <div>
+                            <span className="badge" style={{ background: '#00E08E22', color: '#00E08E' }}>
+                              {asset.symbol}
+                            </span>
+                            {asset.why ? <div className="muted" style={{ marginTop: 6 }}>{asset.why}</div> : null}
+                          </div>
+                          {!watchlistSet.has(String(asset.symbol || '').toUpperCase()) ? (
+                            <button
+                              type="button"
+                              onClick={() => addSymbolToWatchlist(asset.symbol, asset.name)}
+                              disabled={watchlistAddingSymbol === String(asset.symbol || '').toUpperCase()}
+                            >
+                              {watchlistAddingSymbol === String(asset.symbol || '').toUpperCase() ? 'Agregando...' : 'Agregar a watchlist'}
+                            </button>
+                          ) : (
+                            <span className="muted">En watchlist</span>
+                          )}
+                        </div>
                       ))}
                     </div>
                   ) : null}
@@ -1053,14 +1232,63 @@ const Alerts = () => {
                     </span>
                   </div>
                   <div className="muted">{portfolioAdvice.healthSummary}</div>
+                  {portfolioAdvice?.allocationAnalysis?.by_class ? (
+                    <div className="card">
+                      <strong>Asignación por clase</strong>
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        Actual: {Object.entries(portfolioAdvice.allocationAnalysis.by_class.current || {})
+                          .map(([k, v]) => `${k} ${Number(v).toFixed(0)}%`)
+                          .join(' · ') || '-'}
+                      </div>
+                      <div className="muted" style={{ marginTop: 4 }}>
+                        Sugerida: {Object.entries(portfolioAdvice.allocationAnalysis.by_class.suggested || {})
+                          .map(([k, v]) => `${k} ${Number(v).toFixed(0)}%`)
+                          .join(' · ') || '-'}
+                      </div>
+                      {portfolioAdvice.allocationAnalysis.by_class.reasoning ? (
+                        <div className="muted" style={{ marginTop: 6 }}>
+                          {portfolioAdvice.allocationAnalysis.by_class.reasoning}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="grid">
-                    {(portfolioAdvice.recommendations || []).map((rec, idx) => (
+                    {sortedAdvice.map((rec, idx) => (
                       <article key={`${rec.asset || 'asset'}-${idx}`} className="card">
                         <div className="row" style={{ justifyContent: 'space-between' }}>
                           <strong>{rec.asset}</strong>
-                          <span className="muted">{rec.priority || 'medium'}</span>
+                          <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                            <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
+                              {RECOMMENDATION_TYPE_LABEL[String(rec.type || '').toLowerCase()] || rec.type || 'Acción'}
+                            </span>
+                            <span
+                              className="badge"
+                              style={{
+                                background:
+                                  String(rec.priority || '').toLowerCase() === 'high'
+                                    ? '#FF6B6B22'
+                                    : String(rec.priority || '').toLowerCase() === 'medium'
+                                      ? '#FBBF2422'
+                                      : '#8CC8FF22',
+                                color:
+                                  String(rec.priority || '').toLowerCase() === 'high'
+                                    ? '#FF6B6B'
+                                    : String(rec.priority || '').toLowerCase() === 'medium'
+                                      ? '#FBBF24'
+                                      : '#8CC8FF'
+                              }}
+                            >
+                              {String(rec.priority || 'medium').toUpperCase()}
+                            </span>
+                          </div>
                         </div>
                         <div className="muted" style={{ marginTop: 6 }}>{rec.detail}</div>
+                        {Number.isFinite(Number(rec.amount_pct)) ? (
+                          <div className="muted" style={{ marginTop: 6 }}>
+                            Ajuste estimado: {Number(rec.amount_pct) > 0 ? '+' : ''}
+                            {Number(rec.amount_pct).toFixed(1)}%
+                          </div>
+                        ) : null}
                       </article>
                     ))}
                   </div>

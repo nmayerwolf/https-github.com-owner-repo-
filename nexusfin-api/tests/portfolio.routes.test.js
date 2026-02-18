@@ -30,7 +30,16 @@ describe('portfolio routes', () => {
   });
 
   it('rejects create when user reached 200 positions', async () => {
-    query.mockResolvedValueOnce({ rows: [{ total: 200 }] });
+    query.mockImplementation(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM portfolios p') && text.includes('WHERE p.id = $1')) {
+        return { rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', is_owner: true }] };
+      }
+      if (text.includes('COUNT(*)::int AS total FROM positions')) {
+        return { rows: [{ total: 200 }] };
+      }
+      return { rows: [] };
+    });
 
     const app = makeApp();
     const res = await request(app).post('/api/portfolio').send({
@@ -39,7 +48,8 @@ describe('portfolio routes', () => {
       category: 'equity',
       buyDate: '2026-02-13',
       buyPrice: 100,
-      quantity: 1
+      quantity: 1,
+      portfolioId: '11111111-1111-4111-8111-111111111111'
     });
 
     expect(res.status).toBe(403);
@@ -83,25 +93,36 @@ describe('portfolio routes', () => {
   });
 
   it('sanitizes notes and uppercases symbol on create', async () => {
-    query
-      .mockResolvedValueOnce({ rows: [{ total: 0 }] })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'p1',
-            symbol: 'AAPL',
-            name: 'Apple Inc.',
-            category: 'equity',
-            buy_date: '2026-02-13',
-            buy_price: '100',
-            quantity: '1',
-            sell_date: null,
-            sell_price: null,
-            notes: 'hola mundo',
-            created_at: '2026-02-13T00:00:00.000Z'
-          }
-        ]
-      });
+    query.mockImplementation(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM portfolios p') && text.includes('WHERE p.id = $1')) {
+        return { rows: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Principal', is_default: true, owner_user_id: 'u1' }] };
+      }
+      if (text.includes('COUNT(*)::int AS total FROM positions')) {
+        return { rows: [{ total: 0 }] };
+      }
+      if (text.includes('INSERT INTO positions')) {
+        return {
+          rows: [
+            {
+              id: 'p1',
+              portfolio_id: '11111111-1111-4111-8111-111111111111',
+              symbol: 'AAPL',
+              name: 'Apple Inc.',
+              category: 'equity',
+              buy_date: '2026-02-13',
+              buy_price: '100',
+              quantity: '1',
+              sell_date: null,
+              sell_price: null,
+              notes: 'hola mundo',
+              created_at: '2026-02-13T00:00:00.000Z'
+            }
+          ]
+        };
+      }
+      return { rows: [] };
+    });
 
     const app = makeApp();
     const res = await request(app).post('/api/portfolio').send({
@@ -111,14 +132,40 @@ describe('portfolio routes', () => {
       buyDate: '2026-02-13',
       buyPrice: 100,
       quantity: 1,
+      portfolioId: '11111111-1111-4111-8111-111111111111',
       notes: 'hola\u0000 mundo'
     });
 
     expect(res.status).toBe(201);
     expect(query).toHaveBeenNthCalledWith(
-      2,
+      3,
       expect.stringContaining('INSERT INTO positions'),
-      ['u1', 'AAPL', 'Apple Inc.', 'equity', '2026-02-13', 100, 1, 'hola mundo']
+      ['u1', '11111111-1111-4111-8111-111111111111', 'AAPL', 'Apple Inc.', 'equity', '2026-02-13', 100, 1, 'hola mundo']
     );
+  });
+
+  it('creates portfolio up to max 5', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ total: 4 }] })
+      .mockResolvedValueOnce({
+        rows: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Growth', is_default: false, created_at: '2026-02-14T10:00:00.000Z' }]
+      });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/portfolio/portfolios').send({ name: 'Growth' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe('Growth');
+  });
+
+  it('rejects creating more than 5 portfolios', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ total: 5 }] });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/portfolio/portfolios').send({ name: 'Macro' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('PORTFOLIO_LIMIT_REACHED');
   });
 });

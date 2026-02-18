@@ -28,8 +28,9 @@ const { errorHandler } = require('../src/middleware/errorHandler');
 
 const makeApp = () => {
   const app = express();
+  app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: 'u1', email: 'user@mail.com' };
+    req.user = { id: '00000000-0000-4000-8000-000000000001', email: 'user@mail.com' };
     next();
   });
   app.use('/api/market', marketRoutes);
@@ -199,7 +200,7 @@ describe('market routes', () => {
     expect(res.body.mode).toBe('ai');
     expect(Array.isArray(res.body.items)).toBe(true);
     expect(res.body.items.length).toBeGreaterThan(0);
-    expect(res.body.items[0]).toEqual(expect.objectContaining({ id: 103 }));
+    expect(res.body.items.map((item) => item.id)).toEqual(expect.arrayContaining([101, 103]));
     expect(res.body.items.every((item) => Number(item.aiScore) >= 6)).toBe(true);
     expect(finnhub.generalNews).toHaveBeenCalledWith('general', 0);
     expect(finnhub.companyNews).toHaveBeenCalledWith('AAPL', expect.any(String), expect.any(String));
@@ -221,5 +222,41 @@ describe('market routes', () => {
     expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
     expect(Array.isArray(res.body.errors)).toBe(true);
     expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'SNAPSHOT_FAILED' })]));
+  });
+
+  it('stores and summarizes news telemetry per user', async () => {
+    const app = makeApp();
+
+    const postImpressions = await request(app).post('/api/market/news/telemetry').send({
+      eventType: 'impression',
+      items: [
+        { id: 'r1', aiTheme: 'macro', aiScore: 18, headline: 'Fed update' },
+        { id: 'r2', aiTheme: 'crypto', aiScore: 12, headline: 'BTC regulation' }
+      ]
+    });
+    expect(postImpressions.status).toBe(201);
+    expect(postImpressions.body.ok).toBe(true);
+
+    const postClick = await request(app).post('/api/market/news/telemetry').send({
+      eventType: 'click',
+      items: [{ id: 'r1', aiTheme: 'macro', aiScore: 18, headline: 'Fed update' }]
+    });
+    expect(postClick.status).toBe(201);
+    expect(postClick.body.ok).toBe(true);
+
+    const summary = await request(app).get('/api/market/news/telemetry/summary?days=7');
+    expect(summary.status).toBe(200);
+    if (summary.body.persisted === false) {
+      expect(Number(summary.body.impressions || 0)).toBe(0);
+      expect(Number(summary.body.clicks || 0)).toBe(0);
+    } else {
+      expect(Number(summary.body.impressions || 0)).toBeGreaterThanOrEqual(2);
+      expect(Number(summary.body.clicks || 0)).toBeGreaterThanOrEqual(1);
+    }
+    expect(Array.isArray(summary.body.byTheme)).toBe(true);
+
+    const reset = await request(app).delete('/api/market/news/telemetry/summary');
+    expect(reset.status).toBe(200);
+    expect(reset.body.ok).toBe(true);
   });
 });

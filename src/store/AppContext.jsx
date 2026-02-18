@@ -7,9 +7,9 @@ import { createBackendSocket } from '../api/realtime';
 import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
 import { calculateConfluence } from '../engine/confluence';
-import { WATCHLIST_CATALOG } from '../utils/constants';
+import { DEFAULT_WATCHLIST, WATCHLIST_CATALOG } from '../utils/constants';
 import { useAuth } from './AuthContext';
-import { loadPortfolio, savePortfolio } from './portfolioStore';
+import { loadActivePortfolioId, loadPortfolio, loadPortfolios, saveActivePortfolioId, savePortfolio, savePortfolios } from './portfolioStore';
 import { loadConfig, saveConfig } from './configStore';
 import { loadWatchlistSymbols, saveWatchlistSymbols } from './watchlistStore';
 
@@ -24,6 +24,8 @@ const initialState = {
   progress: { loaded: 0, total: loadWatchlistSymbols().length },
   alerts: [],
   positions: loadPortfolio(),
+  portfolios: loadPortfolios(),
+  activePortfolioId: loadActivePortfolioId(),
   config: loadConfig(),
   watchlistSymbols: loadWatchlistSymbols(),
   lastUpdated: null,
@@ -51,6 +53,10 @@ export const appReducer = (state, action) => {
       return { ...state, alerts: action.payload };
     case 'SET_POSITIONS':
       return { ...state, positions: action.payload };
+    case 'SET_PORTFOLIOS':
+      return { ...state, portfolios: action.payload };
+    case 'SET_ACTIVE_PORTFOLIO':
+      return { ...state, activePortfolioId: action.payload };
     case 'SET_CONFIG':
       return { ...state, config: action.payload };
     case 'SET_WS_STATUS':
@@ -174,15 +180,22 @@ export const mapServerAlertToLive = (alert) => {
   const stopLoss = alert?.stopLoss ?? alert?.stop_loss ?? null;
   const takeProfit = alert?.takeProfit ?? alert?.take_profit ?? null;
 
+  const aiThesis = alert?.ai_thesis && typeof alert.ai_thesis === 'object' ? alert.ai_thesis : null;
   return {
     id: `srv-${alert?.id || `${symbol}-${Date.now()}`}`,
     type: normalizedType,
     symbol,
     priority: 3,
-    confidence: alert?.confidence || 'high',
+    confidence: alert?.ai_confidence || alert?.confidence || 'high',
     title: alert?.recommendation ? `${alert.recommendation} en ${symbol}` : `Nueva señal en ${symbol}`,
     stopLoss: stopLoss != null ? Number(stopLoss) : null,
-    takeProfit: takeProfit != null ? Number(takeProfit) : null
+    takeProfit: takeProfit != null ? Number(takeProfit) : null,
+    confluenceBull: Number(alert?.confluence_bull || 0),
+    confluenceBear: Number(alert?.confluence_bear || 0),
+    aiReasoning: alert?.ai_reasoning || aiThesis?.reasoning || null,
+    actionSuggestion: aiThesis?.action_suggestion || aiThesis?.actionSuggestion || null,
+    portfolioImpact: aiThesis?.portfolio_impact || aiThesis?.portfolioImpact || null,
+    scanSource: alert?.snapshot?.scanSource || null
   };
 };
 
@@ -259,6 +272,7 @@ const withRiskTokens = (notes, stopLossPct, takeProfitPct) => {
 
 const normalizePosition = (row) => ({
   id: row.id,
+  portfolioId: row.portfolioId || row.portfolio_id || '',
   symbol: row.symbol,
   name: row.name,
   category: row.category,
@@ -272,6 +286,14 @@ const normalizePosition = (row) => ({
   stopLoss: parseStopLossPriceFromNotes(row.notes),
   takeProfitPct: parseTakeProfitPctFromNotes(row.notes),
   takeProfit: parseTakeProfitPriceFromNotes(row.notes)
+});
+
+const normalizePortfolio = (row) => ({
+  id: String(row?.id || ''),
+  name: String(row?.name || 'Portfolio') === 'Portfolio principal' ? 'Portfolio 1' : String(row?.name || 'Portfolio'),
+  isDefault: Boolean(row?.isDefault ?? row?.is_default) && String(row?.name || '').trim() !== 'Portfolio principal',
+  isOwner: Boolean(row?.isOwner ?? row?.is_owner),
+  collaboratorCount: Number(row?.collaboratorCount ?? row?.collaborator_count ?? 0)
 });
 
 const fetchSnapshotViaProxy = async (meta) => {
@@ -346,6 +368,14 @@ const saveAssetCache = (assets) => {
   }
 };
 
+const clearAssetCache = () => {
+  try {
+    localStorage.removeItem(ASSET_CACHE_KEY);
+  } catch {
+    // Ignore cache clear failures.
+  }
+};
+
 const formatCacheTimestamp = (ts) => {
   const value = Number(ts);
   if (!Number.isFinite(value) || value <= 0) return null;
@@ -380,6 +410,21 @@ export const AppProvider = ({ children }) => {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!state.portfolios.length) {
+      if (state.activePortfolioId) {
+        saveActivePortfolioId('');
+        dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: '' });
+      }
+      return;
+    }
+    const valid = state.portfolios.some((portfolio) => portfolio.id === state.activePortfolioId);
+    if (valid) return;
+    const fallbackId = state.portfolios[0]?.id || '';
+    saveActivePortfolioId(fallbackId);
+    dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: fallbackId });
+  }, [state.portfolios, state.activePortfolioId]);
+
+  useEffect(() => {
     dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
     if (!isAuthenticated) {
       dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
@@ -409,13 +454,65 @@ export const AppProvider = ({ children }) => {
     try {
       const [portfolio, config, watchlist] = await Promise.all([api.getPortfolio(), api.getConfig(), api.getWatchlist()]);
 
-      const positions = (portfolio?.positions || []).map(normalizePosition);
-      const configNext = config || loadConfig();
-      const symbols = (watchlist?.symbols || []).map((x) => x.symbol);
+      const hydratePortfolioPayload = (payload) => {
+        const portfoliosHydrated = Array.isArray(payload?.portfolios) ? payload.portfolios.map(normalizePortfolio) : [];
+        const fallbackId = portfoliosHydrated[0]?.id || '';
+        const positionsHydrated = (payload?.positions || []).map((item) => {
+          const normalized = normalizePosition(item);
+          return { ...normalized, portfolioId: normalized.portfolioId || fallbackId };
+        });
+        return { portfoliosHydrated, positionsHydrated };
+      };
 
+      let { portfoliosHydrated: portfolios, positionsHydrated: positions } = hydratePortfolioPayload(portfolio);
+
+      // Cleanup one-time legacy auto portfolio (default) when it's empty.
+      const legacyDefaultIds = portfolios
+        .filter((p) => p.isDefault && !positions.some((pos) => pos.portfolioId === p.id))
+        .map((p) => p.id);
+      if (legacyDefaultIds.length) {
+        await Promise.allSettled(legacyDefaultIds.map((id) => api.deletePortfolio(id)));
+        const refreshed = await api.getPortfolio();
+        const rehydrated = hydratePortfolioPayload(refreshed);
+        portfolios = rehydrated.portfoliosHydrated;
+        positions = rehydrated.positionsHydrated;
+      }
+
+      const configNext = config || loadConfig();
+      const remoteSymbols = (watchlist?.symbols || []).map((x) => String(x.symbol || '').toUpperCase()).filter(Boolean);
+      const localSymbols = (state.watchlistSymbols || []).map((x) => String(x || '').toUpperCase()).filter(Boolean);
+      const mergedSymbols = Array.from(new Set([...remoteSymbols, ...localSymbols]));
+
+      dispatch({ type: 'SET_PORTFOLIOS', payload: portfolios });
+      savePortfolios(portfolios);
+      const activePortfolioValid = portfolios.some((p) => p.id === state.activePortfolioId);
+      const nextActivePortfolioId = activePortfolioValid ? state.activePortfolioId : fallbackPortfolioId;
+      dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: nextActivePortfolioId });
+      saveActivePortfolioId(nextActivePortfolioId);
       dispatch({ type: 'SET_POSITIONS', payload: positions });
       dispatch({ type: 'SET_CONFIG', payload: configNext });
-      dispatch({ type: 'SET_WATCHLIST', payload: symbols.length ? symbols : state.watchlistSymbols });
+      dispatch({ type: 'SET_WATCHLIST', payload: mergedSymbols.length ? mergedSymbols : state.watchlistSymbols });
+      saveWatchlistSymbols(mergedSymbols.length ? mergedSymbols : state.watchlistSymbols);
+
+      // Best effort: if local had symbols not yet in backend, backfill to avoid future losses.
+      if (isAuthenticated && mergedSymbols.length > remoteSymbols.length) {
+        const remoteSet = new Set(remoteSymbols);
+        const missingRemote = mergedSymbols.filter((symbol) => !remoteSet.has(symbol));
+        if (missingRemote.length) {
+          const fallbackMetaBySymbol = Object.fromEntries(WATCHLIST_CATALOG.map((item) => [String(item.symbol || '').toUpperCase(), item]));
+          await Promise.allSettled(
+            missingRemote.map((symbol) => {
+              const meta = fallbackMetaBySymbol[symbol] || {
+                symbol,
+                name: symbol,
+                category: symbol.endsWith('USDT') ? 'crypto' : symbol.includes('_') ? 'fx' : 'equity'
+              };
+              const type = meta.category === 'crypto' ? 'crypto' : meta.category === 'fx' ? 'forex' : 'stock';
+              return api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type, category: meta.category });
+            })
+          );
+        }
+      }
     } catch {
       dispatch({
         type: 'PUSH_UI_ERROR',
@@ -426,6 +523,13 @@ export const AppProvider = ({ children }) => {
 
   const loadAssets = async (watchlistSymbols = state.watchlistSymbols) => {
     const watchlist = resolveWatchlistAssets(watchlistSymbols);
+    if (!watchlist.length) {
+      clearAssetCache();
+      dispatch({ type: 'SET_ASSETS', payload: [] });
+      dispatch({ type: 'SET_PROGRESS', payload: { loaded: 0, total: 0 } });
+      dispatch({ type: 'SET_LOADING', payload: false });
+      return;
+    }
     const cached = readAssetCache();
     const hasWarmCache = Boolean(cached?.assets?.length);
 
@@ -678,6 +782,10 @@ export const AppProvider = ({ children }) => {
   const actions = useMemo(
     () => ({
       reloadAssets: () => loadAssets(state.watchlistSymbols),
+      refreshUserData: async () => {
+        if (!isAuthenticated) return;
+        await syncRemoteUserData();
+      },
       setConfig: async (config) => {
         if (isAuthenticated) {
           try {
@@ -694,6 +802,11 @@ export const AppProvider = ({ children }) => {
       },
       addPosition: async (position) => {
         const mergedNotes = withRiskTokens(position.notes || '', position.stopLossPct, position.takeProfitPct);
+        const portfolioId = position.portfolioId || state.activePortfolioId || state.portfolios[0]?.id || '';
+        if (!portfolioId) {
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'Creá un portfolio antes de agregar posiciones.') });
+          return;
+        }
         if (isAuthenticated) {
           try {
             const payload = {
@@ -703,6 +816,7 @@ export const AppProvider = ({ children }) => {
               buyDate: position.buyDate,
               buyPrice: Number(position.buyPrice),
               quantity: Number(position.quantity),
+              portfolioId,
               notes: mergedNotes
             };
             const out = await api.addPosition(payload);
@@ -718,6 +832,7 @@ export const AppProvider = ({ children }) => {
           ...state.positions,
           {
             ...position,
+            portfolioId,
             notes: mergedNotes,
             stopLossPct: Number(position.stopLossPct) || null,
             stopLoss: null,
@@ -806,6 +921,7 @@ export const AppProvider = ({ children }) => {
               buyDate: current.buyDate,
               buyPrice: Number(current.buyPrice),
               quantity: qty,
+              portfolioId: current.portfolioId,
               notes: current.notes || ''
             });
             const soldLotClosed = await api.updatePosition(soldLot.id, { sellPrice, sellDate });
@@ -858,6 +974,168 @@ export const AppProvider = ({ children }) => {
         savePortfolio(next);
         dispatch({ type: 'SET_POSITIONS', payload: next });
       },
+      createPortfolio: async (name) => {
+        const safeName = String(name || '').trim();
+        if (!safeName) return null;
+        if (state.portfolios.length >= 5) {
+          dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', 'Máximo 5 portfolios.') });
+          return null;
+        }
+        const positionsByPortfolio = state.positions.reduce((acc, position) => {
+          const key = String(position.portfolioId || '');
+          if (!key) return acc;
+          acc[key] = acc[key] || [];
+          acc[key].push(position);
+          return acc;
+        }, {});
+        const hasCompletedPortfolio = Object.values(positionsByPortfolio).some((rows) => rows.length > 0 && rows.every((row) => !!row.sellDate));
+        const hasAnyPosition = state.positions.length > 0;
+        if (state.portfolios.length > 0 && hasAnyPosition && !hasCompletedPortfolio) {
+          dispatch({
+            type: 'PUSH_UI_ERROR',
+            payload: makeUiError('Portfolio', 'Para crear un nuevo portfolio, primero completá uno al 100% (todas sus posiciones vendidas).')
+          });
+          return null;
+        }
+
+        if (isAuthenticated) {
+          try {
+            const out = await api.createPortfolio(safeName);
+            const created = normalizePortfolio(out);
+            const nextPortfolios = [...state.portfolios, created];
+            dispatch({ type: 'SET_PORTFOLIOS', payload: nextPortfolios });
+            dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: created.id });
+            return created;
+          } catch (error) {
+            if (String(error?.error || '') === 'PORTFOLIO_LIMIT_REACHED') {
+              try {
+                const out = await api.getPortfolios();
+                const remote = Array.isArray(out?.portfolios) ? out.portfolios.map(normalizePortfolio) : [];
+                dispatch({ type: 'SET_PORTFOLIOS', payload: remote });
+                savePortfolios(remote);
+                const nextActive = remote.some((p) => p.id === state.activePortfolioId) ? state.activePortfolioId : remote[0]?.id || '';
+                dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: nextActive });
+                saveActivePortfolioId(nextActive);
+              } catch {
+                // best effort sync
+              }
+            }
+            dispatch({
+              type: 'PUSH_UI_ERROR',
+              payload: makeUiError('Portfolio', error?.message || 'No se pudo crear el portfolio.')
+            });
+            return null;
+          }
+        }
+
+        const created = { id: crypto.randomUUID(), name: safeName, isDefault: false, isOwner: true, collaboratorCount: 0 };
+        const nextPortfolios = [...state.portfolios, created];
+        savePortfolios(nextPortfolios);
+        saveActivePortfolioId(created.id);
+        dispatch({ type: 'SET_PORTFOLIOS', payload: nextPortfolios });
+        dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: created.id });
+        return created;
+      },
+      renamePortfolio: async (id, name) => {
+        const safeName = String(name || '').trim();
+        if (!id || !safeName) return;
+        const current = state.portfolios.find((p) => p.id === id);
+        if (!current) return;
+
+        if (isAuthenticated) {
+          try {
+            const out = await api.renamePortfolio(id, safeName);
+            const updated = normalizePortfolio(out);
+            dispatch({
+              type: 'SET_PORTFOLIOS',
+              payload: state.portfolios.map((p) => (p.id === id ? updated : p))
+            });
+            return;
+          } catch (error) {
+            dispatch({
+              type: 'PUSH_UI_ERROR',
+              payload: makeUiError('Portfolio', error?.message || 'No se pudo renombrar el portfolio.')
+            });
+            return;
+          }
+        }
+
+        const nextPortfolios = state.portfolios.map((p) => (p.id === id ? { ...p, name: safeName } : p));
+        savePortfolios(nextPortfolios);
+        dispatch({ type: 'SET_PORTFOLIOS', payload: nextPortfolios });
+      },
+      setActivePortfolio: (portfolioId) => {
+        const exists = state.portfolios.some((p) => p.id === portfolioId);
+        if (!exists) return;
+        saveActivePortfolioId(portfolioId);
+        dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: portfolioId });
+      },
+      deletePortfolio: async (portfolioRef) => {
+        const requestedId = typeof portfolioRef === 'string' ? portfolioRef : portfolioRef?.id;
+        const requestedName = typeof portfolioRef === 'string' ? '' : String(portfolioRef?.name || '');
+        if (!requestedId) return { ok: false, message: 'portfolioId inválido' };
+        let deletedId = requestedId;
+        let treatAsDeleted = false;
+
+        if (isAuthenticated) {
+          try {
+            await api.deletePortfolio(requestedId);
+          } catch (error) {
+            const notFound = Number(error?.status) === 404 || String(error?.error || '') === 'PORTFOLIO_NOT_FOUND';
+            if (notFound && requestedName) {
+              try {
+                const out = await api.getPortfolios();
+                const remote = Array.isArray(out?.portfolios) ? out.portfolios.map(normalizePortfolio) : [];
+                const byName = remote.find((p) => String(p.name || '').trim().toLowerCase() === requestedName.trim().toLowerCase());
+                if (byName?.id) {
+                  await api.deletePortfolio(byName.id);
+                  deletedId = byName.id;
+                } else {
+                  treatAsDeleted = true;
+                }
+              } catch {
+                treatAsDeleted = true;
+              }
+            } else if (notFound) {
+              treatAsDeleted = true;
+            } else {
+              const message = error?.message || 'No se pudo eliminar el portfolio en backend.';
+              dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Portfolio', message) });
+              return { ok: false, message };
+            }
+          }
+        }
+
+        const nextPortfolios = state.portfolios.filter((p) => p.id !== requestedId && p.id !== deletedId);
+        const nextPositions = state.positions.filter((position) => position.portfolioId !== requestedId && position.portfolioId !== deletedId);
+        savePortfolios(nextPortfolios);
+        savePortfolio(nextPositions);
+        const nextActive = (state.activePortfolioId === requestedId || state.activePortfolioId === deletedId) ? nextPortfolios[0]?.id || '' : state.activePortfolioId;
+        saveActivePortfolioId(nextActive);
+        dispatch({ type: 'SET_POSITIONS', payload: nextPositions });
+        dispatch({ type: 'SET_PORTFOLIOS', payload: nextPortfolios });
+        dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: nextActive });
+        if (isAuthenticated) {
+          try {
+            const out = await api.getPortfolios();
+            const remote = Array.isArray(out?.portfolios) ? out.portfolios.map(normalizePortfolio) : [];
+            dispatch({ type: 'SET_PORTFOLIOS', payload: remote });
+            savePortfolios(remote);
+            const syncedActive = remote.some((p) => p.id === nextActive) ? nextActive : remote[0]?.id || '';
+            dispatch({ type: 'SET_ACTIVE_PORTFOLIO', payload: syncedActive });
+            saveActivePortfolioId(syncedActive);
+          } catch {
+            // best effort sync
+          }
+        }
+        if (treatAsDeleted) {
+          dispatch({
+            type: 'PUSH_UI_ERROR',
+            payload: makeUiError('Portfolio', 'El portfolio ya no existía en backend. Se sincronizó el estado local.')
+          });
+        }
+        return { ok: true, message: '' };
+      },
       addToWatchlist: async (entry) => {
         const normalizedSymbol = String(typeof entry === 'string' ? entry : entry?.symbol || '')
           .trim()
@@ -895,9 +1173,8 @@ export const AppProvider = ({ children }) => {
             dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol} en backend.`) });
             return;
           }
-        } else {
-          saveWatchlistSymbols(nextWatchlist);
         }
+        saveWatchlistSymbols(nextWatchlist);
 
         dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
 
@@ -929,18 +1206,49 @@ export const AppProvider = ({ children }) => {
             dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo quitar ${symbol} en backend.`) });
             return;
           }
-        } else {
-          saveWatchlistSymbols(nextWatchlist);
         }
+        saveWatchlistSymbols(nextWatchlist);
 
         dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
         const current = assetsRef.current;
         dispatch({ type: 'SET_ASSETS', payload: current.filter((a) => a.symbol !== symbol) });
       },
+      resetWatchlist: async () => {
+        const defaultSymbols = Array.from(new Set(DEFAULT_WATCHLIST.map((x) => String(x.symbol || '').toUpperCase()).filter(Boolean)));
+        if (!defaultSymbols.length) return;
+
+        if (isAuthenticated) {
+          const currentSet = new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase()));
+          const defaultSet = new Set(defaultSymbols);
+          const toRemove = [...currentSet].filter((symbol) => !defaultSet.has(symbol));
+          const toAdd = defaultSymbols.filter((symbol) => !currentSet.has(symbol));
+
+          await Promise.allSettled(
+            toRemove.map((symbol) => api.removeFromWatchlist(symbol))
+          );
+          const metaBySymbol = Object.fromEntries(WATCHLIST_CATALOG.map((item) => [String(item.symbol || '').toUpperCase(), item]));
+          await Promise.allSettled(
+            toAdd.map((symbol) => {
+              const meta = metaBySymbol[symbol] || {
+                symbol,
+                name: symbol,
+                category: symbol.endsWith('USDT') ? 'crypto' : symbol.includes('_') ? 'fx' : 'equity'
+              };
+              const type = meta.category === 'crypto' ? 'crypto' : meta.category === 'fx' ? 'forex' : 'stock';
+              return api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type, category: meta.category });
+            })
+          );
+        }
+
+        saveWatchlistSymbols(defaultSymbols);
+        clearAssetCache();
+        dispatch({ type: 'SET_WATCHLIST', payload: defaultSymbols });
+        await loadAssets(defaultSymbols);
+      },
       getAssetBySymbol: (symbol) => state.assets.find((a) => a.symbol === symbol),
       dismissUiError: (id) => dispatch({ type: 'DISMISS_UI_ERROR', payload: id })
     }),
-    [state.positions, state.assets, state.watchlistSymbols, isAuthenticated]
+    [state.positions, state.assets, state.watchlistSymbols, state.portfolios, state.activePortfolioId, isAuthenticated]
   );
 
   return <AppContext.Provider value={{ state, actions }}>{children}</AppContext.Provider>;
