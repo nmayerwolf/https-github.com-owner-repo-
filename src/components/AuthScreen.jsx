@@ -26,20 +26,38 @@ const formatOAuthError = (oauthError, oauthErrorDescription = '') => {
 };
 
 const AuthScreen = () => {
-  const { loading, sessionNotice, clearSessionNotice } = useAuth();
+  const { loading, sessionNotice, clearSessionNotice, completeOAuthWithToken } = useAuth();
   const [error, setError] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const oauth = params.get('oauth');
+    const token = params.get('token');
     const oauthError = params.get('oauth_error');
     const oauthErrorDescription = params.get('oauth_error_description');
-    if (!oauthError) return;
 
-    setError(formatOAuthError(oauthError, oauthErrorDescription));
-    params.delete('oauth_error');
-    params.delete('oauth_error_description');
-    window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
-  }, []);
+    const cleanUrl = () => {
+      params.delete('oauth');
+      params.delete('provider');
+      params.delete('token');
+      params.delete('oauth_error');
+      params.delete('oauth_error_description');
+      window.history.replaceState({}, '', `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
+    };
+
+    if (oauth === 'success' && token && typeof completeOAuthWithToken === 'function') {
+      completeOAuthWithToken(token).then((ok) => {
+        if (!ok) setError('No se pudo completar login con Google. (token inválido)');
+      });
+      cleanUrl();
+      return;
+    }
+
+    if (oauthError) {
+      setError(formatOAuthError(oauthError, oauthErrorDescription));
+      cleanUrl();
+    }
+  }, [completeOAuthWithToken]);
 
   return (
     <div className="center-screen" style={{ padding: 12 }}>

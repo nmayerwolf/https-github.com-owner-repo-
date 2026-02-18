@@ -120,6 +120,29 @@ export const AuthProvider = ({ children }) => {
 
   const clearSessionNotice = () => setSessionNotice('');
 
+  const completeOAuthWithToken = async (oauthToken) => {
+    const next = String(oauthToken || '').trim();
+    if (!next) return false;
+    setLoading(true);
+    try {
+      setToken(next);
+      setTokenState('bearer');
+      const me = await api.me();
+      if (!me) {
+        clearLocalSession('');
+        return false;
+      }
+      setUser(me);
+      setSessionNotice('');
+      return true;
+    } catch {
+      clearLocalSession('');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const value = useMemo(
     () => ({
       user,
@@ -131,6 +154,7 @@ export const AuthProvider = ({ children }) => {
       logout,
       refreshUser,
       completeOnboarding,
+      completeOAuthWithToken,
       sessionNotice,
       clearSessionNotice
     }),
