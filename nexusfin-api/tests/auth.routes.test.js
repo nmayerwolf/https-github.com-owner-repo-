@@ -471,7 +471,8 @@ describe('auth routes', () => {
       .set('Cookie', ['nxf_oauth_state=valid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('nexusfin://oauth?oauth_error=google_callback_failed');
+    expect(res.headers.location).toContain('nexusfin://oauth?oauth_error=google_callback_failed');
+    expect(res.headers.location).toContain('oauth_error_description=boom');
   });
 
   it('returns 422 when mobile oauth redirect_uri is invalid', async () => {
