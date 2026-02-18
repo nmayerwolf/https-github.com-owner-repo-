@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../store/AuthContext';
+import { getApiBaseUrl } from '../api/env';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE = getApiBaseUrl();
 
 const OAUTH_ERROR_MAP = {
   provider_disabled: 'Google OAuth no está configurado en backend.',

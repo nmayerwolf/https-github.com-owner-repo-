@@ -1,13 +1,7 @@
 import { getToken } from './apiClient';
+import { getWsBaseUrl } from './env';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-
-const buildWsUrl = () => {
-  const apiUrl = new URL(API_BASE, window.location.origin);
-  const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsBasePath = apiUrl.pathname.replace(/\/api\/?$/, '');
-  return `${wsProtocol}//${apiUrl.host}${wsBasePath}/ws`;
-};
+const buildWsUrl = () => getWsBaseUrl();
 
 const normalizeSymbols = (symbols = []) =>
   Array.isArray(symbols) ? symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean) : [];

@@ -7,6 +7,8 @@ import { AppProvider } from './store/AppContext';
 import { ThemeProvider } from './store/ThemeContext';
 import './styles.css';
 
+window.__HORSAI_BOOTED__ = true;
+
 class FatalBoundary extends React.Component {
   constructor(props) {
     super(props);

@@ -9,7 +9,23 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&family=Instrument+Sans:wght@600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="padding:20px;font-family:sans-serif;background:#fff;color:#111;min-height:100vh">
+        Cargando Horsai...
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      window.setTimeout(function () {
+        if (window.__HORSAI_BOOTED__) return;
+        var root = document.getElementById('root');
+        if (!root) return;
+        root.innerHTML =
+          '<div style="padding:20px;font-family:DM Sans,system-ui,sans-serif;background:#fff;color:#111;min-height:100vh">' +
+          '<h2 style="margin:0 0 8px">Horsai no pudo iniciar</h2>' +
+          '<p style="margin:0">Revisá Vercel: VITE_API_URL y VITE_WS_URL, luego redeploy.</p>' +
+          '</div>';
+      }, 4500);
+    </script>
   </body>
 </html>

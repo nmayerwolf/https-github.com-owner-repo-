@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { getApiBaseUrl } from './env';
+
+const API_BASE = getApiBaseUrl();
 
 let token = null;
 let csrfToken = null;
