@@ -2,6 +2,30 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { api, setAuthFailureHandler, setCsrfToken, setToken } from '../api/apiClient';
 
 const AuthContext = createContext(null);
+const AUTH_TOKEN_STORAGE_KEY = 'horsai_auth_token_v1';
+
+const readPersistedToken = () => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return '';
+    return String(window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+};
+
+const persistToken = (value) => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const safe = String(value || '').trim();
+    if (!safe) {
+      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, safe);
+  } catch {
+    // noop
+  }
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -11,6 +35,7 @@ export const AuthProvider = ({ children }) => {
 
   const clearLocalSession = (notice = '') => {
     setToken(null);
+    persistToken('');
     setCsrfToken(null);
     setTokenState(null);
     setUser(null);
@@ -71,6 +96,11 @@ export const AuthProvider = ({ children }) => {
 
     const init = async () => {
       setLoading(true);
+      const persisted = readPersistedToken();
+      if (persisted) {
+        setToken(persisted);
+        setTokenState('bearer');
+      }
       await hydrateSession();
       if (mounted) setLoading(false);
     };
@@ -88,6 +118,7 @@ export const AuthProvider = ({ children }) => {
       const out = await api.login(email, password);
       if (out?.token) {
         setToken(out.token);
+        persistToken(out.token);
         setTokenState(out.token);
       }
       await hydrateSession();
@@ -103,6 +134,7 @@ export const AuthProvider = ({ children }) => {
       const out = await api.register(email, password);
       if (out?.token) {
         setToken(out.token);
+        persistToken(out.token);
         setTokenState(out.token);
       }
       await hydrateSession();
@@ -126,6 +158,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       setToken(next);
+      persistToken(next);
       setTokenState('bearer');
       const me = await api.me();
       if (!me) {
