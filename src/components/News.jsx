@@ -40,8 +40,18 @@ const saveNewsPrefs = (prefs = {}) => {
   }
 };
 
+const toUnixSeconds = (value) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric > 1e12 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+  }
+  const parsed = Date.parse(String(value || ''));
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed / 1000);
+  return 0;
+};
+
 const timeAgoEs = (unixSeconds) => {
-  const ts = Number(unixSeconds || 0) * 1000;
+  const ts = toUnixSeconds(unixSeconds) * 1000;
   if (!Number.isFinite(ts) || ts <= 0) return 'hace un rato';
   const diffMs = Date.now() - ts;
   const mins = Math.max(1, Math.floor(diffMs / 60000));
@@ -63,7 +73,7 @@ const dedupeNews = (items = []) => {
 };
 
 const withinHours = (unixSeconds, hours) => {
-  const ts = Number(unixSeconds || 0);
+  const ts = toUnixSeconds(unixSeconds);
   if (!Number.isFinite(ts) || ts <= 0) return false;
   const maxAgeSec = Number(hours) * 3600;
   const ageSec = Math.floor(Date.now() / 1000) - ts;
@@ -173,17 +183,12 @@ const News = () => {
         const normalizedRecommended = recommended
           .filter((item) => withinHours(item?.datetime, WINDOW_HOURS))
           .map(normalizeRecommended)
-          .sort((a, b) => {
-            const sb = Number(b.impactScore || 0);
-            const sa = Number(a.impactScore || 0);
-            if (sb !== sa) return sb - sa;
-            return Number(b.datetime || 0) - Number(a.datetime || 0);
-          })
+          .sort((a, b) => toUnixSeconds(b?.datetime) - toUnixSeconds(a?.datetime))
           .slice(0, MAX_RECOMMENDED);
 
         const allMerged = dedupeNews(Array.isArray(allGeneralRes) ? allGeneralRes : [])
           .filter((item) => withinHours(item?.datetime, WINDOW_HOURS))
-          .sort((a, b) => Number(b.datetime || 0) - Number(a.datetime || 0))
+          .sort((a, b) => toUnixSeconds(b?.datetime) - toUnixSeconds(a?.datetime))
           .slice(0, MAX_ALL);
 
         setRecommendedItems(normalizedRecommended);

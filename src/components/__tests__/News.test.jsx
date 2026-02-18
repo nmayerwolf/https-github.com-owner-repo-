@@ -116,6 +116,16 @@ describe('News', () => {
     expect(headlines[1]).toBe('Fed signals inflation risk for global markets');
   });
 
+  it('orders recommended news from most recent to oldest', async () => {
+    render(<News />);
+    await waitFor(() => expect(apiMock.marketNewsRecommended).toHaveBeenCalledTimes(1));
+
+    const recommendedSection = screen.getByText('Recomendadas por IA').closest('section');
+    const headlines = [...recommendedSection.querySelectorAll('.news-headline')].map((node) => node.textContent);
+    expect(headlines[0]).toBe('OPEC updates oil supply expectations');
+    expect(headlines[1]).toBe('Fed signals inflation risk for global markets');
+  });
+
   it('filters by keyword search', async () => {
     render(<News />);
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(1));

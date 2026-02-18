@@ -14,6 +14,7 @@ import LoadingScreen from './components/common/LoadingScreen';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import AssetDetail from './components/AssetDetail';
 import AuthScreen from './components/AuthScreen';
+import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
 
@@ -461,7 +462,10 @@ const App = () => {
 
       <header className="header">
         <div className="top-header card">
-          <div>
+          <div className="brand-lockup" aria-label="Horsai">
+            <div className="brand-mark-wrap">
+              <HorsaiHorseIcon className="brand-mark" />
+            </div>
             <h1 className="brand-title">Horsai</h1>
           </div>
           <div className="header-actions">
