@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "start:prod": "node migrations/run.js && node src/index.js",
     "migrate": "node migrations/run.js",
     "test": "jest --runInBand",
     "test:coverage": "jest --runInBand --coverage",
