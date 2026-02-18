@@ -3,6 +3,7 @@ const { cache } = require('../config/cache');
 const { query } = require('../config/db');
 const av = require('../services/alphavantage');
 const finnhub = require('../services/finnhub');
+const { resolveMarketQuote, isFinnhubUnavailable } = require('../services/marketDataProvider');
 const { rankNews } = require('../services/newsRanker');
 const { badRequest } = require('../utils/errors');
 const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
@@ -124,12 +125,6 @@ const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
   };
 };
 
-const isFinnhubUnavailable = (error) =>
-  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
-  error?.code === 'FINNHUB_RATE_LIMIT' ||
-  error?.status === 403 ||
-  error?.status === 429;
-
 const symbolBasePrice = (symbol) => {
   const normalized = String(symbol || '').toUpperCase();
   if (!normalized) return 100;
@@ -169,100 +164,11 @@ const syntheticQuote = (symbol, retryAfterMs = 0) => {
   };
 };
 
-const toYahooSymbol = (symbol) => {
-  const upper = String(symbol || '').trim().toUpperCase();
-  if (!upper) return null;
-  if (upper.includes('_')) {
-    const [fromCurrency, toCurrency] = upper.split('_');
-    if (!fromCurrency || !toCurrency) return null;
-    return `${fromCurrency}${toCurrency}=X`;
-  }
-  if (upper.endsWith('USDT')) {
-    const base = upper.replace(/USDT$/, '');
-    return base ? `${base}-USD` : null;
-  }
-  return upper;
-};
-
-const resolveAlphaFallbackQuote = async (symbol) => {
-  const upper = String(symbol || '').trim().toUpperCase();
-  if (!upper) return null;
-  try {
-    if (upper.includes('_')) {
-      const [fromCurrency, toCurrency] = upper.split('_');
-      if (!fromCurrency || !toCurrency) return null;
-      const raw = await av.fxRate(fromCurrency, toCurrency);
-      const node = raw?.['Realtime Currency Exchange Rate'] || {};
-      const price = toFinite(node?.['5. Exchange Rate']);
-      if (!Number.isFinite(price) || price <= 0) return null;
-      return { c: price, pc: price, dp: 0, fallback: true, provider: 'alphavantage' };
-    }
-
-    if (upper.endsWith('USDT')) {
-      const base = upper.replace(/USDT$/, '');
-      if (!base) return null;
-      const raw = await av.digitalDaily(base, 'USD');
-      const series = raw?.['Time Series (Digital Currency Daily)'];
-      const rows = series && typeof series === 'object' ? Object.values(series) : [];
-      const current = toFinite(rows?.[0]?.['4a. close (USD)']);
-      const previous = toFinite(rows?.[1]?.['4a. close (USD)']);
-      if (!Number.isFinite(current) || current <= 0) return null;
-      const pc = Number.isFinite(previous) && previous > 0 ? previous : current;
-      const dp = pc > 0 ? ((current - pc) / pc) * 100 : 0;
-      return { c: current, pc, dp, fallback: true, provider: 'alphavantage' };
-    }
-
-    const raw = await av.globalQuote(upper);
-    const node = raw?.['Global Quote'] || {};
-    const price = toFinite(node?.['05. price']);
-    const previousClose = toFinite(node?.['08. previous close']);
-    const changePercentRaw = String(node?.['10. change percent'] || '').replace('%', '');
-    const parsedChange = toFinite(changePercentRaw);
-    if (!Number.isFinite(price) || price <= 0) return null;
-    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
-    const dp = Number.isFinite(parsedChange) ? parsedChange : pc > 0 ? ((price - pc) / pc) * 100 : 0;
-    return { c: price, pc, dp, fallback: true, provider: 'alphavantage' };
-  } catch {
-    return null;
-  }
-};
-
-const resolveYahooFallbackQuote = async (symbol) => {
-  const yahooSymbol = toYahooSymbol(symbol);
-  if (!yahooSymbol) return null;
-  try {
-    const qs = new URLSearchParams({ symbols: yahooSymbol });
-    const res = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?${qs.toString()}`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const item = json?.quoteResponse?.result?.[0];
-    if (!item) return null;
-    const price = toFinite(item.regularMarketPrice);
-    const previousClose = toFinite(item.regularMarketPreviousClose);
-    const changePercent = toFinite(item.regularMarketChangePercent);
-    if (!Number.isFinite(price) || price <= 0) return null;
-    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
-    const dp = Number.isFinite(changePercent) ? changePercent : pc > 0 ? ((price - pc) / pc) * 100 : 0;
-    return { c: price, pc, dp, fallback: true, provider: 'yahoo' };
-  } catch {
-    return null;
-  }
-};
-
 router.get('/quote', async (req, res, next) => {
   try {
     if (!req.query.symbol) throw badRequest('symbol requerido');
-    let data;
-    try {
-      data = await finnhub.quote(req.query.symbol);
-    } catch (error) {
-      if (!isFinnhubUnavailable(error)) throw error;
-      data =
-        (await resolveAlphaFallbackQuote(req.query.symbol)) ||
-        (await resolveYahooFallbackQuote(req.query.symbol)) ||
-        syntheticQuote(req.query.symbol, error?.retryAfterMs);
-    }
-    return res.json(data);
+    const resolved = await resolveMarketQuote(req.query.symbol);
+    return res.json({ ...resolved.quote, source: resolved.meta.source, asOf: resolved.meta.asOf, stale: resolved.meta.stale });
   } catch (error) {
     return next(error);
   }
@@ -346,17 +252,8 @@ router.get('/snapshot', async (req, res, next) => {
       }
 
       try {
-        let quoteSymbol = symbol;
-        if (symbol.endsWith('USDT')) quoteSymbol = `BINANCE:${symbol}`;
-        if (symbol.includes('_')) quoteSymbol = `OANDA:${symbol}`;
-
-        let quote;
-        try {
-          quote = await finnhub.quote(quoteSymbol);
-        } catch (error) {
-          if (!isFinnhubUnavailable(error)) throw error;
-          quote = (await resolveAlphaFallbackQuote(symbol)) || (await resolveYahooFallbackQuote(symbol)) || syntheticQuote(symbol, error?.retryAfterMs);
-        }
+        const resolved = await resolveMarketQuote(symbol);
+        const quote = resolved.quote;
         const price = toFinite(quote?.c);
         const previousClose = toFinite(quote?.pc);
         if (!price || price <= 0) throw new Error('invalid quote');
@@ -368,7 +265,8 @@ router.get('/snapshot', async (req, res, next) => {
             pc: previousClose ?? price,
             dp: toFinite(quote?.dp) ?? 0
           },
-          candles: buildSyntheticCandles(price, previousClose)
+          candles: buildSyntheticCandles(price, previousClose),
+          marketMeta: resolved.meta
         };
 
         cache.set(cacheKey, snapshot, 45);

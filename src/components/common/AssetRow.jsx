@@ -23,6 +23,7 @@ const AssetRow = ({ asset, to = null, action = null, actionLabel = null }) => {
         <div className="a-info">
           <div className="a-sym">{asset.symbol}</div>
           <div className="a-name">{asset.name}</div>
+          {asset?.marketMeta?.stale ? <div className="a-stale">Dato desactualizado</div> : null}
           <div className="a-mini-chart" aria-hidden="true">
             <Sparkline values={asset.candles?.c?.slice(-30) || []} color={up ? '#00DC82' : '#FF4757'} height={20} />
           </div>

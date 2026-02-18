@@ -53,6 +53,8 @@ const normalizePercentInput = (value) => {
   return `${n.toFixed(2)}%`;
 };
 
+const hasReliableAssetPrice = (asset) => Number.isFinite(Number(asset?.price)) && !Boolean(asset?.marketMeta?.stale);
+
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets, riskPulse = null }) {
   const slPct = Number(position.stopLossPct);
   const tpPct = Number(position.takeProfitPct);
@@ -145,15 +147,21 @@ const Portfolio = () => {
 
   const active = useMemo(() => selectedPositions.filter((p) => !p.sellDate), [selectedPositions]);
   const sold = useMemo(() => selectedPositions.filter((p) => p.sellDate), [selectedPositions]);
-  const activeValue = active.reduce((acc, p) => acc + (assetsBySymbol[p.symbol]?.price ?? p.buyPrice) * p.quantity, 0);
+  const activeValue = active.reduce((acc, p) => {
+    const asset = assetsBySymbol[p.symbol];
+    const current = hasReliableAssetPrice(asset) ? Number(asset.price) : Number(p.buyPrice);
+    return acc + current * p.quantity;
+  }, 0);
   const activeInvested = active.reduce((acc, p) => acc + p.buyPrice * p.quantity, 0);
 
   const activeRows = useMemo(
     () =>
       active.map((p) => {
-        const current = assetsBySymbol[p.symbol]?.price ?? p.buyPrice;
-        const pnl = (current - p.buyPrice) * p.quantity;
-        const pnlPctPos = ((current - p.buyPrice) / p.buyPrice) * 100;
+        const asset = assetsBySymbol[p.symbol];
+        const reliable = hasReliableAssetPrice(asset);
+        const current = reliable ? Number(asset.price) : Number(p.buyPrice);
+        const pnl = reliable ? (current - p.buyPrice) * p.quantity : null;
+        const pnlPctPos = reliable ? ((current - p.buyPrice) / p.buyPrice) * 100 : null;
         const value = current * p.quantity;
         return { ...p, current, pnl, pnlPctPos, value };
       }),
@@ -194,8 +202,11 @@ const Portfolio = () => {
         realizedValue += soldValue;
         pnlTotalAll += soldValue - invested;
       } else {
-        const currentPrice = Number(assetsBySymbol[position.symbol]?.price ?? buyPrice);
-        pnlTotalAll += (currentPrice - buyPrice) * quantity;
+        const asset = assetsBySymbol[position.symbol];
+        if (hasReliableAssetPrice(asset)) {
+          const currentPrice = Number(asset.price);
+          pnlTotalAll += (currentPrice - buyPrice) * quantity;
+        }
       }
     });
 
@@ -216,8 +227,9 @@ const Portfolio = () => {
     }))
     .sort((a, b) => b.value - a.value);
 
-  const bestPosition = [...activeRows, ...soldRows].sort((a, b) => b.pnlPctPos - a.pnlPctPos)[0];
-  const worstPosition = [...activeRows, ...soldRows].sort((a, b) => a.pnlPctPos - b.pnlPctPos)[0];
+  const rankedRows = [...activeRows, ...soldRows].filter((row) => Number.isFinite(Number(row.pnlPctPos)));
+  const bestPosition = [...rankedRows].sort((a, b) => b.pnlPctPos - a.pnlPctPos)[0];
+  const worstPosition = [...rankedRows].sort((a, b) => a.pnlPctPos - b.pnlPctPos)[0];
 
   const searchableAssets = useMemo(() => {
     const merged = new Map();

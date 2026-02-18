@@ -172,6 +172,24 @@ const withIndicators = (asset) => {
   return { ...asset, indicators, signal: null };
 };
 
+const resolveMarketMeta = (data = {}, fallbackSource = 'local') => {
+  const source = String(data?.marketMeta?.source || data?.quote?.source || fallbackSource || 'local');
+  const asOf = data?.marketMeta?.asOf || data?.quote?.asOf || null;
+  const stale = Boolean(data?.marketMeta?.stale ?? data?.quote?.stale ?? false);
+  const fallbackLevel = Number.isFinite(Number(data?.marketMeta?.fallbackLevel))
+    ? Number(data.marketMeta.fallbackLevel)
+    : stale
+      ? 3
+      : source === 'finnhub'
+        ? 0
+        : source === 'alphavantage'
+          ? 1
+          : source === 'yahoo'
+            ? 2
+            : 0;
+  return { source, asOf, stale, fallbackLevel };
+};
+
 export const mapServerAlertToLive = (alert) => {
   const normalizedType =
     alert?.type === 'opportunity' ? 'compra' : alert?.type === 'bearish' ? 'venta' : alert?.type === 'stop_loss' ? 'stoploss' : 'all';
@@ -577,7 +595,8 @@ export const AppProvider = ({ children }) => {
           price: data.quote.c,
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
-          candles: data.candles
+          candles: data.candles,
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         })
       );
     };
@@ -707,7 +726,8 @@ export const AppProvider = ({ children }) => {
           price: data.quote.c,
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
-          candles: data.candles
+          candles: data.candles,
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         });
       });
       dispatch({ type: 'SET_ASSETS', payload: next });
@@ -1276,7 +1296,8 @@ export const AppProvider = ({ children }) => {
           price: data.quote.c,
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
-          candles: data.candles
+          candles: data.candles,
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         });
 
         const current = assetsRef.current;

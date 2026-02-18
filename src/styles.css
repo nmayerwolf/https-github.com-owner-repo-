@@ -774,6 +774,12 @@ a:focus-visible {
   max-width: 120px;
 }
 
+.a-stale {
+  margin-top: 2px;
+  color: #fbbf24;
+  font-size: 0.64rem;
+}
+
 .a-mini-chart {
   margin-top: 3px;
   width: 136px;
