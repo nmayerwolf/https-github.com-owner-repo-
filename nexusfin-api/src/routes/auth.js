@@ -197,9 +197,24 @@ router.get('/google/callback', async (req, res) => {
 
     if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth: 'success', provider: 'google' }, token));
     return res.redirect(302, oauthRedirect({ oauth: 'success' }));
-  } catch {
-    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'google_callback_failed' }));
-    return res.redirect(302, oauthRedirect({ oauth_error: 'google_callback_failed' }));
+  } catch (error) {
+    const oauthErrorDescription = String(error?.message || 'google_callback_failed').slice(0, 160);
+    if (mobileRedirectUri) {
+      return res.redirect(
+        302,
+        oauthMobileRedirect(mobileRedirectUri, {
+          oauth_error: 'google_callback_failed',
+          oauth_error_description: oauthErrorDescription
+        })
+      );
+    }
+    return res.redirect(
+      302,
+      oauthRedirect({
+        oauth_error: 'google_callback_failed',
+        oauth_error_description: oauthErrorDescription
+      })
+    );
   }
 });
 
