@@ -12,9 +12,12 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
   appCtxMock: {
     state: {
       assets: [{ symbol: 'AAPL', price: 120 }],
+      portfolios: [{ id: 'pf-default', name: 'Portfolio principal', isDefault: true }],
+      activePortfolioId: 'pf-default',
       positions: [
         {
           id: 'p1',
+          portfolioId: 'pf-default',
           symbol: 'AAPL',
           name: 'Apple',
           category: 'equity',
@@ -29,7 +32,11 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
     actions: {
       addPosition: vi.fn(),
       sellPosition: vi.fn(),
-      deletePosition: vi.fn()
+      deletePosition: vi.fn(),
+      createPortfolio: vi.fn(),
+      renamePortfolio: vi.fn(),
+      setActivePortfolio: vi.fn(),
+      deletePortfolio: vi.fn()
     }
   }
 }));
@@ -56,6 +63,10 @@ describe('Portfolio', () => {
     appCtxMock.actions.addPosition.mockReset();
     appCtxMock.actions.sellPosition.mockReset();
     appCtxMock.actions.deletePosition.mockReset();
+    appCtxMock.actions.createPortfolio.mockReset();
+    appCtxMock.actions.renamePortfolio.mockReset();
+    appCtxMock.actions.setActivePortfolio.mockReset();
+    appCtxMock.actions.deletePortfolio.mockReset();
 
     apiMock.exportPortfolioCsv.mockResolvedValue('Symbol,Name\nAAPL,Apple');
     apiMock.getPortfolioAdvice.mockResolvedValue({ advice: null, skipped: true, minimumPositions: 2 });

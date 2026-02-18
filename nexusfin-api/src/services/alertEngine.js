@@ -280,7 +280,10 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
           $7, $8, $9::jsonb,
           $10, $11, $12,
           $13::jsonb, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, $22)
-       RETURNING id, symbol, type, recommendation, confidence, price_at_alert, stop_loss, take_profit, created_at`,
+       RETURNING id, symbol, name, type, recommendation, confidence,
+                 confluence_bull, confluence_bear, price_at_alert, stop_loss, take_profit,
+                 ai_validated, ai_confidence, ai_reasoning, ai_adjusted_stop, ai_adjusted_target, ai_thesis,
+                 snapshot, created_at`,
       [
         payload.userId,
         payload.symbol,
@@ -367,7 +370,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
     };
   };
 
-  const buildSignalAlertPayload = ({ userId, asset, confluence }) => {
+  const buildSignalAlertPayload = ({ userId, asset, confluence, scanSource = 'watchlist' }) => {
     const type = mapRecommendationToType(confluence.recommendation);
     if (!type) return null;
 
@@ -387,6 +390,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
       stopLoss,
       takeProfit,
       snapshot: {
+        scanSource: String(scanSource || 'watchlist'),
         rsi: asset.indicators.rsi,
         macd: asset.indicators.macd,
         sma50: asset.indicators.sma50,
@@ -657,7 +661,7 @@ const createAlertEngine = ({ query, finnhub, wsHub, pushNotifier = null, aiAgent
       snapshotsBySymbol.set(symbol, snapshot);
 
       const confluence = calculateConfluence(snapshot, config);
-      const payload = buildSignalAlertPayload({ userId, asset: snapshot, confluence });
+      const payload = buildSignalAlertPayload({ userId, asset: snapshot, confluence, scanSource: item.source || 'watchlist' });
       if (!payload) continue;
       metrics.candidatesFound += 1;
 

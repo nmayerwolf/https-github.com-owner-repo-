@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/apiClient';
 import { subscribeBrowserPush } from '../lib/notifications';
-import { useApp } from '../store/AppContext';
+import { getNewsCtrSummary, resetNewsCtrStats } from '../store/newsAnalyticsStore';
 import { useTheme } from '../store/ThemeContext';
 
 const hasStrongPasswordShape = (value) => value.length >= 8 && /[a-zA-Z]/.test(value) && /[0-9]/.test(value);
 
 const Settings = () => {
-  const { state, actions } = useApp();
   const { theme, setTheme } = useTheme();
-  const [local, setLocal] = useState(state.config);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -30,6 +28,8 @@ const Settings = () => {
     quietHoursStart: '',
     quietHoursEnd: ''
   });
+  const [newsCtr, setNewsCtr] = useState(() => getNewsCtrSummary({ days: 7 }));
+  const [newsCtrSource, setNewsCtrSource] = useState('local');
 
   useEffect(() => {
     let mounted = true;
@@ -55,6 +55,31 @@ const Settings = () => {
 
     load();
 
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadCtr = async () => {
+      try {
+        const out = await api.getNewsTelemetrySummary(7);
+        if (!mounted) return;
+        setNewsCtr({
+          impressions: Number(out?.impressions || 0),
+          clicks: Number(out?.clicks || 0),
+          ctr: Number(out?.ctr || 0),
+          byTheme: Array.isArray(out?.byTheme) ? out.byTheme : []
+        });
+        setNewsCtrSource('backend');
+      } catch {
+        if (!mounted) return;
+        setNewsCtr(getNewsCtrSummary({ days: 7 }));
+        setNewsCtrSource('local');
+      }
+    };
+    loadCtr();
     return () => {
       mounted = false;
     };
@@ -153,7 +178,7 @@ const Settings = () => {
     <div className="grid settings-page" style={{ gap: 12 }}>
       <section className="card">
         <h2 className="screen-title" style={{ marginBottom: 0 }}>Ajustes</h2>
-        <p className="muted">Preferencias de Agente IA, perfil, notificaciones y cuenta.</p>
+        <p className="muted">Preferencias de notificaciones, cuenta y seguridad.</p>
       </section>
 
       <div className="card">
@@ -168,84 +193,6 @@ const Settings = () => {
           <button type="button" onClick={() => setTheme('light')} style={{ borderColor: theme === 'light' ? '#00E08E' : undefined }}>
             Claro
           </button>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Perfil de inversión</h2>
-        <p className="muted" style={{ marginTop: 6 }}>Riesgo, horizonte y umbrales del motor de señales.</p>
-        <div className="grid grid-2" style={{ marginTop: 8 }}>
-          <label className="label">
-            <span className="muted">Perfil de riesgo</span>
-            <select className="select-field" aria-label="Perfil de riesgo" value={local.riskProfile} onChange={(e) => setLocal({ ...local, riskProfile: e.target.value })}>
-              <option value="conservador">Conservador</option>
-              <option value="moderado">Moderado</option>
-              <option value="agresivo">Agresivo</option>
-            </select>
-          </label>
-          <label className="label">
-            <span className="muted">Horizonte</span>
-            <select className="select-field" aria-label="Horizonte de inversión" value={local.horizon} onChange={(e) => setLocal({ ...local, horizon: e.target.value })}>
-              <option value="corto">Corto</option>
-              <option value="mediano">Mediano</option>
-              <option value="largo">Largo</option>
-            </select>
-          </label>
-          <label className="label">
-            <span className="muted">RSI sobreventa</span>
-            <input type="number" value={local.rsiOS} min={15} max={40} onChange={(e) => setLocal({ ...local, rsiOS: Number(e.target.value) })} />
-          </label>
-          <label className="label">
-            <span className="muted">RSI sobrecompra</span>
-            <input type="number" value={local.rsiOB} min={60} max={85} onChange={(e) => setLocal({ ...local, rsiOB: Number(e.target.value) })} />
-          </label>
-          <label className="label">
-            <span className="muted">Volumen anómalo (x)</span>
-            <input
-              type="number"
-              step="0.1"
-              value={local.volThresh}
-              min={1.2}
-              max={4}
-              onChange={(e) => setLocal({ ...local, volThresh: Number(e.target.value) })}
-            />
-          </label>
-          <label className="label">
-            <span className="muted">Confluencia mínima</span>
-            <input
-              type="number"
-              value={local.minConfluence}
-              min={1}
-              max={5}
-              onChange={(e) => setLocal({ ...local, minConfluence: Number(e.target.value) })}
-            />
-          </label>
-        </div>
-        <button type="button" onClick={() => actions.setConfig(local)}>
-          Guardar y aplicar
-        </button>
-      </div>
-
-      <div className="card">
-        <h2>Agente IA</h2>
-        <p className="muted" style={{ marginTop: 6 }}>Controlá intensidad y costo operativo del agente.</p>
-        <div className="ind-grid" style={{ marginTop: 8 }}>
-          <div className="ind-cell">
-            <div className="ind-label">Estado</div>
-            <div className="ind-val mono">{local.minConfluence > 0 ? 'Activo' : 'Pausado'}</div>
-          </div>
-          <div className="ind-cell">
-            <div className="ind-label">Confluencia mínima</div>
-            <div className="ind-val mono">{local.minConfluence}</div>
-          </div>
-          <div className="ind-cell">
-            <div className="ind-label">Riesgo</div>
-            <div className="ind-val mono">{String(local.riskProfile || '-').toUpperCase()}</div>
-          </div>
-          <div className="ind-cell">
-            <div className="ind-label">Horizonte</div>
-            <div className="ind-val mono">{String(local.horizon || '-').toUpperCase()}</div>
-          </div>
         </div>
       </div>
 
@@ -316,6 +263,70 @@ const Settings = () => {
             {notifSuccess && <div className="card" style={{ borderColor: '#00E08E88', marginTop: 10 }}>{notifSuccess}</div>}
           </>
         )}
+      </div>
+
+      <div className="card">
+        <h2>Insights de noticias IA</h2>
+        <p className="muted" style={{ marginTop: 6 }}>
+          CTR de noticias recomendadas por IA (últimos 7 días). Fuente: {newsCtrSource === 'backend' ? 'backend' : 'local'}.
+        </p>
+        <div className="grid grid-2" style={{ marginTop: 10 }}>
+          <div className="card">
+            <div className="muted">Impresiones</div>
+            <div className="ind-val mono perf-val">{Number(newsCtr.impressions || 0)}</div>
+          </div>
+          <div className="card">
+            <div className="muted">Clicks</div>
+            <div className="ind-val mono perf-val">{Number(newsCtr.clicks || 0)}</div>
+          </div>
+          <div className="card">
+            <div className="muted">CTR total</div>
+            <div className="ind-val mono perf-val">{Number(newsCtr.ctr || 0).toFixed(2)}%</div>
+          </div>
+          <div className="card">
+            <div className="muted">Temas medidos</div>
+            <div className="ind-val mono perf-val">{Array.isArray(newsCtr.byTheme) ? newsCtr.byTheme.length : 0}</div>
+          </div>
+        </div>
+        <div className="grid" style={{ marginTop: 10 }}>
+          {(newsCtr.byTheme || []).slice(0, 5).map((row) => (
+            <div key={row.theme} className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+              <span className="muted">{String(row.theme || 'global')}</span>
+              <span className="mono muted">
+                imp {Number(row.impressions || 0)} · click {Number(row.clicks || 0)} · ctr {Number(row.ctr || 0).toFixed(2)}%
+              </span>
+            </div>
+          ))}
+          {!(newsCtr.byTheme || []).length ? <div className="muted">Todavía no hay interacciones suficientes.</div> : null}
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await api.resetNewsTelemetry();
+              } catch {
+                // noop
+              }
+              resetNewsCtrStats();
+              try {
+                const out = await api.getNewsTelemetrySummary(7);
+                setNewsCtr({
+                  impressions: Number(out?.impressions || 0),
+                  clicks: Number(out?.clicks || 0),
+                  ctr: Number(out?.ctr || 0),
+                  byTheme: Array.isArray(out?.byTheme) ? out.byTheme : []
+                });
+                setNewsCtrSource('backend');
+              } catch {
+                setNewsCtr(getNewsCtrSummary({ days: 7 }));
+                setNewsCtrSource('local');
+              }
+            }}
+          >
+            Resetear métricas de noticias
+          </button>
+        </div>
       </div>
 
       <div className="card">

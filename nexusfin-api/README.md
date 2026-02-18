@@ -12,6 +12,11 @@ npm run migrate
 npm run dev
 ```
 
+## Deploy (Railway)
+
+- Config file: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/railway.toml`
+- Start command de producción: `npm run start:prod` (corre migraciones + API).
+
 ## Env vars principales
 
 ```bash

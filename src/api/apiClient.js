@@ -93,6 +93,13 @@ export const api = {
   health: () => request('/health'),
 
   getPortfolio: () => request('/portfolio'),
+  getPortfolios: () => request('/portfolio/portfolios'),
+  createPortfolio: (name) => request('/portfolio/portfolios', { method: 'POST', body: JSON.stringify({ name }) }),
+  renamePortfolio: (id, name) => request(`/portfolio/portfolios/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  deletePortfolio: (id) => request(`/portfolio/portfolios/${id}`, { method: 'DELETE' }),
+  inviteToPortfolio: (id, email) => request(`/portfolio/portfolios/${id}/invite`, { method: 'POST', body: JSON.stringify({ email }) }),
+  getReceivedPortfolioInvites: () => request('/portfolio/invitations/received'),
+  respondPortfolioInvite: (id, action) => request(`/portfolio/invitations/${id}/respond`, { method: 'POST', body: JSON.stringify({ action }) }),
   addPosition: (data) => request('/portfolio', { method: 'POST', body: JSON.stringify(data) }),
   updatePosition: (id, data) => request(`/portfolio/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deletePosition: (id) => request(`/portfolio/${id}`, { method: 'DELETE' }),
@@ -144,7 +151,7 @@ export const api = {
     }
     return request(`/market/news?${q.toString()}`);
   },
-  marketNewsRecommended: ({ symbols = [], category = 'general', minId = 0, minScore = 6, limit = 60 } = {}) => {
+  marketNewsRecommended: ({ symbols = [], category = 'general', minId = 0, minScore = 6, limit = 60, maxAgeHours = 48, strictImpact = true } = {}) => {
     const q = new URLSearchParams();
     const cleanSymbols = Array.isArray(symbols)
       ? symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean)
@@ -154,8 +161,14 @@ export const api = {
     if (minId != null) q.set('minId', String(minId));
     if (minScore != null) q.set('minScore', String(minScore));
     if (limit != null) q.set('limit', String(limit));
+    if (maxAgeHours != null) q.set('maxAgeHours', String(maxAgeHours));
+    q.set('strictImpact', strictImpact ? '1' : '0');
     return request(`/market/news/recommended?${q.toString()}`);
   },
+  trackNewsTelemetry: ({ eventType, items = [] }) =>
+    request('/market/news/telemetry', { method: 'POST', body: JSON.stringify({ eventType, items }) }),
+  getNewsTelemetrySummary: (days = 7) => request(`/market/news/telemetry/summary?days=${encodeURIComponent(String(days || 7))}`),
+  resetNewsTelemetry: () => request('/market/news/telemetry/summary', { method: 'DELETE' }),
 
   getGroups: () => request('/groups'),
   createGroup: (name) => request('/groups', { method: 'POST', body: JSON.stringify({ name }) }),

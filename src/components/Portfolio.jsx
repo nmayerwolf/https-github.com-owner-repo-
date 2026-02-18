@@ -98,6 +98,10 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
 
 const Portfolio = () => {
   const { state, actions } = useApp();
+  const portfolios = Array.isArray(state.portfolios) ? state.portfolios : [];
+  const hasPortfolios = portfolios.length > 0;
+  const defaultPortfolioId = portfolios[0]?.id || '';
+  const activePortfolioId = portfolios.some((p) => p.id === state.activePortfolioId) ? state.activePortfolioId : defaultPortfolioId;
   const [tab, setTab] = useState('active');
   const [visibleCount, setVisibleCount] = useState(PORTFOLIO_PAGE_SIZE);
   const [form, setForm] = useState(createEmptyForm());
@@ -116,10 +120,31 @@ const Portfolio = () => {
   const [advisorData, setAdvisorData] = useState(null);
   const [advisorSkipped, setAdvisorSkipped] = useState(null);
   const [formError, setFormError] = useState('');
+  const [portfolioActionById, setPortfolioActionById] = useState({});
+  const [inviteEmailByPortfolio, setInviteEmailByPortfolio] = useState({});
+  const [inviteBusyByPortfolio, setInviteBusyByPortfolio] = useState({});
+  const [inviteMessage, setInviteMessage] = useState('');
+  const [inviteError, setInviteError] = useState('');
+  const [receivedInvites, setReceivedInvites] = useState([]);
+  const [receivedInvitesLoading, setReceivedInvitesLoading] = useState(false);
 
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
-  const active = useMemo(() => state.positions.filter((p) => !p.sellDate), [state.positions]);
-  const sold = useMemo(() => state.positions.filter((p) => p.sellDate), [state.positions]);
+  const positionsWithPortfolio = useMemo(
+    () =>
+      state.positions.map((position) => ({
+        ...position,
+        portfolioId: position.portfolioId || defaultPortfolioId
+      })),
+    [state.positions, defaultPortfolioId]
+  );
+
+  const selectedPositions = useMemo(
+    () => positionsWithPortfolio.filter((p) => p.portfolioId === activePortfolioId),
+    [positionsWithPortfolio, activePortfolioId]
+  );
+
+  const active = useMemo(() => selectedPositions.filter((p) => !p.sellDate), [selectedPositions]);
+  const sold = useMemo(() => selectedPositions.filter((p) => p.sellDate), [selectedPositions]);
   const activeValue = active.reduce((acc, p) => acc + (assetsBySymbol[p.symbol]?.price ?? p.buyPrice) * p.quantity, 0);
   const activeInvested = active.reduce((acc, p) => acc + p.buyPrice * p.quantity, 0);
 
@@ -152,6 +177,35 @@ const Portfolio = () => {
   const totalInvested = activeInvested + soldRows.reduce((acc, row) => acc + Number(row.buyPrice || 0) * Number(row.quantity || 0), 0);
   const pnlPct = totalInvested ? (pnlTotal / totalInvested) * 100 : 0;
   const portfolioValue = activeValue;
+
+  const globalSummary = useMemo(() => {
+    let capitalInvested = 0;
+    let realizedValue = 0;
+    let pnlTotalAll = 0;
+
+    positionsWithPortfolio.forEach((position) => {
+      const quantity = Number(position.quantity || 0);
+      const buyPrice = Number(position.buyPrice || 0);
+      const invested = buyPrice * quantity;
+      capitalInvested += invested;
+
+      if (position.sellDate && Number.isFinite(Number(position.sellPrice))) {
+        const soldValue = Number(position.sellPrice) * quantity;
+        realizedValue += soldValue;
+        pnlTotalAll += soldValue - invested;
+      } else {
+        const currentPrice = Number(assetsBySymbol[position.symbol]?.price ?? buyPrice);
+        pnlTotalAll += (currentPrice - buyPrice) * quantity;
+      }
+    });
+
+    return {
+      capitalInvested,
+      realizedValue,
+      pnlTotal: pnlTotalAll,
+      performancePct: capitalInvested > 0 ? (pnlTotalAll / capitalInvested) * 100 : 0
+    };
+  }, [positionsWithPortfolio, assetsBySymbol]);
 
   const allocation = activeRows
     .map((row, idx) => ({
@@ -268,6 +322,7 @@ const Portfolio = () => {
     }
     const quantity = Number((amountUsd / buyPrice).toFixed(8));
     actions.addPosition({
+      portfolioId: activePortfolioId,
       symbol: selected.symbol,
       name: selected.name,
       category: selected.category === 'etf' ? 'equity' : selected.category,
@@ -497,12 +552,254 @@ const Portfolio = () => {
     []
   );
 
+  const canCreatePortfolio = useMemo(() => {
+    if (portfolios.length >= 5) return false;
+    if (!positionsWithPortfolio.length) return true;
+    if (!portfolios.length) return true;
+    const byPortfolio = positionsWithPortfolio.reduce((acc, position) => {
+      const key = String(position.portfolioId || '');
+      if (!key) return acc;
+      acc[key] = acc[key] || [];
+      acc[key].push(position);
+      return acc;
+    }, {});
+    return Object.values(byPortfolio).some((rows) => rows.length > 0 && rows.every((row) => !!row.sellDate));
+  }, [portfolios.length, positionsWithPortfolio]);
+
+  const handleCreatePortfolio = async () => {
+    const proposed = window.prompt('Nombre del nuevo portfolio');
+    const safeName = String(proposed || '').trim();
+    if (!safeName) return;
+    const created = await actions.createPortfolio(safeName);
+    if (!created) {
+      window.alert('No se pudo crear el portfolio. Revisá la regla: máximo 5 y al menos 1 portfolio 100% realizado antes de crear otro.');
+      return;
+    }
+    window.alert(`Portfolio "${created.name}" creado.`);
+  };
+
+  const handleDeletePortfolio = async (portfolio) => {
+    if (!portfolio?.id) return;
+    const confirmed = window.confirm(`¿Eliminar portfolio "${portfolio.name}"? También se eliminarán todas sus posiciones.`);
+    if (!confirmed) return;
+    const result = await actions.deletePortfolio(portfolio);
+    if (!result?.ok) {
+      window.alert(result?.message || 'No se pudo eliminar el portfolio.');
+      return;
+    }
+    window.alert(`Portfolio "${portfolio.name}" eliminado.`);
+  };
+
+  const loadReceivedInvites = useCallback(async () => {
+    setReceivedInvitesLoading(true);
+    try {
+      const out = await api.getReceivedPortfolioInvites();
+      setReceivedInvites(Array.isArray(out?.invitations) ? out.invitations : []);
+    } catch {
+      setReceivedInvites([]);
+    } finally {
+      setReceivedInvitesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReceivedInvites();
+  }, [loadReceivedInvites]);
+
+  const handleSendInvite = async (portfolioId) => {
+    const portfolio = portfolios.find((p) => p.id === portfolioId);
+    if (!portfolio?.isOwner) return;
+    const email = String(inviteEmailByPortfolio[portfolioId] || '').trim().toLowerCase();
+    if (!email) return;
+    setInviteBusyByPortfolio((prev) => ({ ...prev, [portfolioId]: true }));
+    setInviteError('');
+    setInviteMessage('');
+    try {
+      await api.inviteToPortfolio(portfolioId, email);
+      setInviteEmailByPortfolio((prev) => ({ ...prev, [portfolioId]: '' }));
+      await actions.refreshUserData();
+      setInviteMessage(`Invitación enviada a ${email}.`);
+    } catch (error) {
+      setInviteError(error?.message || 'No se pudo enviar la invitación.');
+    } finally {
+      setInviteBusyByPortfolio((prev) => ({ ...prev, [portfolioId]: false }));
+    }
+  };
+
+  const handleRespondInvite = async (inviteId, action) => {
+    try {
+      await api.respondPortfolioInvite(inviteId, action);
+      await loadReceivedInvites();
+      if (action === 'accept') actions.reloadAssets();
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo responder la invitación.');
+    }
+  };
+
+  const handleRenamePortfolio = async (portfolio) => {
+    if (!portfolio?.id) return;
+    const proposed = window.prompt('Nuevo nombre del portfolio', portfolio.name || '');
+    const safeName = String(proposed || '').trim();
+    if (!safeName || safeName === portfolio.name) return;
+    await actions.renamePortfolio(portfolio.id, safeName);
+  };
+
+  const handlePortfolioActionChange = async (portfolio, action) => {
+    if (!portfolio?.id || !portfolio?.isOwner) return;
+    if (!action) {
+      setPortfolioActionById((prev) => ({ ...prev, [portfolio.id]: '' }));
+      return;
+    }
+    if (action === 'edit') {
+      await handleRenamePortfolio(portfolio);
+      setPortfolioActionById((prev) => ({ ...prev, [portfolio.id]: '' }));
+      return;
+    }
+    if (action === 'delete') {
+      await handleDeletePortfolio(portfolio);
+      setPortfolioActionById((prev) => ({ ...prev, [portfolio.id]: '' }));
+      return;
+    }
+    setPortfolioActionById((prev) => ({ ...prev, [portfolio.id]: action }));
+  };
+
   return (
     <div className="grid portfolio-page">
       {exportError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{exportError}</div>}
 
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Consolidado global (todos los portfolios)</h3>
+        </div>
+        <div className="ind-grid">
+          <div className="ind-cell">
+            <div className="ind-label">Capital invertido</div>
+            <div className="ind-val mono">{formatUSD(globalSummary.capitalInvested)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Valor realizado</div>
+            <div className="ind-val mono">{formatUSD(globalSummary.realizedValue)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className={`ind-val mono ${globalSummary.pnlTotal >= 0 ? 'up' : 'down'}`}>
+              {formatUSD(globalSummary.pnlTotal)}
+            </div>
+            <div className="ind-label">P&L total</div>
+          </div>
+          <div className="ind-cell">
+            <div className={`ind-val mono ${globalSummary.performancePct >= 0 ? 'up' : 'down'}`}>
+              {formatPct(globalSummary.performancePct)}
+            </div>
+            <div className="ind-label">Performance</div>
+          </div>
+        </div>
+        <div className="ai-filter-stack portfolio-collab-panel">
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Portfolios</span>
+            <div className="portfolio-collab-list">
+              {portfolios.map((portfolio) => (
+                <div
+                  key={portfolio.id}
+                  className={`portfolio-collab-item ${activePortfolioId === portfolio.id ? 'is-active' : ''}`}
+                >
+                  <div className="portfolio-collab-item-main">
+                    <div className="portfolio-collab-left">
+                      <button
+                        type="button"
+                        className={`ai-filter-chip portfolio-collab-select ${activePortfolioId === portfolio.id ? 'is-active is-main' : ''}`}
+                        onClick={() => actions.setActivePortfolio(portfolio.id)}
+                      >
+                        {portfolio.name}
+                      </button>
+                      {!portfolio.isOwner ? <span className="portfolio-collab-role is-shared">Compartido</span> : null}
+                    </div>
+                    <div className="portfolio-collab-actions">
+                      <span className="portfolio-collab-meta">Invitados {Number(portfolio.collaboratorCount || 0)}/5</span>
+                      {portfolio.isOwner ? (
+                        <select
+                          className="portfolio-action-select"
+                          value={portfolioActionById[portfolio.id] || ''}
+                          onChange={(e) => handlePortfolioActionChange(portfolio, e.target.value)}
+                        >
+                          <option value="">Acciones</option>
+                          <option value="edit">Editar</option>
+                          <option value="invite">Invitar</option>
+                          <option value="delete">Eliminar</option>
+                        </select>
+                      ) : (
+                        <span className="portfolio-collab-readonly">Solo lectura</span>
+                      )}
+                    </div>
+                  </div>
+                  {portfolio.isOwner && portfolioActionById[portfolio.id] === 'invite' ? (
+                    <div className="portfolio-collab-invite-row">
+                      <input
+                        className="portfolio-collab-invite-input"
+                        type="email"
+                        value={inviteEmailByPortfolio[portfolio.id] || ''}
+                        onChange={(e) => setInviteEmailByPortfolio((prev) => ({ ...prev, [portfolio.id]: e.target.value }))}
+                        placeholder="Email del usuario a invitar"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSendInvite(portfolio.id)}
+                        disabled={inviteBusyByPortfolio[portfolio.id] || !String(inviteEmailByPortfolio[portfolio.id] || '').trim()}
+                      >
+                        {inviteBusyByPortfolio[portfolio.id] ? 'Enviando...' : 'Enviar'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              <div className="portfolio-collab-add-wrap">
+                <button type="button" className="ai-filter-chip portfolio-add-chip" onClick={handleCreatePortfolio} disabled={!canCreatePortfolio}>
+                  + Agregar portfolio
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p className="muted portfolio-collab-helper">
+          {portfolios.length >= 5
+            ? 'Llegaste al máximo de 5 portfolios.'
+            : canCreatePortfolio
+              ? `Podés crear un nuevo portfolio (${portfolios.length}/5).`
+              : 'Para crear uno nuevo, primero completá al 100% un portfolio existente.'}
+        </p>
+        {inviteMessage ? <div className="muted portfolio-collab-feedback portfolio-collab-feedback-ok">{inviteMessage}</div> : null}
+        {inviteError ? <div className="muted portfolio-collab-feedback portfolio-collab-feedback-error">{inviteError}</div> : null}
+      </section>
+
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Invitaciones {receivedInvites.length ? `(${receivedInvites.length})` : ''}</h3>
+        </div>
+        {receivedInvitesLoading ? <p className="muted portfolio-invites-empty">Cargando invitaciones...</p> : null}
+        {!receivedInvitesLoading && !receivedInvites.length ? <p className="muted portfolio-invites-empty">No tenés invitaciones pendientes.</p> : null}
+        {receivedInvites.map((inv) => (
+          <article key={inv.id} className="portfolio-invite-item">
+            <div className="portfolio-invite-item-row">
+              <div className="portfolio-invite-item-info">
+                <strong>{inv.portfolio_name}</strong>
+                <div className="muted">Invita: {inv.invited_by_email}</div>
+              </div>
+              <div className="portfolio-invite-item-actions">
+                <button type="button" className="ai-filter-chip portfolio-invite-accept" onClick={() => handleRespondInvite(inv.id, 'accept')}>
+                  Aceptar
+                </button>
+                <button type="button" className="ai-filter-chip portfolio-invite-decline" onClick={() => handleRespondInvite(inv.id, 'decline')}>
+                  Rechazar
+                </button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      {hasPortfolios ? (
+        <>
       <section className="card portfolio-hero">
-        <div className="portfolio-label">Valor total</div>
+        <div className="portfolio-label">Valor total ({portfolios.find((p) => p.id === activePortfolioId)?.name || 'Sin portfolio'})</div>
         <div className="portfolio-value mono">{formatUSD(portfolioValue)}</div>
         <div className={`portfolio-change ${pnlTotal >= 0 ? 'up' : 'down'} mono`}>
           {formatUSD(pnlTotal)} ({formatPct(pnlPct)})
@@ -736,6 +1033,8 @@ const Portfolio = () => {
           {exporting ? 'Exportando...' : 'Exportar CSV'}
         </button>
       </section>
+        </>
+      ) : null}
 
       {sellModal.id && (
         <div className="modal-backdrop" role="presentation" onClick={() => setSellModal(emptySell)}>

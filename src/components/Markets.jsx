@@ -30,6 +30,7 @@ const Markets = () => {
   const [universe, setUniverse] = useState([]);
   const [remoteUniverse, setRemoteUniverse] = useState([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
+  const [resettingWatchlist, setResettingWatchlist] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
   const loadMoreRef = useRef(null);
   const isStreamingLoad = state.progress.loaded < state.progress.total;
@@ -110,6 +111,13 @@ const Markets = () => {
         return normalizeSearchText(asset.symbol).includes(q) || normalizeSearchText(asset.name).includes(q);
       });
   }, [state.assets, state.watchlistSymbols, category, watchlistQuery]);
+  const visibleWatchlistSet = useMemo(
+    () => new Set(watchlistAssets.map((asset) => String(asset?.symbol || '').toUpperCase())),
+    [watchlistAssets]
+  );
+  const selectedSymbolUpper = String(selectedUniverseMatch?.symbol || '').toUpperCase();
+  const selectedAlreadyButHidden =
+    Boolean(selectedSymbolUpper) && watchlistSet.has(selectedSymbolUpper) && !visibleWatchlistSet.has(selectedSymbolUpper);
 
   const visibleAssets = useMemo(() => watchlistAssets.slice(0, visibleCount), [watchlistAssets, visibleCount]);
   const showStreamingNote = isStreamingLoad && (visibleAssets.length === 0 || remainingToLoad > 8);
@@ -224,7 +232,9 @@ const Markets = () => {
               <span className="muted" style={{ marginTop: 4, display: 'block' }}>
                 {selectedUniverseMatch
                   ? isAlreadyInWatchlist
-                    ? `${selectedUniverseMatch.symbol} ya está en watchlist.`
+                    ? selectedAlreadyButHidden
+                      ? `${selectedUniverseMatch.symbol} ya está en watchlist (ahora no se ve por los filtros/búsqueda actuales).`
+                      : `${selectedUniverseMatch.symbol} ya está en watchlist.`
                     : `Se agregará: ${selectedUniverseMatch.symbol} - ${selectedUniverseMatch.name}`
                   : candidateLoading
                     ? 'Buscando activos...'
@@ -263,7 +273,27 @@ const Markets = () => {
       </section>
 
       <section className="card">
-        <h3 style={{ marginTop: 0 }}>Watchlist</h3>
+        <div className="row" style={{ alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 0 }}>Watchlist</h3>
+          <button
+            type="button"
+            onClick={async () => {
+              if (resettingWatchlist) return;
+              const ok = window.confirm('¿Querés reestablecer la watchlist al listado por defecto?');
+              if (!ok) return;
+              setResettingWatchlist(true);
+              try {
+                await actions.resetWatchlist();
+              } finally {
+                setResettingWatchlist(false);
+              }
+            }}
+            disabled={resettingWatchlist}
+            style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+          >
+            {resettingWatchlist ? 'Reestableciendo...' : 'Reestablecer watchlist'}
+          </button>
+        </div>
         <div className="search-bar">
           <input value={watchlistQuery} onChange={(e) => setWatchlistQuery(e.target.value)} placeholder="Buscar en watchlist (activo o ticker)..." />
         </div>

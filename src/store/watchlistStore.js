@@ -6,7 +6,7 @@ export const loadWatchlistSymbols = () => {
   try {
     const raw = localStorage.getItem(KEY);
     const arr = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(arr) && arr.length) return arr;
+    if (Array.isArray(arr)) return arr;
   } catch {
     // Ignore parse errors.
   }

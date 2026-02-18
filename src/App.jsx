@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
 import Navigation from './components/Navigation';
@@ -16,6 +16,36 @@ import AssetDetail from './components/AssetDetail';
 import AuthScreen from './components/AuthScreen';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
+
+const MIGRATION_DISMISSED_KEY = 'horsai_migration_prompt_dismissed_v1';
+const LEGACY_KEYS = {
+  positions: 'nexusfin_phase1_portfolio',
+  watchlist: 'nexusfin_phase1_watchlist',
+  config: 'nexusfin_phase1_config'
+};
+
+const loadLegacyMigrationPayload = () => {
+  try {
+    const positions = JSON.parse(localStorage.getItem(LEGACY_KEYS.positions) || '[]');
+    const watchlist = JSON.parse(localStorage.getItem(LEGACY_KEYS.watchlist) || '[]');
+    const config = JSON.parse(localStorage.getItem(LEGACY_KEYS.config) || 'null');
+
+    const watchlistObjects = Array.isArray(watchlist)
+      ? watchlist
+          .map((symbol) => String(symbol || '').toUpperCase())
+          .filter(Boolean)
+          .map((symbol) => ({ symbol, name: symbol, type: 'stock', category: 'equity' }))
+      : [];
+
+    return {
+      positions: Array.isArray(positions) ? positions : [],
+      watchlist: watchlistObjects,
+      config: config && typeof config === 'object' ? config : null
+    };
+  } catch {
+    return { positions: [], watchlist: [], config: null };
+  }
+};
 
 const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
   <div className="modal-backdrop" role="presentation">
@@ -50,101 +80,29 @@ const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
   </div>
 );
 
-const toggleSector = (sectors, sector) => {
-  if (sectors.includes(sector)) return sectors.filter((x) => x !== sector);
-  return [...sectors, sector];
-};
-
 const RouteBoundary = ({ moduleName, children }) => <ErrorBoundary moduleName={moduleName}>{children}</ErrorBoundary>;
 
-const OnboardingModal = ({ step, state, onChange, onPrev, onNext, onComplete, saving, pushLoading, pushMessage, pushError }) => (
+const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushError }) => (
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
       <div className="row">
         <h3>Bienvenido a Horsai</h3>
-        <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>
-          Paso {step}/4
-        </span>
+        <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>Inicio rápido</span>
       </div>
 
-      {step === 1 && (
-        <div className="grid" style={{ marginTop: 10 }}>
-          <p className="muted">¿Cuál es tu perfil de riesgo?</p>
-          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="radio" checked={state.riskProfile === 'conservador'} onChange={() => onChange({ riskProfile: 'conservador' })} />
-            <span>Conservador</span>
-          </label>
-          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="radio" checked={state.riskProfile === 'moderado'} onChange={() => onChange({ riskProfile: 'moderado' })} />
-            <span>Moderado</span>
-          </label>
-          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="radio" checked={state.riskProfile === 'agresivo'} onChange={() => onChange({ riskProfile: 'agresivo' })} />
-            <span>Agresivo</span>
-          </label>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="grid" style={{ marginTop: 10 }}>
-          <p className="muted">Seleccioná sectores de interés</p>
-          <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-            {['tech', 'finance', 'health', 'energy', 'crypto', 'metals', 'bonds', 'fx'].map((sector) => (
-              <button
-                key={sector}
-                type="button"
-                onClick={() => onChange({ sectors: toggleSector(state.sectors, sector) })}
-                style={{ borderColor: state.sectors.includes(sector) ? '#00E08E' : undefined }}
-              >
-                {sector}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="grid" style={{ marginTop: 10 }}>
-          <p className="muted">¿Cuál es tu horizonte de inversión?</p>
-          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="radio" checked={state.horizon === 'corto'} onChange={() => onChange({ horizon: 'corto' })} />
-            <span>Corto plazo</span>
-          </label>
-          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="radio" checked={state.horizon === 'mediano'} onChange={() => onChange({ horizon: 'mediano' })} />
-            <span>Mediano plazo</span>
-          </label>
-          <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="radio" checked={state.horizon === 'largo'} onChange={() => onChange({ horizon: 'largo' })} />
-            <span>Largo plazo</span>
-          </label>
-        </div>
-      )}
-
-      {step === 4 && (
-        <div className="grid" style={{ marginTop: 10 }}>
-          <p className="muted">Activá notificaciones para no perder oportunidades ni alertas de stop loss.</p>
-          <button type="button" onClick={onComplete.enablePush} disabled={pushLoading}>
-            {pushLoading ? 'Activando...' : 'Activar notificaciones push'}
-          </button>
-          {pushMessage && <div className="card" style={{ borderColor: '#00E08E88' }}>{pushMessage}</div>}
-          {pushError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{pushError}</div>}
-        </div>
-      )}
+      <div className="grid" style={{ marginTop: 10 }}>
+        <p className="muted">Podés activar notificaciones ahora (opcional). El perfil inversor se configura automáticamente.</p>
+        <button type="button" onClick={onComplete.enablePush} disabled={pushLoading}>
+          {pushLoading ? 'Activando...' : 'Activar notificaciones push'}
+        </button>
+        {pushMessage && <div className="card" style={{ borderColor: '#00E08E88' }}>{pushMessage}</div>}
+        {pushError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{pushError}</div>}
+      </div>
 
       <div className="row" style={{ marginTop: 12 }}>
-        <button type="button" onClick={onPrev} disabled={step === 1 || saving}>
-          Anterior
+        <button type="button" onClick={onComplete.finish} disabled={saving}>
+          {saving ? 'Finalizando...' : 'Finalizar onboarding'}
         </button>
-        {step < 4 ? (
-          <button type="button" onClick={onNext} disabled={saving || (step === 2 && !state.sectors.length)}>
-            Siguiente
-          </button>
-        ) : (
-          <button type="button" onClick={onComplete.finish} disabled={saving}>
-            {saving ? 'Finalizando...' : 'Finalizar onboarding'}
-          </button>
-        )}
       </div>
     </section>
   </div>
@@ -160,7 +118,8 @@ const WS_STATUS_LABEL = {
 };
 
 const App = () => {
-  const { state, actions } = useApp();
+  const navigate = useNavigate();
+  const { state } = useApp();
   const { isAuthenticated, user, logout, loading: authLoading, completeOnboarding } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
@@ -170,43 +129,39 @@ const App = () => {
   const [networkOffline, setNetworkOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
 
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(1);
   const [onboardingSaving, setOnboardingSaving] = useState(false);
   const [onboardingPushLoading, setOnboardingPushLoading] = useState(false);
   const [onboardingPushMessage, setOnboardingPushMessage] = useState('');
   const [onboardingPushError, setOnboardingPushError] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
-  const [onboardingDraft, setOnboardingDraft] = useState({
-    riskProfile: 'moderado',
-    sectors: ['tech', 'crypto', 'metals'],
-    horizon: 'mediano'
-  });
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifItems, setNotifItems] = useState([]);
+  const notifMenuRef = useRef(null);
+  const processedRealtimeRef = useRef(new Set());
+  const seenInviteRef = useRef(new Set());
+  const migrationPayload = useMemo(() => loadLegacyMigrationPayload(), [isAuthenticated]);
 
-  const migrationPayload = useMemo(() => {
+  const markMigrationPromptDismissed = () => {
     try {
-      const positions = JSON.parse(localStorage.getItem('nexusfin_portfolio') || '[]');
-      const watchlist = JSON.parse(localStorage.getItem('nexusfin_watchlist') || '[]');
-      const config = JSON.parse(localStorage.getItem('nexusfin_config') || 'null');
-
-      const watchlistObjects = Array.isArray(watchlist)
-        ? watchlist.map((symbol) => ({ symbol, name: symbol, type: 'stock', category: 'equity' }))
-        : [];
-
-      return {
-        positions: Array.isArray(positions) ? positions : [],
-        watchlist: watchlistObjects,
-        config: config && typeof config === 'object' ? config : null
-      };
+      localStorage.setItem(MIGRATION_DISMISSED_KEY, '1');
     } catch {
-      return { positions: [], watchlist: [], config: null };
+      // noop
     }
-  }, [isAuthenticated]);
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
       setMigrationPrompt(null);
       return;
+    }
+    try {
+      if (localStorage.getItem(MIGRATION_DISMISSED_KEY) === '1') {
+        setMigrationPrompt(null);
+        return;
+      }
+    } catch {
+      // noop
     }
 
     const positions = migrationPayload.positions.length;
@@ -215,6 +170,9 @@ const App = () => {
 
     if (positions || watchlist || hasConfig) {
       setMigrationPrompt({ positions, watchlist, hasConfig });
+    } else {
+      markMigrationPromptDismissed();
+      setMigrationPrompt(null);
     }
   }, [isAuthenticated, migrationPayload]);
 
@@ -226,30 +184,31 @@ const App = () => {
 
     if (user.onboardingCompleted === false) {
       setOnboardingOpen(true);
-      setOnboardingStep(1);
-      setOnboardingDraft({
-        riskProfile: state.config?.riskProfile || 'moderado',
-        sectors: state.config?.sectors?.length ? state.config.sectors : ['tech', 'crypto', 'metals'],
-        horizon: state.config?.horizon || 'mediano'
-      });
     } else {
       setOnboardingOpen(false);
     }
-  }, [isAuthenticated, user, state.config]);
+  }, [isAuthenticated, user]);
 
   const runMigration = async () => {
     setMigrationLoading(true);
     try {
       await api.migrate(migrationPayload);
-      localStorage.removeItem('nexusfin_portfolio');
-      localStorage.removeItem('nexusfin_watchlist');
-      localStorage.removeItem('nexusfin_config');
+      localStorage.removeItem(LEGACY_KEYS.positions);
+      localStorage.removeItem(LEGACY_KEYS.watchlist);
+      localStorage.removeItem(LEGACY_KEYS.config);
+      markMigrationPromptDismissed();
       setMigrationPrompt(null);
     } catch {
+      markMigrationPromptDismissed();
       setMigrationPrompt(null);
     } finally {
       setMigrationLoading(false);
     }
+  };
+
+  const skipMigrationPrompt = () => {
+    markMigrationPromptDismissed();
+    setMigrationPrompt(null);
   };
 
   useEffect(() => {
@@ -308,25 +267,126 @@ const App = () => {
 
   useEffect(() => {
     const onPointerDown = (event) => {
-      if (!userMenuRef.current) return;
-      if (userMenuRef.current.contains(event.target)) return;
-      setUserMenuOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+      if (notifMenuRef.current && !notifMenuRef.current.contains(event.target)) {
+        setNotifOpen(false);
+      }
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, []);
 
+  const pushImportantNotification = ({ key, title, message, level = 'info', route = null }) => {
+    if (!key || !title) return;
+    setNotifItems((prev) => {
+      const now = Date.now();
+      const existing = prev.find((item) => item.key === key);
+      if (existing && now - existing.ts < 15 * 60 * 1000) {
+        return prev;
+      }
+      const next = [
+        {
+          id: `${key}-${now}`,
+          key,
+          title,
+          message: message || '',
+          level,
+          route,
+          read: false,
+          ts: now
+        },
+        ...prev
+      ];
+      return next.slice(0, 25);
+    });
+  };
+
+  useEffect(() => {
+    if (!Array.isArray(state.realtimeAlerts) || !state.realtimeAlerts.length) return;
+    for (const alert of state.realtimeAlerts) {
+      const alertId = String(alert?.id || '');
+      if (!alertId || processedRealtimeRef.current.has(alertId)) continue;
+      processedRealtimeRef.current.add(alertId);
+      const type = String(alert?.type || '').toLowerCase();
+      if (type !== 'stoploss' && type !== 'takeprofit') continue;
+      const symbol = String(alert?.symbol || '').toUpperCase();
+      pushImportantNotification({
+        key: `risk-${type}-${symbol}`,
+        title: type === 'stoploss' ? `Alerta SL en ${symbol}` : `Alerta TP en ${symbol}`,
+        message: type === 'stoploss' ? 'Se alcanzó el nivel de stop loss.' : 'Se alcanzó el nivel de take profit.',
+        level: type === 'stoploss' ? 'critical' : 'positive',
+        route: '/portfolio'
+      });
+    }
+  }, [state.realtimeAlerts]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    let active = true;
+
+    const syncInvites = async () => {
+      try {
+        const out = await api.getReceivedPortfolioInvites();
+        if (!active) return;
+        const invites = Array.isArray(out?.invitations) ? out.invitations : [];
+        invites.forEach((inv) => {
+          const id = String(inv?.id || '');
+          if (!id || seenInviteRef.current.has(id)) return;
+          seenInviteRef.current.add(id);
+          pushImportantNotification({
+            key: `invite-${id}`,
+            title: 'Nueva invitación a portfolio',
+            message: `${inv?.invited_by_email || 'Usuario'} te invitó a "${inv?.portfolio_name || 'Portfolio'}".`,
+            level: 'info',
+            route: '/portfolio'
+          });
+        });
+      } catch {
+        // ignore background invite refresh failures
+      }
+    };
+
+    syncInvites();
+    const id = setInterval(syncInvites, 45000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (state.wsStatus !== 'auth_error') return;
+    pushImportantNotification({
+      key: 'ws-auth-error',
+      title: 'Sesión de tiempo real expirada',
+      message: 'Reingresá para reconectar WebSocket.',
+      level: 'critical',
+      route: '/settings'
+    });
+  }, [state.wsStatus]);
+
+  useEffect(() => {
+    if (!backendOffline && !networkOffline) return;
+    pushImportantNotification({
+      key: networkOffline ? 'network-offline' : 'backend-offline',
+      title: networkOffline ? 'Sin conexión de red' : 'Sin conexión con backend',
+      message: networkOffline ? 'Mostrando datos en cache.' : 'Modo degradado hasta recuperar conexión.',
+      level: 'warning',
+      route: '/settings'
+    });
+  }, [backendOffline, networkOffline]);
+
+  const openNotification = (item) => {
+    setNotifItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, read: true } : x)));
+    setNotifOpen(false);
+    if (item?.route) navigate(item.route);
+  };
+
   const finishOnboarding = async () => {
     setOnboardingSaving(true);
     try {
-      const nextConfig = {
-        ...state.config,
-        riskProfile: onboardingDraft.riskProfile,
-        sectors: onboardingDraft.sectors,
-        horizon: onboardingDraft.horizon
-      };
-
-      await actions.setConfig(nextConfig);
       if (typeof completeOnboarding === 'function') {
         await completeOnboarding();
       }
@@ -381,20 +441,16 @@ const App = () => {
   const backendLastOkLabel = backendLastOkAt
     ? new Date(backendLastOkAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : null;
+  const unreadNotifCount = notifItems.filter((item) => !item.read).length;
 
   return (
     <div className="app">
       {migrationPrompt && !onboardingOpen && (
-        <MigrationModal stats={migrationPrompt} onAccept={runMigration} onSkip={() => setMigrationPrompt(null)} loading={migrationLoading} />
+        <MigrationModal stats={migrationPrompt} onAccept={runMigration} onSkip={skipMigrationPrompt} loading={migrationLoading} />
       )}
 
       {onboardingOpen && (
         <OnboardingModal
-          step={onboardingStep}
-          state={onboardingDraft}
-          onChange={(patch) => setOnboardingDraft((prev) => ({ ...prev, ...patch }))}
-          onPrev={() => setOnboardingStep((prev) => Math.max(1, prev - 1))}
-          onNext={() => setOnboardingStep((prev) => Math.min(4, prev + 1))}
           onComplete={{ finish: finishOnboarding, enablePush: enablePushFromOnboarding }}
           saving={onboardingSaving}
           pushLoading={onboardingPushLoading}
@@ -409,12 +465,59 @@ const App = () => {
             <h1 className="brand-title">Horsai</h1>
           </div>
           <div className="header-actions">
-            <button type="button" className="icon-btn" aria-label="Notificaciones">
-              <svg viewBox="0 0 24 24">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-              </svg>
-            </button>
+            <div className="notif-menu-wrap" ref={notifMenuRef}>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Notificaciones"
+                aria-expanded={notifOpen}
+                onClick={() => setNotifOpen((prev) => !prev)}
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {unreadNotifCount > 0 ? <span className="notif-dot">{unreadNotifCount > 9 ? '9+' : unreadNotifCount}</span> : null}
+              </button>
+              {notifOpen ? (
+                <div className="notif-menu card">
+                  <div className="notif-menu-head">
+                    <strong>Importantes</strong>
+                    <button
+                      type="button"
+                      className="inline-link-btn"
+                      onClick={() => setNotifItems((prev) => prev.map((item) => ({ ...item, read: true })))}
+                    >
+                      Marcar leídas
+                    </button>
+                  </div>
+                  <div className="notif-menu-list">
+                    {!notifItems.length ? <div className="muted">Sin notificaciones importantes.</div> : null}
+                    {notifItems.map((item) => (
+                      <article
+                        key={item.id}
+                        className={`notif-item ${item.read ? 'is-read' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openNotification(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openNotification(item);
+                          }
+                        }}
+                      >
+                        <div className={`notif-level ${item.level}`}>{item.title}</div>
+                        {item.message ? <div className="muted notif-msg">{item.message}</div> : null}
+                        <div className="muted notif-time">
+                          {new Date(item.ts).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button type="button" className="icon-btn" aria-label="Buscar">
               <svg viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="7" />
