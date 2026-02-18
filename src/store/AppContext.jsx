@@ -217,6 +217,20 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
     .filter(Boolean);
 };
 
+const resolveMarketSymbols = (watchlistSymbols = [], positions = []) => {
+  const out = new Set();
+  for (const symbol of watchlistSymbols || []) {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (normalized) out.add(normalized);
+  }
+  for (const position of positions || []) {
+    if (position?.sellDate) continue;
+    const normalized = String(position?.symbol || '').trim().toUpperCase();
+    if (normalized) out.add(normalized);
+  }
+  return Array.from(out);
+};
+
 const STOP_LOSS_PCT_TOKEN = /\[SLP:([0-9]+(?:\.[0-9]+)?)\]/i;
 const TAKE_PROFIT_PCT_TOKEN = /\[TPP:([0-9]+(?:\.[0-9]+)?)\]/i;
 const STOP_LOSS_PRICE_TOKEN = /\[SL:([0-9]+(?:\.[0-9]+)?)\]/i;
@@ -521,8 +535,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const loadAssets = async (watchlistSymbols = state.watchlistSymbols) => {
-    const watchlist = resolveWatchlistAssets(watchlistSymbols);
+  const loadAssets = async (watchlistSymbols = state.watchlistSymbols, positions = state.positions) => {
+    const marketSymbols = resolveMarketSymbols(watchlistSymbols, positions);
+    const watchlist = resolveWatchlistAssets(marketSymbols);
     if (!watchlist.length) {
       clearAssetCache();
       dispatch({ type: 'SET_ASSETS', payload: [] });
@@ -655,14 +670,29 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     const run = async () => {
+      let syncedPositions = state.positions;
+      let syncedWatchlist = state.watchlistSymbols;
       if (isAuthenticated) {
         await syncRemoteUserData();
+        syncedPositions = state.positions;
+        syncedWatchlist = state.watchlistSymbols;
       }
-      await loadAssets(state.watchlistSymbols);
+      await loadAssets(syncedWatchlist, syncedPositions);
     };
 
     run();
   }, [isAuthenticated]);
+
+  const marketUniverseKey = useMemo(
+    () => resolveMarketSymbols(state.watchlistSymbols, state.positions).sort().join(','),
+    [state.watchlistSymbols, state.positions]
+  );
+
+  useEffect(() => {
+    if (state.loading) return;
+    if (!marketUniverseKey) return;
+    loadAssets(state.watchlistSymbols, state.positions);
+  }, [marketUniverseKey]);
 
   useEffect(() => {
     if (state.loading || !state.assets.length || macroLoadedRef.current) return;
@@ -700,6 +730,7 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (state.loading || !state.assets.length) return undefined;
+    if (state.progress.total > 0 && state.progress.loaded < state.progress.total) return undefined;
     const wsSymbols = wsSymbolKey
       ? wsSymbolKey
           .split(',')
@@ -769,7 +800,7 @@ export const AppProvider = ({ children }) => {
     });
 
     return () => socket.close();
-  }, [state.loading, isAuthenticated, wsSymbolKey, state.assets.length]);
+  }, [state.loading, state.progress.loaded, state.progress.total, isAuthenticated, wsSymbolKey, state.assets.length]);
 
   useEffect(() => {
     const enriched = state.assets.map((asset) => ({ ...asset, signal: calculateConfluence(asset, state.config) }));
