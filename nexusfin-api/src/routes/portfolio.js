@@ -6,9 +6,11 @@ const { validatePositiveNumber, sanitizeText } = require('../utils/validate');
 const router = express.Router();
 const SYMBOL_PATTERN = /^[A-Z0-9.^/_:-]{1,24}$/;
 const PORTFOLIO_ID_PATTERN = /^[0-9a-f-]{36}$/i;
-const MAX_PORTFOLIOS = 5;
+const MAX_PORTFOLIOS = 3;
+const MAX_HOLDINGS_PER_PORTFOLIO = 15;
 const MAX_PORTFOLIO_USERS = 6;
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+const canWritePortfolio = (access = {}) => Boolean(access?.is_owner || String(access?.collaborator_role || '').toLowerCase() === 'editor');
 
 const listPortfolios = async (userId) => {
   const rows = await query(
@@ -48,7 +50,7 @@ const getAccessiblePortfolio = async (userId, portfolioId) => {
     throw badRequest('portfolioId inválido', 'VALIDATION_ERROR');
   }
   const out = await query(
-    `SELECT DISTINCT p.id, p.name, p.user_id AS owner_user_id, (p.user_id = $2) AS is_owner
+    `SELECT DISTINCT p.id, p.name, p.user_id AS owner_user_id, (p.user_id = $2) AS is_owner, pc.role AS collaborator_role
      FROM portfolios p
      LEFT JOIN portfolio_collaborators pc ON pc.portfolio_id = p.id
      WHERE p.id = $1
@@ -107,7 +109,7 @@ router.post('/portfolios', async (req, res, next) => {
 
     const count = await query('SELECT COUNT(*)::int AS total FROM portfolios WHERE user_id = $1 AND deleted_at IS NULL', [req.user.id]);
     if (count.rows[0].total >= MAX_PORTFOLIOS) {
-      return res.status(403).json({ error: 'PORTFOLIO_LIMIT_REACHED', message: `Máximo ${MAX_PORTFOLIOS} portfolios` });
+      return res.status(422).json({ error: { code: 'PORTFOLIO_LIMIT_REACHED', message: `Máximo ${MAX_PORTFOLIOS} portfolios` } });
     }
 
     const created = await query(
@@ -139,7 +141,7 @@ router.post('/portfolios/:id/invite', async (req, res, next) => {
       [owned.id]
     );
     if (participants.rows[0].total >= MAX_PORTFOLIO_USERS) {
-      return res.status(403).json({ error: 'PORTFOLIO_USER_LIMIT', message: `Máximo ${MAX_PORTFOLIO_USERS} usuarios por portfolio` });
+      return res.status(403).json({ error: { code: 'PORTFOLIO_USER_LIMIT', message: `Máximo ${MAX_PORTFOLIO_USERS} usuarios por portfolio` } });
     }
 
     const existingMember = await query(
@@ -150,7 +152,7 @@ router.post('/portfolios/:id/invite', async (req, res, next) => {
       [owned.id, invitedEmail]
     );
     if (existingMember.rows.length) {
-      return res.status(409).json({ error: 'ALREADY_COLLABORATOR', message: 'El usuario ya participa en este portfolio' });
+      return res.status(409).json({ error: { code: 'ALREADY_COLLABORATOR', message: 'El usuario ya participa en este portfolio' } });
     }
 
     const invitedUser = await query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [invitedEmail]);
@@ -221,7 +223,7 @@ router.post('/invitations/:id/respond', async (req, res, next) => {
 
     const accessible = await getAccessiblePortfolioIds(req.user.id);
     if (accessible.length >= MAX_PORTFOLIOS) {
-      return res.status(403).json({ error: 'PORTFOLIO_LIMIT_REACHED', message: `Máximo ${MAX_PORTFOLIOS} portfolios por usuario` });
+      return res.status(422).json({ error: { code: 'PORTFOLIO_LIMIT_REACHED', message: `Máximo ${MAX_PORTFOLIOS} portfolios por usuario` } });
     }
 
     const participants = await query(
@@ -231,7 +233,7 @@ router.post('/invitations/:id/respond', async (req, res, next) => {
       [invitation.portfolio_id]
     );
     if (participants.rows[0].total >= MAX_PORTFOLIO_USERS) {
-      return res.status(403).json({ error: 'PORTFOLIO_USER_LIMIT', message: `Máximo ${MAX_PORTFOLIO_USERS} usuarios por portfolio` });
+      return res.status(403).json({ error: { code: 'PORTFOLIO_USER_LIMIT', message: `Máximo ${MAX_PORTFOLIO_USERS} usuarios por portfolio` } });
     }
 
     await query(
@@ -311,10 +313,21 @@ router.post('/', async (req, res, next) => {
 
     if (!portfolioId) throw badRequest('portfolioId es obligatorio', 'VALIDATION_ERROR');
     const access = await getAccessiblePortfolio(req.user.id, portfolioId);
+    if (!canWritePortfolio(access)) {
+      throw forbidden('Permisos insuficientes para editar holdings', 'FORBIDDEN_PORTFOLIO_ACTION');
+    }
     const targetPortfolioId = access.id;
-    const count = await query('SELECT COUNT(*)::int AS total FROM positions WHERE user_id = $1 AND deleted_at IS NULL', [access.owner_user_id]);
-    if (count.rows[0].total >= 200) {
-      return res.status(403).json({ error: 'LIMIT_REACHED', message: 'Máximo 200 posiciones' });
+    const count = await query(
+      'SELECT COUNT(*)::int AS total FROM positions WHERE portfolio_id = $1 AND sell_date IS NULL AND deleted_at IS NULL',
+      [targetPortfolioId]
+    );
+    if (count.rows[0].total >= MAX_HOLDINGS_PER_PORTFOLIO) {
+      return res.status(422).json({
+        error: {
+          code: 'HOLDING_LIMIT_REACHED',
+          message: `Máximo ${MAX_HOLDINGS_PER_PORTFOLIO} holdings por portfolio`
+        }
+      });
     }
 
     const row = await query(
@@ -343,7 +356,7 @@ router.post('/', async (req, res, next) => {
 router.patch('/:id', async (req, res, next) => {
   try {
     const current = await query(
-      `SELECT pos.*
+      `SELECT pos.*, p.user_id AS owner_user_id, (p.user_id = $2) AS is_owner, pc.role AS collaborator_role
        FROM positions pos
        JOIN portfolios p ON p.id = pos.portfolio_id
        LEFT JOIN portfolio_collaborators pc ON pc.portfolio_id = p.id
@@ -357,6 +370,9 @@ router.patch('/:id', async (req, res, next) => {
     if (!current.rows.length) throw notFound('Posición no encontrada');
 
     const row = current.rows[0];
+    if (!canWritePortfolio(row)) {
+      throw forbidden('Permisos insuficientes para editar holdings', 'FORBIDDEN_PORTFOLIO_ACTION');
+    }
     const alreadySold = !!(row.sell_date || row.sell_price);
     if (alreadySold) {
       throw forbidden('No se puede editar una posición vendida', 'POSITION_SOLD');
@@ -399,21 +415,30 @@ router.patch('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const gone = await query(
-      `UPDATE positions pos
-       SET deleted_at = NOW()
+    const access = await query(
+      `SELECT pos.id, p.user_id AS owner_user_id, (p.user_id = $2) AS is_owner, pc.role AS collaborator_role
+       FROM positions pos
+       JOIN portfolios p ON p.id = pos.portfolio_id
+       LEFT JOIN portfolio_collaborators pc ON pc.portfolio_id = p.id
        WHERE pos.id = $1
          AND pos.deleted_at IS NULL
-         AND EXISTS (
-           SELECT 1
-           FROM portfolios p
-           LEFT JOIN portfolio_collaborators pc ON pc.portfolio_id = p.id
-           WHERE p.id = pos.portfolio_id
-             AND p.deleted_at IS NULL
-             AND (p.user_id = $2 OR pc.user_id = $2)
-         )
-       RETURNING pos.id`,
+         AND p.deleted_at IS NULL
+         AND (p.user_id = $2 OR pc.user_id = $2)
+       LIMIT 1`,
       [req.params.id, req.user.id]
+    );
+    if (!access.rows.length) throw notFound('Posición no encontrada');
+    if (!canWritePortfolio(access.rows[0])) {
+      throw forbidden('Permisos insuficientes para editar holdings', 'FORBIDDEN_PORTFOLIO_ACTION');
+    }
+
+    const gone = await query(
+      `UPDATE positions
+       SET deleted_at = NOW()
+       WHERE id = $1
+         AND deleted_at IS NULL
+       RETURNING id`,
+      [req.params.id]
     );
     if (!gone.rows.length) throw notFound('Posición no encontrada');
     return res.status(204).end();

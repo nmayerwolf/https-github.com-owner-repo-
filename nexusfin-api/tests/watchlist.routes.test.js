@@ -41,7 +41,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('LIMIT_REACHED');
+    expect(res.body.error.code).toBe('LIMIT_REACHED');
   });
 
   it('normalizes symbol to uppercase before insert', async () => {
@@ -113,7 +113,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -131,7 +131,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('ALREADY_EXISTS');
+    expect(res.body.error.code).toBe('ALREADY_EXISTS');
   });
 
   it('normalizes symbol to uppercase on delete', async () => {

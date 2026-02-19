@@ -142,7 +142,7 @@ describe('notifications routes', () => {
     const res = await request(app).put('/api/notifications/preferences').send({ quietHoursStart: '25:99' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('sends test notification for authenticated user', async () => {
@@ -174,7 +174,7 @@ describe('notifications routes', () => {
     const res = await request(app).post('/api/notifications/test').send({ respectQuietHours: 'si' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns 404 on unsubscribe missing subscription', async () => {
@@ -184,6 +184,6 @@ describe('notifications routes', () => {
     const res = await request(app).delete('/api/notifications/subscribe/missing');
 
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('SUBSCRIPTION_NOT_FOUND');
+    expect(res.body.error.code).toBe('SUBSCRIPTION_NOT_FOUND');
   });
 });

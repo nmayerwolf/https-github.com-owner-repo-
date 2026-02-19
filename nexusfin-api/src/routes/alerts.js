@@ -13,7 +13,7 @@ router.get('/macro', async (req, res, next) => {
   try {
     const macroRadar = req.app?.locals?.macroRadar;
     if (!macroRadar?.getLatestForUser) {
-      return res.status(503).json({ error: 'MACRO_RADAR_UNAVAILABLE', message: 'Macro Radar no disponible.' });
+      return res.status(503).json({ error: { code: 'MACRO_RADAR_UNAVAILABLE', message: 'Macro Radar no disponible.' } });
     }
     const latest = await macroRadar.getLatestForUser(req.user.id);
     if (!latest) {
@@ -39,7 +39,7 @@ router.post('/macro/refresh', async (req, res, next) => {
   try {
     const macroRadar = req.app?.locals?.macroRadar;
     if (!macroRadar?.generateForUser) {
-      return res.status(503).json({ error: 'MACRO_RADAR_UNAVAILABLE', message: 'Macro Radar no disponible.' });
+      return res.status(503).json({ error: { code: 'MACRO_RADAR_UNAVAILABLE', message: 'Macro Radar no disponible.' } });
     }
     const generated = await macroRadar.generateForUser(req.user.id);
     return res.status(201).json({
@@ -63,7 +63,7 @@ router.get('/portfolio-advice', async (req, res, next) => {
   try {
     const portfolioAdvisor = req.app?.locals?.portfolioAdvisor;
     if (!portfolioAdvisor?.getLatestForUser) {
-      return res.status(503).json({ error: 'PORTFOLIO_ADVISOR_UNAVAILABLE', message: 'Portfolio Advisor no disponible.' });
+      return res.status(503).json({ error: { code: 'PORTFOLIO_ADVISOR_UNAVAILABLE', message: 'Portfolio Advisor no disponible.' } });
     }
 
     const latest = await portfolioAdvisor.getLatestForUser(req.user.id);
@@ -90,7 +90,7 @@ router.post('/portfolio-advice/refresh', async (req, res, next) => {
   try {
     const portfolioAdvisor = req.app?.locals?.portfolioAdvisor;
     if (!portfolioAdvisor?.generateForUser) {
-      return res.status(503).json({ error: 'PORTFOLIO_ADVISOR_UNAVAILABLE', message: 'Portfolio Advisor no disponible.' });
+      return res.status(503).json({ error: { code: 'PORTFOLIO_ADVISOR_UNAVAILABLE', message: 'Portfolio Advisor no disponible.' } });
     }
 
     const generated = await portfolioAdvisor.generateForUser(req.user.id);

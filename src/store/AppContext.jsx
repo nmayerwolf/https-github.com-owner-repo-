@@ -8,6 +8,7 @@ import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
 import { calculateConfluence } from '../engine/confluence';
 import { DEFAULT_WATCHLIST, WATCHLIST_CATALOG } from '../utils/constants';
+import { REALTIME_ENABLED } from '../config/features';
 import { useAuth } from './AuthContext';
 import { loadActivePortfolioId, loadPortfolio, loadPortfolios, saveActivePortfolioId, savePortfolio, savePortfolios } from './portfolioStore';
 import { loadConfig, saveConfig } from './configStore';
@@ -460,6 +461,11 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
+    if (!REALTIME_ENABLED) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disabled' });
+      dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
+      return;
+    }
     if (!isAuthenticated) {
       dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
       dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
@@ -828,6 +834,10 @@ export const AppProvider = ({ children }) => {
   }, [realtimeSymbolMap]);
 
   useEffect(() => {
+    if (!REALTIME_ENABLED) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disabled' });
+      return undefined;
+    }
     if (state.loading || !state.assets.length) return undefined;
     if (state.progress.total > 0 && state.progress.loaded < state.progress.total) return undefined;
     const wsSymbols = wsSymbolKey

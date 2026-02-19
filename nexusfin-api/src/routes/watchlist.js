@@ -32,7 +32,7 @@ router.post('/', async (req, res, next) => {
 
     const count = await query('SELECT COUNT(*)::int AS total FROM watchlist_items WHERE user_id = $1', [req.user.id]);
     if (count.rows[0].total >= WATCHLIST_LIMIT) {
-      return res.status(403).json({ error: 'LIMIT_REACHED', message: `Máximo ${WATCHLIST_LIMIT} símbolos` });
+      return res.status(403).json({ error: { code: 'LIMIT_REACHED', message: `Máximo ${WATCHLIST_LIMIT} símbolos` } });
     }
 
     const saved = await query(
@@ -43,7 +43,7 @@ router.post('/', async (req, res, next) => {
       [req.user.id, normalized, name, type, category]
     );
 
-    if (!saved.rows.length) return res.status(409).json({ error: 'ALREADY_EXISTS', message: 'Símbolo ya existente' });
+    if (!saved.rows.length) return res.status(409).json({ error: { code: 'ALREADY_EXISTS', message: 'Símbolo ya existente' } });
     return res.status(201).json(saved.rows[0]);
   } catch (error) {
     return next(error);

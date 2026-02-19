@@ -58,7 +58,7 @@ describe('market routes', () => {
     const res = await request(app).get('/api/market/quote');
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('caches candles response for same params', async () => {

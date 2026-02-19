@@ -1,4 +1,6 @@
 const { env } = require('../config/env');
+const { computeRegime } = require('./regime');
+const { deriveFocusFromConfig, computeProfileMix, applyStrategyMixToRecommendations } = require('./profileFocus');
 
 const toFinite = (value) => {
   const out = Number(value);
@@ -187,6 +189,7 @@ const buildPrompt = ({ positions, summary, config, macro, agentHistory }) => [
   'PERFIL DEL USUARIO:',
   `- Riesgo: ${config?.risk_profile || 'moderado'}`,
   `- Horizonte: ${config?.horizon || 'mediano'}`,
+  `- Focus slider (0-1): ${deriveFocusFromConfig(config)}`,
   '',
   'CONTEXTO MACRO HOY:',
   `- Sentimiento: ${macro?.market_sentiment || 'neutral'}`,
@@ -314,6 +317,21 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
         logger.warn?.('[portfolioAdvisor] ai generation fallback', error?.message || error);
       }
     }
+
+    const regime = computeRegime({
+      marketSentiment: macro?.market_sentiment || 'neutral',
+      spyVol20dZ: macro?.spy_vol_20d_z ?? null,
+      spyRet1d: macro?.spy_ret_1d ?? null,
+      shockEventFlag: Boolean(macro?.shock_event_flag)
+    });
+    const profileMix = computeProfileMix(deriveFocusFromConfig(config));
+    const recommendationBase = Array.isArray(advice.recommendations) ? advice.recommendations : [];
+    advice = {
+      ...advice,
+      regime,
+      profileMix,
+      recommendations: applyStrategyMixToRecommendations(recommendationBase, profileMix.focus)
+    };
 
     const row = await persistAdvice({ userId, advice, model });
     return {

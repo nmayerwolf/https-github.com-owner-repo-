@@ -38,6 +38,7 @@ CRON_CRYPTO_INTERVAL=15
 CRON_FOREX_INTERVAL=15
 CRON_COMMODITY_INTERVAL=60
 WS_PRICE_INTERVAL=20
+REALTIME_ENABLED=false
 MARKET_STRICT_REALTIME=true
 
 AI_AGENT_ENABLED=false
@@ -53,6 +54,9 @@ VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:admin@nexusfin.app
 EXPO_ACCESS_TOKEN=
 ```
+
+Template prod:
+- `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.production.example`
 
 ## Endpoints clave
 
@@ -99,12 +103,49 @@ Health/realtime:
 - `GET /api/health/cron`
 - `WS /ws`
 
+## API Error Contract (v1.1)
+
+Todos los errores de API deben responder con shape anidado:
+
+```json
+{
+  "error": {
+    "code": "HOLDING_LIMIT_REACHED",
+    "message": "Max holdings per portfolio is 15",
+    "details": { "limit": 15, "attempted": 16 }
+  }
+}
+```
+
+Status codes estandarizados:
+- `400 BAD_REQUEST` (payload inválido / enum inválido)
+- `401 UNAUTHORIZED` (sin auth o sesión inválida)
+- `403 FORBIDDEN` (ACL)
+- `404 NOT_FOUND`
+- `409 CONFLICT` (duplicado lógico)
+- `422 UNPROCESSABLE_ENTITY` (límite de negocio / validación semántica)
+- `429 TOO_MANY_REQUESTS`
+- `500 INTERNAL_ERROR`
+- `503 SERVICE_UNAVAILABLE`
+
+Códigos mínimos usados en MVP:
+- `PORTFOLIO_LIMIT_REACHED`
+- `HOLDING_LIMIT_REACHED`
+- `FORBIDDEN_PORTFOLIO_ACTION`
+- `INVALID_ENUM`
+- `DUPLICATE_HOLDING`
+- `INVITE_NOT_FOUND`
+- `INVITE_ALREADY_ACCEPTED`
+
 ## Seguridad/operación
 
 - CSRF obligatorio para mutaciones web en modo cookie.
 - Market rate limit por usuario autenticado.
 - Sanitización de texto libre en rutas de portfolio/grupos.
 - Escaneo de fugas de keys en bundle frontend se ejecuta en CI (repo root).
+- Realtime runtime controlado por `REALTIME_ENABLED`:
+  - `false` = MVP strict (sin WS runtime/streaming)
+  - `true` = realtime habilitado
 
 ## Migraciones
 
