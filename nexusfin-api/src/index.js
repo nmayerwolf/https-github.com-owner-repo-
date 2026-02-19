@@ -12,6 +12,7 @@ const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const av = require('./services/alphavantage');
+const twelvedata = require('./services/twelvedata');
 const { resolveMarketQuote } = require('./services/marketDataProvider');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
@@ -158,41 +159,40 @@ app.get('/api/health/phase3', (_req, res) => {
 
 app.get('/api/health/market-data', async (_req, res) => {
   const symbols = new Set((MARKET_UNIVERSE || []).map((item) => String(item?.symbol || '').toUpperCase()));
-  let liveProbe = { ok: false, symbol: 'AAPL' };
-  try {
-    const probe = await resolveMarketQuote('AAPL');
-    liveProbe = {
-      ok: true,
-      symbol: 'AAPL',
-      source: probe?.meta?.source || null,
-      hasPrice: Number.isFinite(Number(probe?.quote?.c))
-    };
-  } catch (error) {
-    liveProbe = {
-      ok: false,
-      symbol: 'AAPL',
-      code: error?.code || null,
-      reason: error?.reason || null,
-      message: error?.message || null
-    };
+  const probes = {};
+  for (const probeSymbol of ['AAPL', 'EUR_USD']) {
+    try {
+      const startedAt = Date.now();
+      const out = await resolveMarketQuote(probeSymbol);
+      probes[probeSymbol] = {
+        ok: true,
+        price: Number(out?.quote?.c) || null,
+        duration_ms: Date.now() - startedAt
+      };
+    } catch (error) {
+      probes[probeSymbol] = {
+        ok: false,
+        code: error?.code || 'UNKNOWN',
+        message: error?.message || 'failed',
+        details: error?.details || null
+      };
+    }
   }
+
   return res.json({
     ok: true,
-    providers: {
-      finnhub: Boolean(String(env.finnhubKey || '').trim()),
-      alphaVantage: Boolean(String(env.alphaVantageKey || '').trim()),
-      twelveData: Boolean(String(env.twelveDataKey || '').trim())
-    },
+    providerMode: 'twelvedata-only',
+    keyPresent: twelvedata.hasKey(),
+    keyLength: twelvedata.keyLength(),
     universe: {
       count: symbols.size,
       hasMerval: symbols.has('^MERV'),
       hasGoldSpot: symbols.has('XAU_USD')
     },
-    ws: {
-      chainResolverEnabled: true
-    },
+    ws: { chainResolverEnabled: true },
     strictRealtime: Boolean(env.marketStrictRealtime),
-    liveProbe,
+    probes,
+    metrics: twelvedata.getMetrics(),
     ts: new Date().toISOString()
   });
 });

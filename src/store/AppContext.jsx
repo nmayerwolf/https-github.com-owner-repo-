@@ -134,10 +134,7 @@ const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
 
 const toWsMarketSymbol = (asset) => {
   if (!asset?.symbol) return null;
-  if (asset.source === 'finnhub_stock') return String(asset.symbol).toUpperCase();
-  if (asset.source === 'finnhub_crypto') return `BINANCE:${String(asset.symbol).toUpperCase()}`;
-  if (asset.source === 'finnhub_fx') return `OANDA:${String(asset.symbol).toUpperCase()}`;
-  if (String(asset.source || '').startsWith('twelvedata_')) {
+  if (asset.source === 'twelvedata' || String(asset.source || '').startsWith('twelvedata_')) {
     const symbol = String(asset.symbol).toUpperCase();
     if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
     if (symbol.includes('_')) return `OANDA:${symbol}`;
@@ -184,13 +181,13 @@ const resolveMarketMeta = (data = {}, fallbackSource = 'local') => {
   const stale = Boolean(data?.marketMeta?.stale ?? data?.quote?.stale ?? false);
   const unavailable = Boolean(data?.marketMeta?.unavailable ?? false);
   const fallbackLevel = Number.isFinite(Number(data?.marketMeta?.fallbackLevel))
-    ? Number(data.marketMeta.fallbackLevel)
-    : stale
-      ? 3
-      : source === 'finnhub'
-        ? 0
-        : source === 'alphavantage'
-          ? 1
+      ? Number(data.marketMeta.fallbackLevel)
+      : stale
+        ? 3
+        : source === 'twelvedata'
+          ? 0
+          : source === 'alphavantage'
+            ? 1
           : source === 'yahoo'
             ? 2
             : 0;
@@ -232,12 +229,12 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
       if (bySymbol[normalized]) return bySymbol[normalized];
       if (!normalized) return null;
       if (normalized.endsWith('USDT')) {
-        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'finnhub_crypto' };
+        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'twelvedata' };
       }
       if (normalized.includes('_')) {
-        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'finnhub_fx' };
+        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'twelvedata' };
       }
-      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'finnhub_stock' };
+      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'twelvedata' };
     })
     .filter(Boolean);
 };
@@ -605,7 +602,7 @@ export const AppProvider = ({ children }) => {
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
           candles: data.candles,
-          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'twelvedata')
         })
       );
     };
@@ -756,7 +753,7 @@ export const AppProvider = ({ children }) => {
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
           candles: data.candles,
-          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'twelvedata')
         });
       });
       dispatch({ type: 'SET_ASSETS', payload: next });
@@ -1287,10 +1284,10 @@ export const AppProvider = ({ children }) => {
                 category: String(entry.category || fallbackMeta?.category || 'equity').toLowerCase(),
                 sector: String(entry.sector || fallbackMeta?.sector || 'general').toLowerCase(),
                 source: String(entry.source || fallbackMeta?.source || (normalizedSymbol.endsWith('USDT')
-                  ? 'finnhub_crypto'
+                  ? 'twelvedata'
                   : normalizedSymbol.includes('_')
-                    ? 'finnhub_fx'
-                    : 'finnhub_stock'))
+                    ? 'twelvedata'
+                    : 'twelvedata'))
               }
             : null;
         const meta = providedMeta || fallbackMeta;
@@ -1348,7 +1345,7 @@ export const AppProvider = ({ children }) => {
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
           candles: data.candles,
-          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'twelvedata')
         });
 
         const current = assetsRef.current;

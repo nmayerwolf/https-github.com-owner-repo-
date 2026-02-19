@@ -9,25 +9,10 @@ const stats = {
   fallbackActive: false,
   lastError: '',
   lastCallAt: 0,
-  source: 'backend_proxy'
+  source: 'backend_proxy_twelvedata'
 };
 
-const nowSec = Math.floor(Date.now() / 1000);
-const fromSec = nowSec - 60 * 60 * 24 * 90;
-const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
-  const current = Number(price);
-  const previous = Number(prevClose);
-  if (!Number.isFinite(current) || current <= 0) return null;
-  const start = Number.isFinite(previous) && previous > 0 ? previous : current;
-  const step = points > 1 ? (current - start) / (points - 1) : 0;
-  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
-  return {
-    c,
-    h: c.map((v) => Number((v * 1.002).toFixed(6))),
-    l: c.map((v) => Number((v * 0.998).toFixed(6))),
-    v: c.map(() => 0)
-  };
-};
+const nowSec = () => Math.floor(Date.now() / 1000);
 
 const trackCall = () => {
   stats.calls += 1;
@@ -55,42 +40,32 @@ export const recordFinnhubProxyStats = ({ calls = 0, errors = 0, fallbacks = 0, 
     stats.fallbacks += nextFallbacks;
     stats.fallbackActive = true;
   }
-  if (lastError) {
-    stats.lastError = String(lastError);
-  }
+  if (lastError) stats.lastError = String(lastError);
 };
 
 export const fetchAssetSnapshot = async (asset) => {
   try {
-    if (!asset?.source) return null;
+    if (!asset?.symbol) return null;
     trackCall();
 
-    if (asset.source === 'finnhub_stock') {
-      const quote = await api.quote(asset.symbol);
-      const candles = await api.candles(asset.symbol, fromSec, nowSec).catch(() => null);
-      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
-      if (!safeCandles) return null;
-      return { quote, candles: safeCandles };
+    const symbol = String(asset.symbol).toUpperCase();
+    const fromSec = nowSec() - 60 * 60 * 24 * 90;
+    const toSec = nowSec();
+
+    const quote = await api.quote(symbol);
+    let candles = null;
+
+    if (symbol.endsWith('USDT')) {
+      candles = await api.cryptoCandles(symbol, fromSec, toSec).catch(() => null);
+    } else if (symbol.includes('_')) {
+      const [base, quoteCode] = symbol.split('_');
+      candles = await api.forexCandles(base, quoteCode, fromSec, toSec).catch(() => null);
+    } else {
+      candles = await api.candles(symbol, fromSec, toSec).catch(() => null);
     }
 
-    if (asset.source === 'finnhub_crypto') {
-      const quote = await api.quote(`BINANCE:${asset.symbol}`);
-      const candles = await api.cryptoCandles(asset.symbol, fromSec, nowSec).catch(() => null);
-      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
-      if (!safeCandles) return null;
-      return { quote, candles: safeCandles };
-    }
-
-    if (asset.source === 'finnhub_fx') {
-      const [base, quoteCode] = String(asset.symbol).split('_');
-      const quote = await api.quote(`OANDA:${asset.symbol}`);
-      const candles = await api.forexCandles(base, quoteCode, fromSec, nowSec).catch(() => null);
-      const safeCandles = candles?.c?.length ? candles : buildSyntheticCandles(quote?.c, quote?.pc);
-      if (!safeCandles) return null;
-      return { quote, candles: safeCandles };
-    }
-
-    return null;
+    if (!quote?.c || !candles?.c?.length) return null;
+    return { quote, candles };
   } catch (error) {
     trackError(error, `snapshot ${asset?.symbol || ''}`);
     return null;
@@ -122,11 +97,8 @@ export const fetchCompanyProfile = async (symbol) => {
 };
 
 export const createFinnhubSocket = ({ onStatus } = {}) => {
-  // Local mode has no direct provider websocket anymore.
   onStatus?.('disconnected');
-  return {
-    close: () => {}
-  };
+  return { close: () => {} };
 };
 
 export const getFinnhubHealth = () => ({ ...stats });
