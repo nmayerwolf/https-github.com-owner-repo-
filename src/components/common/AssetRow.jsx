@@ -15,7 +15,9 @@ const iconClassByCategory = (category) => {
 
 const AssetRow = ({ asset, to = null, action = null, actionLabel = null }) => {
   if (!asset) return null;
-  const up = Number(asset.changePercent || 0) >= 0;
+  const hasPrice = Number.isFinite(Number(asset.price));
+  const hasChange = Number.isFinite(Number(asset.changePercent));
+  const up = hasChange ? Number(asset.changePercent) >= 0 : true;
   const content = (
     <>
       <div className="asset-left">
@@ -31,8 +33,8 @@ const AssetRow = ({ asset, to = null, action = null, actionLabel = null }) => {
         </div>
       </div>
       <div className="a-price-col">
-        <div className="a-price mono">{formatUSD(asset.price)}</div>
-        <div className={`a-chg mono ${up ? 'up' : 'down'}`}>{formatPct(asset.changePercent)}</div>
+        <div className="a-price mono">{hasPrice ? formatUSD(asset.price) : 'Sin cotizacion'}</div>
+        <div className={`a-chg mono ${up ? 'up' : 'down'}`}>{hasChange ? formatPct(asset.changePercent) : '-'}</div>
       </div>
     </>
   );

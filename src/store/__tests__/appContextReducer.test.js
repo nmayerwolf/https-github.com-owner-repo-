@@ -93,9 +93,9 @@ describe('appReducer', () => {
 
   it('builds realtime symbol map for stock, crypto, fx and macro assets', () => {
     const out = buildRealtimeSymbolMap([
-      { symbol: 'aapl', source: 'finnhub_stock' },
-      { symbol: 'btcusdt', source: 'finnhub_crypto' },
-      { symbol: 'eur_usd', source: 'finnhub_fx' },
+      { symbol: 'aapl', source: 'twelvedata' },
+      { symbol: 'btcusdt', source: 'twelvedata' },
+      { symbol: 'eur_usd', source: 'twelvedata' },
       { symbol: 'XAU', source: 'alphavantage_macro' },
       { symbol: 'BRN', source: 'alphavantage_macro' },
       { symbol: 'US2Y', source: 'alphavantage_macro' },

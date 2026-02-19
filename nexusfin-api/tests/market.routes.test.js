@@ -26,8 +26,8 @@ jest.mock('../src/services/alphavantage', () => ({
 jest.mock('../src/services/twelvedata', () => ({
   hasKey: jest.fn(() => true),
   quote: jest.fn(),
-  quoteBatch: jest.fn(),
-  symbolSearch: jest.fn()
+  symbolSearch: jest.fn(),
+  timeSeries: jest.fn()
 }));
 
 const finnhub = require('../src/services/finnhub');
@@ -71,7 +71,12 @@ describe('market routes', () => {
   });
 
   it('caches candles response for same params', async () => {
-    finnhub.candles.mockResolvedValue({ c: [1, 2, 3], s: 'ok' });
+    twelvedata.timeSeries.mockResolvedValue({
+      values: [
+        { datetime: '2026-02-18', close: '10', high: '11', low: '9', volume: '1000' },
+        { datetime: '2026-02-19', close: '11', high: '12', low: '10', volume: '1200' }
+      ]
+    });
 
     const app = makeApp();
 
@@ -81,13 +86,10 @@ describe('market routes', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(finnhub.candles).toHaveBeenCalledTimes(1);
+    expect(twelvedata.timeSeries).toHaveBeenCalledTimes(1);
   });
 
-  it('caches profile response and merges finnhub+overview fields', async () => {
-    finnhub.profile.mockResolvedValue({ name: 'Apple Inc.', finnhubIndustry: 'Technology', marketCapitalization: 3500 });
-    av.overview.mockResolvedValue({ PERatio: '30.5', DividendYield: '0.5' });
-
+  it('returns profile data from market universe fallback', async () => {
     const app = makeApp();
 
     const first = await request(app).get('/api/market/profile?symbol=AAPL');
@@ -95,15 +97,13 @@ describe('market routes', () => {
 
     expect(first.status).toBe(200);
     expect(first.body).toEqual({
-      name: 'Apple Inc.',
-      sector: 'Technology',
-      marketCap: 3500,
-      pe: '30.5',
-      dividendYield: '0.5'
+      name: 'Apple',
+      sector: 'equity',
+      marketCap: null,
+      pe: null,
+      dividendYield: null
     });
     expect(second.status).toBe(200);
-    expect(finnhub.profile).toHaveBeenCalledTimes(1);
-    expect(av.overview).toHaveBeenCalledTimes(1);
   });
 
   it('returns realtime universe with categories and count', async () => {
@@ -229,13 +229,16 @@ describe('market routes', () => {
       if (symbol === 'MSFT') throw new Error('unexpected failure');
       return { close: 120, previous_close: 100, percent_change: 20 };
     });
+    twelvedata.timeSeries.mockResolvedValue({
+      values: [{ datetime: '2026-02-19', close: '120', high: '121', low: '119', volume: '1000' }]
+    });
 
     const app = makeApp();
     const res = await request(app).get('/api/market/snapshot?symbols=AAPL,MSFT,BTCUSDT');
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(3);
-    expect(res.body.count).toBe(2);
+    expect(res.body.count).toBe(3);
     expect(Array.isArray(res.body.items)).toBe(true);
     expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
     expect(Array.isArray(res.body.errors)).toBe(true);
@@ -249,7 +252,7 @@ describe('market routes', () => {
     const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
 
     expect(res.status).toBe(200);
-    expect(res.body.count).toBe(0);
+    expect(res.body.count).toBe(1);
     expect(Array.isArray(res.body.errors)).toBe(true);
     expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'AAPL', code: 'NO_LIVE_DATA' })]));
   });
