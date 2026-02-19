@@ -4,7 +4,7 @@ const { badRequest } = require('../utils/errors');
 
 const router = express.Router();
 
-const SYMBOL_PATTERN = /^[A-Z0-9./:-]{1,20}$/;
+const SYMBOL_PATTERN = /^[A-Z0-9.^/_:-]{1,24}$/;
 
 const normalizeSymbol = (value) => String(value || '').trim().toUpperCase();
 

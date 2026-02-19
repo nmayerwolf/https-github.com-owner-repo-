@@ -571,7 +571,9 @@ export const AppProvider = ({ children }) => {
       return;
     }
     const cached = readAssetCache();
-    const hasWarmCache = Boolean(cached?.assets?.length);
+    // For authenticated sessions, prefer fresh backend snapshots over warm cache
+    // to avoid showing stale badges during startup.
+    const hasWarmCache = !isAuthenticated && Boolean(cached?.assets?.length);
 
     if (hasWarmCache) {
       dispatch({ type: 'SET_ASSETS', payload: cached.assets });

@@ -4,7 +4,7 @@ const { badRequest, forbidden, notFound } = require('../utils/errors');
 const { validatePositiveNumber, sanitizeText } = require('../utils/validate');
 
 const router = express.Router();
-const SYMBOL_PATTERN = /^[A-Z0-9./:_-]{1,20}$/;
+const SYMBOL_PATTERN = /^[A-Z0-9.^/_:-]{1,24}$/;
 const PORTFOLIO_ID_PATTERN = /^[0-9a-f-]{36}$/i;
 const MAX_PORTFOLIOS = 5;
 const MAX_PORTFOLIO_USERS = 6;
