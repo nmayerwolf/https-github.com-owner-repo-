@@ -125,9 +125,13 @@ const resolveTwelveDataQuote = async (symbol) => {
   if (!quoteSymbol) return null;
   try {
     const out = await twelvedata.quote(quoteSymbol);
-    const price = toFinite(out?.price);
+    const price = toFinite(out?.close ?? out?.price);
     if (!Number.isFinite(price) || price <= 0) return null;
-    return { c: price, pc: price, dp: 0, fallback: true };
+    const previousClose = toFinite(out?.previous_close);
+    const directPercent = toFinite(out?.percent_change ?? out?.change_percent);
+    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
+    const dp = Number.isFinite(directPercent) ? directPercent : pc > 0 ? ((price - pc) / pc) * 100 : 0;
+    return { c: price, pc, dp, fallback: true };
   } catch {
     return null;
   }

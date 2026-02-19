@@ -24,8 +24,8 @@ const createTwelveDataService = (options = {}) => {
 
   return {
     hasKey,
-    quote: (symbol) => fetchTwelve('/price', { symbol }),
-    quoteBatch: (symbols) => fetchTwelve('/price', { symbol: symbols.join(',') }),
+    quote: (symbol) => fetchTwelve('/quote', { symbol }),
+    quoteBatch: (symbols) => fetchTwelve('/quote', { symbol: symbols.join(',') }),
     symbolSearch: (q, outputsize = 20) => fetchTwelve('/symbol_search', { symbol: q, outputsize })
   };
 };

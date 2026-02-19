@@ -1295,6 +1295,23 @@ export const AppProvider = ({ children }) => {
 
         const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
         if (!(data?.quote && data?.candles?.c?.length)) {
+          const placeholder = withIndicators({
+            ...meta,
+            price: null,
+            prevClose: null,
+            changePercent: null,
+            candles: { c: [], h: [], l: [], v: [] },
+            marketMeta: {
+              source: 'pending_live',
+              asOf: new Date().toISOString(),
+              stale: true,
+              fallbackLevel: 9
+            }
+          });
+          const current = assetsRef.current;
+          if (!current.some((x) => x.symbol === placeholder.symbol)) {
+            dispatch({ type: 'SET_ASSETS', payload: [...current, placeholder] });
+          }
           dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol}.`) });
           return;
         }
