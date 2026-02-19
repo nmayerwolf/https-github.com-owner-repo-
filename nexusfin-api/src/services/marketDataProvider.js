@@ -301,7 +301,8 @@ const resolveMarketQuote = async (symbol) => {
       meta: buildMeta('finnhub', 1)
     };
   } catch (error) {
-    if (!isFinnhubUnavailable(error)) throw error;
+    const shouldFallback = isFinnhubUnavailable(error) || String(error?.message || '').toLowerCase().includes('invalid quote');
+    if (!shouldFallback) throw error;
 
     const alpha = await resolveAlphaFallbackQuote(upper);
     if (alpha) return { quote: alpha, meta: buildMeta('alphavantage', 2) };

@@ -12,6 +12,7 @@ const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const av = require('./services/alphavantage');
+const { resolveMarketQuote } = require('./services/marketDataProvider');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
 const { createPushNotifier } = require('./services/push');
@@ -144,6 +145,27 @@ app.get('/api/health/phase3', (_req, res) => {
   });
 });
 
+app.get('/api/health/market-data', (_req, res) => {
+  const symbols = new Set((MARKET_UNIVERSE || []).map((item) => String(item?.symbol || '').toUpperCase()));
+  return res.json({
+    ok: true,
+    providers: {
+      finnhub: Boolean(String(env.finnhubKey || '').trim()),
+      alphaVantage: Boolean(String(env.alphaVantageKey || '').trim()),
+      twelveData: Boolean(String(env.twelveDataKey || '').trim())
+    },
+    universe: {
+      count: symbols.size,
+      hasMerval: symbols.has('^MERV'),
+      hasGoldSpot: symbols.has('XAU_USD')
+    },
+    ws: {
+      chainResolverEnabled: true
+    },
+    ts: new Date().toISOString()
+  });
+});
+
 app.get('/api/health/cron', (_req, res) => {
   const status = app.locals.getCronStatus?.();
   return res.json(
@@ -195,9 +217,17 @@ const providerForRealtimeSymbol = (symbol) =>
     .toUpperCase()
     .startsWith(AV_SYMBOL_PREFIX)
     ? 'alphavantage'
-    : 'finnhub';
+    : 'market-chain';
 
-const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
+const canonicalSymbolFromRealtime = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.startsWith('BINANCE:')) return upper.slice('BINANCE:'.length);
+  if (upper.startsWith('OANDA:')) return upper.slice('OANDA:'.length);
+  return upper;
+};
+
+const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc, quoteResolver = null }) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
 
@@ -207,6 +237,20 @@ const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
     const price = extractLatestAVValue(raw);
     if (!Number.isFinite(price)) return null;
     return { symbol: upper, price, change: null, provider: 'alphavantage' };
+  }
+
+  if (typeof quoteResolver === 'function') {
+    const canonical = canonicalSymbolFromRealtime(upper);
+    if (!canonical) return null;
+    const resolved = await quoteResolver(canonical);
+    const price = Number(resolved?.quote?.c);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return {
+      symbol: upper,
+      price,
+      change: Number.isFinite(Number(resolved?.quote?.dp)) ? Number(resolved.quote.dp) : null,
+      provider: String(resolved?.meta?.source || 'market-chain')
+    };
   }
 
   const quote = await finnhubSvc.quote(upper);
@@ -220,7 +264,14 @@ const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
   };
 };
 
-const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
+const startWsPriceRuntime = ({
+  wsHub,
+  finnhubSvc,
+  alphaSvc = av,
+  quoteResolver = null,
+  logger = console,
+  intervalSeconds = env.wsPriceIntervalSeconds
+}) => {
   const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
   const avMinPollMs = 65 * 1000;
   const errorCooldownMs = 30 * 1000;
@@ -276,7 +327,7 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
         }
 
         try {
-          const out = await resolveRealtimeQuote(upper, { finnhubSvc, alphaSvc });
+          const out = await resolveRealtimeQuote(upper, { finnhubSvc, alphaSvc, quoteResolver });
           if (!out) continue;
           metrics.quotesResolved += 1;
 
@@ -448,7 +499,13 @@ const startHttpServer = ({ port = env.port } = {}) => {
   };
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console, logRun: logCronRun });
   app.locals.getCronStatus = cronRuntime.getStatus;
-  const wsPriceRuntime = startWsPriceRuntime({ wsHub, finnhubSvc: finnhub, logger: console });
+  const wsPriceRuntime = startWsPriceRuntime({
+    wsHub,
+    finnhubSvc: finnhub,
+    alphaSvc: av,
+    quoteResolver: resolveMarketQuote,
+    logger: console
+  });
   app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;
   app.locals.getMobileHealthStatus = () => ({
     ok: true,
