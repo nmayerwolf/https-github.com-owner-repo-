@@ -608,12 +608,30 @@ export const AppProvider = ({ children }) => {
         })
       );
     };
+    const pushPlaceholderAsset = (meta) => {
+      loaded.push(
+        withIndicators({
+          ...meta,
+          price: null,
+          prevClose: null,
+          changePercent: null,
+          candles: { c: [], h: [], l: [], v: [] },
+          marketMeta: {
+            source: 'pending_live',
+            asOf: new Date().toISOString(),
+            stale: true,
+            fallbackLevel: 9
+          }
+        })
+      );
+    };
 
     const loadSingle = async (meta, index) => {
       const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
       if (data?.quote && data?.candles?.c?.length) {
         pushAsset(meta, data);
       } else {
+        pushPlaceholderAsset(meta);
         if (failedLoads < 3) {
           pushMarketError('No se pudieron cargar algunos activos del mercado.', 'markets-initial-load');
         }
@@ -641,6 +659,7 @@ export const AppProvider = ({ children }) => {
         if (data?.quote && data?.candles?.c?.length) {
           pushAsset(meta, data);
         } else {
+          pushPlaceholderAsset(meta);
           if (failedLoads < 3) {
             pushMarketError('No se pudieron cargar algunos activos del mercado.', 'markets-initial-load');
           }

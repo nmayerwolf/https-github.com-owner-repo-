@@ -23,8 +23,16 @@ jest.mock('../src/services/alphavantage', () => ({
   digitalDaily: jest.fn()
 }));
 
+jest.mock('../src/services/twelvedata', () => ({
+  hasKey: jest.fn(() => true),
+  quote: jest.fn(),
+  quoteBatch: jest.fn(),
+  symbolSearch: jest.fn()
+}));
+
 const finnhub = require('../src/services/finnhub');
 const av = require('../src/services/alphavantage');
+const twelvedata = require('../src/services/twelvedata');
 const { cache } = require('../src/config/cache');
 const marketRoutes = require('../src/routes/market');
 const { errorHandler } = require('../src/middleware/errorHandler');
@@ -117,8 +125,8 @@ describe('market routes', () => {
   });
 
   it('returns market search results merged from universe and provider', async () => {
-    finnhub.symbolSearch.mockResolvedValueOnce({
-      result: [{ symbol: 'NSRGY', description: 'Nestle SA ADR', type: 'Common Stock' }]
+    twelvedata.symbolSearch.mockResolvedValueOnce({
+      data: [{ symbol: 'NSRGY', instrument_name: 'Nestle SA ADR', instrument_type: 'Common Stock' }]
     });
 
     const app = makeApp();
@@ -130,10 +138,10 @@ describe('market routes', () => {
   });
 
   it('ranks market search results by relevance', async () => {
-    finnhub.symbolSearch.mockResolvedValueOnce({
-      result: [
-        { symbol: 'NESTL.ZZ', description: 'Nestle Placeholder Right', type: 'Right' },
-        { symbol: 'NSRGY', description: 'Nestle SA ADR', type: 'ADR' }
+    twelvedata.symbolSearch.mockResolvedValueOnce({
+      data: [
+        { symbol: 'NESTL.ZZ', instrument_name: 'Nestle Placeholder Right', instrument_type: 'Right' },
+        { symbol: 'NSRGY', instrument_name: 'Nestle SA ADR', instrument_type: 'ADR' }
       ]
     });
 
@@ -150,7 +158,7 @@ describe('market routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
-    expect(finnhub.symbolSearch).not.toHaveBeenCalled();
+    expect(twelvedata.symbolSearch).not.toHaveBeenCalled();
   });
 
   it('returns proxied company news list', async () => {
@@ -217,9 +225,9 @@ describe('market routes', () => {
   });
 
   it('returns bulk snapshot with successes and per-symbol errors', async () => {
-    finnhub.quote.mockImplementation(async (symbol) => {
+    twelvedata.quote.mockImplementation(async (symbol) => {
       if (symbol === 'MSFT') throw new Error('unexpected failure');
-      return { c: 120, pc: 100, dp: 20 };
+      return { close: 120, previous_close: 100, percent_change: 20 };
     });
 
     const app = makeApp();
@@ -231,67 +239,19 @@ describe('market routes', () => {
     expect(Array.isArray(res.body.items)).toBe(true);
     expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
     expect(Array.isArray(res.body.errors)).toBe(true);
-    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'SNAPSHOT_FAILED' })]));
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'NO_LIVE_DATA' })]));
   });
 
-  it('falls back to alphavantage quote on finnhub unavailable in snapshot', async () => {
-    const unavailable = new Error('forbidden');
-    unavailable.status = 403;
-    finnhub.quote.mockRejectedValueOnce(unavailable);
-    av.globalQuote.mockResolvedValueOnce({
-      'Global Quote': {
-        '05. price': '201.50',
-        '08. previous close': '200.00',
-        '10. change percent': '0.75%'
-      }
-    });
+  it('returns per-symbol NO_LIVE_DATA errors when single source has no quote', async () => {
+    twelvedata.quote.mockRejectedValueOnce(new Error('upstream unavailable'));
 
     const app = makeApp();
     const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
 
     expect(res.status).toBe(200);
-    expect(res.body.count).toBe(1);
-    expect(res.body.items[0]).toEqual(
-      expect.objectContaining({
-        symbol: 'AAPL',
-        quote: expect.objectContaining({
-          c: 201.5,
-          pc: 200,
-          dp: 0.75
-        })
-      })
-    );
-  });
-
-  it('falls back to yahoo quote when finnhub is unavailable and alphavantage has no quote', async () => {
-    const unavailable = new Error('forbidden');
-    unavailable.status = 403;
-    finnhub.quote.mockRejectedValueOnce(unavailable);
-    av.globalQuote.mockResolvedValueOnce({});
-    global.fetch = jest.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        quoteResponse: {
-          result: [{ regularMarketPrice: 199.2, regularMarketPreviousClose: 198.1, regularMarketChangePercent: 0.56 }]
-        }
-      })
-    }));
-
-    const app = makeApp();
-    const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
-
-    expect(res.status).toBe(200);
-    expect(res.body.count).toBe(1);
-    expect(res.body.items[0]).toEqual(
-      expect.objectContaining({
-        symbol: 'AAPL',
-        quote: expect.objectContaining({
-          c: 199.2,
-          pc: 198.1,
-          dp: 0.56
-        })
-      })
-    );
+    expect(res.body.count).toBe(0);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'AAPL', code: 'NO_LIVE_DATA' })]));
   });
 
   it('stores and summarizes news telemetry per user', async () => {

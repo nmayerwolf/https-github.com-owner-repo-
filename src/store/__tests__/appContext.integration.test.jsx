@@ -174,7 +174,7 @@ describe('AppContext integration', () => {
     });
   });
 
-  it('loads cached assets when realtime fetch fails for all symbols', async () => {
+  it('keeps watchlist assets visible as placeholders when realtime fetch fails for all symbols', async () => {
     const cachedAssets = [
       {
         symbol: 'CACHED',
@@ -202,8 +202,9 @@ describe('AppContext integration', () => {
     });
 
     await waitFor(() => {
-      expect(getLatest().state.assets.some((a) => a.symbol === 'CACHED')).toBe(true);
-      expect(getLatest().state.uiErrors.some((e) => e.module === 'Offline')).toBe(true);
+      expect(getLatest().state.assets.length).toBeGreaterThan(0);
+      expect(getLatest().state.assets.every((a) => a.marketMeta?.source === 'pending_live')).toBe(true);
+      expect(getLatest().state.uiErrors.some((e) => e.module === 'Mercados')).toBe(true);
     });
   });
 });

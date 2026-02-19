@@ -1,5 +1,3 @@
-const av = require('./alphavantage');
-const finnhub = require('./finnhub');
 const twelvedata = require('./twelvedata');
 
 const toFinite = (value) => {
@@ -7,34 +5,7 @@ const toFinite = (value) => {
   return Number.isFinite(out) ? out : null;
 };
 
-const isFinnhubUnavailable = (error) =>
-  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
-  error?.code === 'FINNHUB_RATE_LIMIT' ||
-  error?.status === 403 ||
-  error?.status === 429;
-
-const toFinnhubSymbol = (symbol) => {
-  const upper = String(symbol || '').trim().toUpperCase();
-  if (!upper) return null;
-  if (upper.endsWith('USDT')) return `BINANCE:${upper}`;
-  if (upper.includes('_')) return `OANDA:${upper}`;
-  return upper;
-};
-
-const toYahooSymbol = (symbol) => {
-  const upper = String(symbol || '').trim().toUpperCase();
-  if (!upper) return null;
-  if (upper.includes('_')) {
-    const [fromCurrency, toCurrency] = upper.split('_');
-    if (!fromCurrency || !toCurrency) return null;
-    return `${fromCurrency}${toCurrency}=X`;
-  }
-  if (upper.endsWith('USDT')) {
-    const base = upper.replace(/USDT$/, '');
-    return base ? `${base}-USD` : null;
-  }
-  return upper;
-};
+const isFinnhubUnavailable = (_error) => false;
 
 const toTwelveDataSymbol = (symbol) => {
   const upper = String(symbol || '').trim().toUpperCase();
@@ -62,28 +33,7 @@ const canonicalizeSymbol = (symbol) => {
   return upper;
 };
 
-const symbolBasePrice = (symbol) => {
-  const normalized = String(symbol || '').toUpperCase();
-  if (!normalized) return 100;
-
-  if (normalized.endsWith('USDT')) {
-    if (normalized.startsWith('BTC')) return 60000;
-    if (normalized.startsWith('ETH')) return 3000;
-    if (normalized.startsWith('SOL')) return 150;
-    return 100;
-  }
-
-  if (normalized.includes('_')) {
-    if (normalized === 'USD_JPY') return 150;
-    if (normalized === 'USD_CHF') return 0.9;
-    if (normalized === 'USD_CAD') return 1.35;
-    return 1.1;
-  }
-
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
-  return 40 + (hash % 460);
-};
+const symbolBasePrice = (_symbol) => 0;
 
 const syntheticQuote = (symbol, retryAfterMs = 0) => {
   const c = Number(symbolBasePrice(symbol).toFixed(6));
@@ -115,6 +65,8 @@ const normalizeSearchCategory = (symbol, type = '') => {
   if (normalizedSymbol.includes('_') || normalizedType.includes('forex') || normalizedType.includes('currency')) return 'fx';
   if (normalizedType.includes('etf')) return 'etf';
   if (normalizedType.includes('commodity') || normalizedType.includes('futures')) return 'commodity';
+  if (normalizedType.includes('metal')) return 'metal';
+  if (normalizedType.includes('bond') || normalizedType.includes('treasury')) return 'bond';
   if (normalizedType.includes('index')) return 'equity';
   return 'equity';
 };
@@ -128,80 +80,10 @@ const resolveTwelveDataQuote = async (symbol) => {
     const price = toFinite(out?.close ?? out?.price);
     if (!Number.isFinite(price) || price <= 0) return null;
     const previousClose = toFinite(out?.previous_close);
-    const absoluteChange = toFinite(out?.change);
     const directPercent = toFinite(out?.percent_change ?? out?.change_percent);
-    const derivedPrevClose = Number.isFinite(absoluteChange) ? price - absoluteChange : null;
-    const pc = Number.isFinite(previousClose) && previousClose > 0
-      ? previousClose
-      : Number.isFinite(derivedPrevClose) && derivedPrevClose > 0
-        ? derivedPrevClose
-        : price;
-    const dp = Number.isFinite(directPercent) ? directPercent : pc > 0 ? ((price - pc) / pc) * 100 : 0;
-    return { c: price, pc, dp, fallback: true };
-  } catch {
-    return null;
-  }
-};
-
-const resolveAlphaFallbackQuote = async (symbol) => {
-  const upper = String(symbol || '').trim().toUpperCase();
-  if (!upper) return null;
-  try {
-    if (upper.includes('_')) {
-      const [fromCurrency, toCurrency] = upper.split('_');
-      if (!fromCurrency || !toCurrency) return null;
-      const raw = await av.fxRate(fromCurrency, toCurrency);
-      const node = raw?.['Realtime Currency Exchange Rate'] || {};
-      const price = toFinite(node?.['5. Exchange Rate']);
-      if (!Number.isFinite(price) || price <= 0) return null;
-      return { c: price, pc: price, dp: 0, fallback: true };
-    }
-
-    if (upper.endsWith('USDT')) {
-      const base = upper.replace(/USDT$/, '');
-      if (!base) return null;
-      const raw = await av.digitalDaily(base, 'USD');
-      const series = raw?.['Time Series (Digital Currency Daily)'];
-      const rows = series && typeof series === 'object' ? Object.values(series) : [];
-      const current = toFinite(rows?.[0]?.['4a. close (USD)']);
-      const previous = toFinite(rows?.[1]?.['4a. close (USD)']);
-      if (!Number.isFinite(current) || current <= 0) return null;
-      const pc = Number.isFinite(previous) && previous > 0 ? previous : current;
-      const dp = pc > 0 ? ((current - pc) / pc) * 100 : 0;
-      return { c: current, pc, dp, fallback: true };
-    }
-
-    const raw = await av.globalQuote(upper);
-    const node = raw?.['Global Quote'] || {};
-    const price = toFinite(node?.['05. price']);
-    const previousClose = toFinite(node?.['08. previous close']);
-    const changePercentRaw = String(node?.['10. change percent'] || '').replace('%', '');
-    const parsedChange = toFinite(changePercentRaw);
-    if (!Number.isFinite(price) || price <= 0) return null;
     const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
-    const dp = Number.isFinite(parsedChange) ? parsedChange : pc > 0 ? ((price - pc) / pc) * 100 : 0;
-    return { c: price, pc, dp, fallback: true };
-  } catch {
-    return null;
-  }
-};
-
-const resolveYahooFallbackQuote = async (symbol) => {
-  const yahooSymbol = toYahooSymbol(symbol);
-  if (!yahooSymbol) return null;
-  try {
-    const qs = new URLSearchParams({ symbols: yahooSymbol });
-    const res = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?${qs.toString()}`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const item = json?.quoteResponse?.result?.[0];
-    if (!item) return null;
-    const price = toFinite(item.regularMarketPrice);
-    const previousClose = toFinite(item.regularMarketPreviousClose);
-    const changePercent = toFinite(item.regularMarketChangePercent);
-    if (!Number.isFinite(price) || price <= 0) return null;
-    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
-    const dp = Number.isFinite(changePercent) ? changePercent : pc > 0 ? ((price - pc) / pc) * 100 : 0;
+    // Performance diario viene del proveedor; no lo derivamos localmente.
+    const dp = Number.isFinite(directPercent) ? directPercent : null;
     return { c: price, pc, dp, fallback: true };
   } catch {
     return null;
@@ -263,30 +145,7 @@ const resolveMarketSearch = async (query) => {
     }
   }
 
-  try {
-    const out = await finnhub.symbolSearch(q);
-    const rows = Array.isArray(out?.result) ? out.result : [];
-    return rows
-      .filter((item) => String(item?.symbol || '').trim() && String(item?.description || '').trim())
-      .sort((a, b) => scoreSearchResult(q, { symbol: b.symbol, name: b.description, type: b.type }) - scoreSearchResult(q, { symbol: a.symbol, name: a.description, type: a.type }))
-      .slice(0, 20)
-      .map((item) => {
-        const symbol = String(item.symbol || '').trim().toUpperCase();
-        const name = String(item.description || '').trim();
-        const type = String(item.type || '').trim();
-        const category = normalizeSearchCategory(symbol, type);
-        const sourceSuffix = category === 'crypto' ? 'crypto' : category === 'fx' ? 'fx' : 'stock';
-        return {
-          symbol,
-          name,
-          category,
-          source: `finnhub_${sourceSuffix}`,
-          type
-        };
-      });
-  } catch {
-    return [];
-  }
+  return [];
 };
 
 const makeLiveUnavailableError = (reason, symbol = '') => {
@@ -301,45 +160,13 @@ const makeLiveUnavailableError = (reason, symbol = '') => {
 const resolveMarketQuote = async (symbol, options = {}) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
-  const strictRealtime = Boolean(options?.strictRealtime);
+  void options;
 
   const twelve = await resolveTwelveDataQuote(upper);
   if (twelve) return { quote: twelve, meta: buildMeta('twelvedata', 0) };
 
-  if (strictRealtime) {
-    if (!twelvedata.hasKey()) throw makeLiveUnavailableError('TWELVE_DATA_KEY_MISSING', upper);
-    throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
-  }
-
-  try {
-    const quoteSymbol = toFinnhubSymbol(upper);
-    const quote = await finnhub.quote(quoteSymbol);
-    const price = toFinite(quote?.c);
-    if (!Number.isFinite(price) || price <= 0) throw new Error('invalid quote');
-    const previousClose = toFinite(quote?.pc);
-    return {
-      quote: {
-        c: price,
-        pc: previousClose ?? price,
-        dp: toFinite(quote?.dp) ?? 0
-      },
-      meta: buildMeta('finnhub', 1)
-    };
-  } catch (error) {
-    const shouldFallback = isFinnhubUnavailable(error) || String(error?.message || '').toLowerCase().includes('invalid quote');
-    if (!shouldFallback) throw error;
-
-    const alpha = await resolveAlphaFallbackQuote(upper);
-    if (alpha) return { quote: alpha, meta: buildMeta('alphavantage', 2) };
-
-    const yahoo = await resolveYahooFallbackQuote(upper);
-    if (yahoo) return { quote: yahoo, meta: buildMeta('yahoo', 3) };
-
-    return {
-      quote: syntheticQuote(upper, error?.retryAfterMs),
-      meta: buildMeta('synthetic', 4)
-    };
-  }
+  if (!twelvedata.hasKey()) throw makeLiveUnavailableError('TWELVE_DATA_KEY_MISSING', upper);
+  throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
 };
 
 module.exports = {
