@@ -10,7 +10,7 @@ if [[ ! -d "${DIST_DIR}" ]]; then
 fi
 
 # Heuristics for accidental key leakage in bundled assets.
-PATTERN='VITE_FINNHUB_KEY|VITE_ALPHA_VANTAGE_KEY|FINNHUB_KEY|ALPHA_VANTAGE_KEY|d6742npr01qmckkc23sgd6742npr01qmckkc23t0|UFZ6W2F1RUPUGVWF'
+PATTERN='VITE_FINNHUB_KEY|VITE_ALPHA_VANTAGE_KEY|VITE_TWELVE_DATA_KEY|FINNHUB_KEY|ALPHA_VANTAGE_KEY|TWELVE_DATA_KEY|d6742npr01qmckkc23sgd6742npr01qmckkc23t0|UFZ6W2F1RUPUGVWF'
 
 if rg -n --hidden -e "${PATTERN}" "${DIST_DIR}" >/tmp/nexusfin_bundle_secret_scan.txt; then
   echo "Se detectaron posibles secretos de mercado en dist/:"

@@ -35,6 +35,7 @@ DATABASE_URL=postgresql://user:pass@host:5432/nexusfin
 JWT_SECRET=<secret-64-chars-min>
 FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
+TWELVE_DATA_KEY=<key>
 FRONTEND_URL=https://<frontend-domain>
 NODE_ENV=production
 ```

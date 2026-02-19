@@ -20,7 +20,7 @@ fi
 echo "OK"
 
 echo "[deploy-preflight] 3) Buscando secretos hardcodeados en frontend..."
-if rg -n "sk-ant|d6742n|UFZ6W|FINNHUB_KEY|ALPHA_VANTAGE_KEY" "$ROOT_DIR/src" --glob "*.{js,jsx}" >/tmp/horsai-secrets.txt; then
+if rg -n "sk-ant|d6742n|UFZ6W|FINNHUB_KEY|ALPHA_VANTAGE_KEY|TWELVE_DATA_KEY" "$ROOT_DIR/src" --glob "*.{js,jsx}" >/tmp/horsai-secrets.txt; then
   echo "ERROR: Posibles secretos encontrados en frontend:"
   cat /tmp/horsai-secrets.txt
   exit 1
@@ -40,4 +40,3 @@ else
 fi
 
 echo "[deploy-preflight] DONE"
-

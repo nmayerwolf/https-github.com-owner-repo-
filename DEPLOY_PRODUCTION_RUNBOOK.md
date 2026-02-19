@@ -25,6 +25,7 @@ JWT_SECRET=<64+ chars random>
 CSRF_SECRET=<64+ chars random>
 FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
+TWELVE_DATA_KEY=<key>
 ANTHROPIC_API_KEY=<key>
 AI_AGENT_ENABLED=true
 CRON_ENABLED=true
@@ -72,4 +73,3 @@ VITE_WS_URL=wss://api.horsai.app/ws
 
 ## 8. Admin/Costos (siguiente bloque)
 Este deploy no habilita aún panel superadmin completo. El tracking de noticias IA ya está activo; próximo paso es `ai_usage_log` + `/api/admin/*`.
-
