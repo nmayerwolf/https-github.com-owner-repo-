@@ -1279,19 +1279,23 @@ export const AppProvider = ({ children }) => {
         }
 
         const nextWatchlist = [...state.watchlistSymbols, normalizedSymbol];
+        saveWatchlistSymbols(nextWatchlist);
+        dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
 
         if (isAuthenticated) {
           try {
             const type = meta.category === 'crypto' ? 'crypto' : meta.category === 'fx' ? 'forex' : 'stock';
             await api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type, category: meta.category });
-          } catch {
-            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol} en backend.`) });
-            return;
+          } catch (error) {
+            const backendConflict = Number(error?.status) === 409 || String(error?.error || '').toUpperCase() === 'ALREADY_EXISTS';
+            if (!backendConflict) {
+              dispatch({
+                type: 'PUSH_UI_ERROR',
+                payload: makeUiError('Watchlist', `${normalizedSymbol} se agregó localmente; backend pendiente de sincronización.`)
+              });
+            }
           }
         }
-        saveWatchlistSymbols(nextWatchlist);
-
-        dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
 
         const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
         if (!(data?.quote && data?.candles?.c?.length)) {

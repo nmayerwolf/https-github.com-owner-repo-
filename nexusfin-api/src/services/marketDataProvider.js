@@ -128,8 +128,14 @@ const resolveTwelveDataQuote = async (symbol) => {
     const price = toFinite(out?.close ?? out?.price);
     if (!Number.isFinite(price) || price <= 0) return null;
     const previousClose = toFinite(out?.previous_close);
+    const absoluteChange = toFinite(out?.change);
     const directPercent = toFinite(out?.percent_change ?? out?.change_percent);
-    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
+    const derivedPrevClose = Number.isFinite(absoluteChange) ? price - absoluteChange : null;
+    const pc = Number.isFinite(previousClose) && previousClose > 0
+      ? previousClose
+      : Number.isFinite(derivedPrevClose) && derivedPrevClose > 0
+        ? derivedPrevClose
+        : price;
     const dp = Number.isFinite(directPercent) ? directPercent : pc > 0 ? ((price - pc) / pc) * 100 : 0;
     return { c: price, pc, dp, fallback: true };
   } catch {
