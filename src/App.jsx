@@ -570,22 +570,8 @@ const App = () => {
       <main className="container">
         <Routes>
           <Route path="/" element={<Navigate to="/alerts" replace />} />
-          <Route
-            path="/markets"
-            element={
-              <RouteBoundary moduleName="Mercados">
-                <Markets />
-              </RouteBoundary>
-            }
-          />
-          <Route
-            path="/markets/:symbol"
-            element={
-              <RouteBoundary moduleName="Detalle de activo">
-                <AssetDetail />
-              </RouteBoundary>
-            }
-          />
+          <Route path="/markets" element={<Navigate to="/alerts" replace />} />
+          <Route path="/markets/:symbol" element={<Navigate to="/alerts" replace />} />
           <Route
             path="/alerts"
             element={
