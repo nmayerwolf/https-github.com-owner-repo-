@@ -57,6 +57,7 @@ const env = {
   aiAgentRejectionCooldownHours: asPositiveInt(process.env.AI_AGENT_REJECTION_COOLDOWN_HOURS, 24),
   aiAgentTimeoutMs: asPositiveInt(process.env.AI_AGENT_TIMEOUT_MS, 10000),
   wsPriceIntervalSeconds: asPositiveInt(process.env.WS_PRICE_INTERVAL, 20),
+  realtimeEnabled: asBool(process.env.REALTIME_ENABLED, true),
   marketStrictRealtime: asBool(process.env.MARKET_STRICT_REALTIME, String(process.env.NODE_ENV || '').toLowerCase() === 'production'),
 
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',

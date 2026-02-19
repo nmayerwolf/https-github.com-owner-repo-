@@ -51,7 +51,7 @@ describe('auth middleware', () => {
     const res = await request(app).get('/protected');
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('TOKEN_REQUIRED');
+    expect(res.body.error.code).toBe('TOKEN_REQUIRED');
   });
 
   it('returns INVALID_SESSION when token signature is valid but session is not found', async () => {
@@ -64,7 +64,7 @@ describe('auth middleware', () => {
     const res = await request(app).get('/protected').set('Authorization', 'Bearer valid.token');
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('INVALID_SESSION');
+    expect(res.body.error.code).toBe('INVALID_SESSION');
   });
 
   it('returns TOKEN_EXPIRED when JWT verification fails', async () => {
@@ -76,7 +76,7 @@ describe('auth middleware', () => {
     const res = await request(app).get('/protected').set('Authorization', 'Bearer expired.token');
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('TOKEN_EXPIRED');
+    expect(res.body.error.code).toBe('TOKEN_EXPIRED');
   });
 
   it('adds X-Refresh-Token when bearer token expires within 24h', async () => {
@@ -119,7 +119,7 @@ describe('auth middleware', () => {
     const res = await request(app).post('/mutate').set('Cookie', ['nxf_token=cookie.token']).send({});
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('CSRF_INVALID');
+    expect(res.body.error.code).toBe('CSRF_INVALID');
   });
 
   it('accepts csrf token for cookie-based mutating requests', async () => {

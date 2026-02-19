@@ -103,7 +103,7 @@ describe('auth routes', () => {
     const res = await request(app).post('/api/auth/register').send({ email: 'USER@mail.com', password: 'abc12345' });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('GOOGLE_OAUTH_ONLY');
+    expect(res.body.error.code).toBe('GOOGLE_OAUTH_ONLY');
     expect(query).not.toHaveBeenCalled();
     expect(mockStoreSession).not.toHaveBeenCalled();
     expect(mockSetAuthCookies).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe('auth routes', () => {
     const res = await request(app).post('/api/auth/login').send({ email: 'user@mail.com', password: 'abc12345' });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('GOOGLE_OAUTH_ONLY');
+    expect(res.body.error.code).toBe('GOOGLE_OAUTH_ONLY');
     expect(query).not.toHaveBeenCalled();
     expect(mockStoreSession).not.toHaveBeenCalled();
     expect(mockSetAuthCookies).not.toHaveBeenCalled();
@@ -217,7 +217,7 @@ describe('auth routes', () => {
       .send({ currentPassword: 'wrong', newPassword: 'newpass123' });
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('INVALID_CURRENT_PASSWORD');
+    expect(res.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
   });
 
   it('returns 422 when new password is weak on reset-password', async () => {
@@ -228,7 +228,7 @@ describe('auth routes', () => {
       .send({ currentPassword: 'abc12345', newPassword: 'abc' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('WEAK_PASSWORD');
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -306,7 +306,7 @@ describe('auth routes', () => {
     });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('INVALID_TOKEN');
+    expect(res.body.error.code).toBe('INVALID_TOKEN');
   });
 
   it('updates onboardingCompleted via patch me', async () => {
@@ -346,7 +346,7 @@ describe('auth routes', () => {
       .send({ onboardingCompleted: 'si' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('completes apple callback and redirects with oauth success', async () => {
@@ -480,7 +480,7 @@ describe('auth routes', () => {
     const res = await request(app).get('/api/auth/apple').query({ platform: 'mobile', redirect_uri: 'https://evil.test/callback' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('completes apple callback for mobile and redirects with token deep-link', async () => {

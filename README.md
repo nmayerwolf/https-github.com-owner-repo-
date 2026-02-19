@@ -48,7 +48,16 @@ Archivo: `/Users/nmayerwolf/Documents/nexusfin/.env`
 ```bash
 VITE_API_URL=http://localhost:3001/api
 VITE_ANTHROPIC_KEY=
+VITE_MARKET_VISIBLE=false
+VITE_REALTIME_ENABLED=false
 ```
+
+Notas:
+- `VITE_MARKET_VISIBLE=false` oculta Mercado en la UI web (navegación y rutas).
+- Para reactivarlo sin cambios de código: `VITE_MARKET_VISIBLE=true`.
+- `VITE_REALTIME_ENABLED=false` desactiva sockets/realtime en web para MVP strict.
+- Para reactivarlo: `VITE_REALTIME_ENABLED=true`.
+- Template prod: `/Users/nmayerwolf/Documents/nexusfin/.env.production.example`.
 
 ## Calidad y checks
 
@@ -73,7 +82,7 @@ DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm
 
 ## Estado actual (resumen)
 
-- Realtime multi-activo por backend (`/api/market/universe`, WS `/ws`).
+- Realtime multi-activo disponible en codebase (`/api/market/universe`, WS `/ws`), pero en MVP strict queda fuera de acceptance (batch-only).
 - Cron server-side con health (`GET /api/health/cron`).
 - AI agent de validación (fallback técnico cuando AI no está disponible).
 - Outcome evaluation server-side (win/loss/open).

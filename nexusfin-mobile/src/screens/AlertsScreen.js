@@ -5,6 +5,7 @@ import { getThemePalette } from '../theme/palette';
 import { typography } from '../theme/typography';
 import EmptyState from '../components/EmptyState';
 import FadeInView from '../components/FadeInView';
+import { REALTIME_ENABLED } from '../config/features';
 
 const MAIN_TABS = ['live', 'history', 'performance'];
 const HISTORY_TYPES = ['all', 'opportunity', 'bearish', 'stop_loss'];
@@ -126,6 +127,19 @@ const AlertsScreen = ({ theme = 'dark' }) => {
   };
 
   useEffect(() => {
+    if (!REALTIME_ENABLED) {
+      setWsStatus('disconnected');
+      api
+        .getAlerts({ page: 1, limit: 20 })
+        .then((out) => {
+          setLiveAlerts((out?.alerts || []).map(toLiveAlert));
+        })
+        .catch(() => {
+          setError('No se pudieron cargar alertas.');
+        });
+      return undefined;
+    }
+
     let active = true;
     let ws = null;
     let reconnectTimer = null;

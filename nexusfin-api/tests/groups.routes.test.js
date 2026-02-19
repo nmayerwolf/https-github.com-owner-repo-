@@ -48,7 +48,7 @@ describe('groups routes', () => {
     const res = await request(app).post('/api/groups').send({ name: 'Grupo 6' });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('GROUP_LIMIT_REACHED');
+    expect(res.body.error.code).toBe('GROUP_LIMIT_REACHED');
   });
 
   it('sanitizes group name on create', async () => {
@@ -74,7 +74,7 @@ describe('groups routes', () => {
     const res = await request(app).post('/api/groups/join').send({ code: 'BAD' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -89,7 +89,7 @@ describe('groups routes', () => {
     const res = await request(app).post('/api/groups/join').send({ code: 'NXF-A7K2M' });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('GROUP_MEMBER_LIMIT_REACHED');
+    expect(res.body.error.code).toBe('GROUP_MEMBER_LIMIT_REACHED');
   });
 
   it('allows admin to rename group', async () => {
@@ -119,7 +119,7 @@ describe('groups routes', () => {
     const res = await request(app).patch('/api/groups/g1').send({ name: 'Nuevo Nombre' });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('ADMIN_ONLY');
+    expect(res.body.error.code).toBe('ADMIN_ONLY');
   });
 
   it('rejects rename when name is empty', async () => {
@@ -129,7 +129,7 @@ describe('groups routes', () => {
     const res = await request(app).patch('/api/groups/g1').send({ name: '   ' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('allows admin to delete group', async () => {
@@ -151,7 +151,7 @@ describe('groups routes', () => {
     const res = await request(app).delete('/api/groups/g1');
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('ADMIN_ONLY');
+    expect(res.body.error.code).toBe('ADMIN_ONLY');
   });
 
   it('prevents admin from removing another admin', async () => {
@@ -163,7 +163,7 @@ describe('groups routes', () => {
     const res = await request(app).delete('/api/groups/g1/members/u-other');
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('CANNOT_REMOVE_ADMIN');
+    expect(res.body.error.code).toBe('CANNOT_REMOVE_ADMIN');
   });
 
   it('prevents remove-member endpoint for self user', async () => {
@@ -173,7 +173,7 @@ describe('groups routes', () => {
     const res = await request(app).delete('/api/groups/g1/members/u-admin');
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('USE_LEAVE_FOR_SELF');
+    expect(res.body.error.code).toBe('USE_LEAVE_FOR_SELF');
   });
 
   it('returns 404 when target member is missing', async () => {
@@ -185,7 +185,7 @@ describe('groups routes', () => {
     const res = await request(app).delete('/api/groups/g1/members/u-missing');
 
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('GROUP_MEMBER_NOT_FOUND');
+    expect(res.body.error.code).toBe('GROUP_MEMBER_NOT_FOUND');
   });
 
   it('returns group detail with privacy-safe member positions and computed plPercent', async () => {
@@ -248,7 +248,7 @@ describe('groups routes', () => {
     const res = await request(app).get('/api/groups/g1');
 
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('GROUP_NOT_FOUND');
+    expect(res.body.error.code).toBe('GROUP_NOT_FOUND');
   });
   it('returns group feed with reactions and pagination', async () => {
     query
@@ -304,7 +304,7 @@ describe('groups routes', () => {
     const res = await request(app).post('/api/groups/g1/feed').send({ message: '   ' });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('rejects overly long message in feed note', async () => {
@@ -315,7 +315,7 @@ describe('groups routes', () => {
     const res = await request(app).post('/api/groups/g1/feed').send({ message: longMessage });
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('reacts to group feed event with upsert', async () => {
