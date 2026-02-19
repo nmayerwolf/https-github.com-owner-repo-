@@ -97,7 +97,18 @@ app.locals.getMobileHealthStatus = () => ({
 app.get('/api/health', async (_req, res) => {
   try {
     await query('SELECT 1');
-    return res.json({ ok: true, db: 'up', ts: new Date().toISOString() });
+    const revision = String(
+      process.env.RAILWAY_GIT_COMMIT_SHA ||
+      process.env.SOURCE_VERSION ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      ''
+    ).trim();
+    return res.json({
+      ok: true,
+      db: 'up',
+      revision: revision || null,
+      ts: new Date().toISOString()
+    });
   } catch {
     return res.status(500).json({ ok: false, db: 'down' });
   }
