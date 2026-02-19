@@ -173,6 +173,7 @@ app.get('/api/health/market-data', (_req, res) => {
     ws: {
       chainResolverEnabled: true
     },
+    strictRealtime: Boolean(env.marketStrictRealtime),
     ts: new Date().toISOString()
   });
 });
@@ -514,7 +515,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
     wsHub,
     finnhubSvc: finnhub,
     alphaSvc: av,
-    quoteResolver: resolveMarketQuote,
+    quoteResolver: (symbol) => resolveMarketQuote(symbol, { strictRealtime: env.marketStrictRealtime }),
     logger: console
   });
   app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;

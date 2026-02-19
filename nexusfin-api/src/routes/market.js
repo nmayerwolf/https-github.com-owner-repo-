@@ -1,6 +1,7 @@
 const express = require('express');
 const { cache } = require('../config/cache');
 const { query } = require('../config/db');
+const { env } = require('../config/env');
 const av = require('../services/alphavantage');
 const finnhub = require('../services/finnhub');
 const { resolveMarketQuote, resolveMarketSearch, isFinnhubUnavailable } = require('../services/marketDataProvider');
@@ -143,9 +144,16 @@ const syntheticQuote = (symbol, retryAfterMs = 0) => {
 router.get('/quote', async (req, res, next) => {
   try {
     if (!req.query.symbol) throw badRequest('symbol requerido');
-    const resolved = await resolveMarketQuote(req.query.symbol);
+    const resolved = await resolveMarketQuote(req.query.symbol, { strictRealtime: env.marketStrictRealtime });
     return res.json({ ...resolved.quote, source: resolved.meta.source, asOf: resolved.meta.asOf, stale: resolved.meta.stale });
   } catch (error) {
+    if (error?.code === 'NO_LIVE_DATA') {
+      return res.status(503).json({
+        error: 'NO_LIVE_DATA',
+        message: error?.message || 'No live data available',
+        symbol: String(req.query.symbol || '').toUpperCase()
+      });
+    }
     return next(error);
   }
 });
@@ -228,7 +236,7 @@ router.get('/snapshot', async (req, res, next) => {
       }
 
       try {
-        const resolved = await resolveMarketQuote(symbol);
+        const resolved = await resolveMarketQuote(symbol, { strictRealtime: env.marketStrictRealtime });
         const quote = resolved.quote;
         const price = toFinite(quote?.c);
         const previousClose = toFinite(quote?.pc);

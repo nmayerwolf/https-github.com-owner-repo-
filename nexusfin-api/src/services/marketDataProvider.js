@@ -279,12 +279,27 @@ const resolveMarketSearch = async (query) => {
   }
 };
 
-const resolveMarketQuote = async (symbol) => {
+const makeLiveUnavailableError = (reason, symbol = '') => {
+  const error = new Error(reason === 'TWELVE_DATA_KEY_MISSING' ? 'Missing TWELVE_DATA_KEY' : `No live quote available for ${symbol}`);
+  error.code = 'NO_LIVE_DATA';
+  error.status = 503;
+  error.reason = reason;
+  error.symbol = symbol;
+  return error;
+};
+
+const resolveMarketQuote = async (symbol, options = {}) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
+  const strictRealtime = Boolean(options?.strictRealtime);
 
   const twelve = await resolveTwelveDataQuote(upper);
   if (twelve) return { quote: twelve, meta: buildMeta('twelvedata', 0) };
+
+  if (strictRealtime) {
+    if (!twelvedata.hasKey()) throw makeLiveUnavailableError('TWELVE_DATA_KEY_MISSING', upper);
+    throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
+  }
 
   try {
     const quoteSymbol = toFinnhubSymbol(upper);
