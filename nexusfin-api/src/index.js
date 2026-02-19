@@ -156,8 +156,26 @@ app.get('/api/health/phase3', (_req, res) => {
   });
 });
 
-app.get('/api/health/market-data', (_req, res) => {
+app.get('/api/health/market-data', async (_req, res) => {
   const symbols = new Set((MARKET_UNIVERSE || []).map((item) => String(item?.symbol || '').toUpperCase()));
+  let liveProbe = { ok: false, symbol: 'AAPL' };
+  try {
+    const probe = await resolveMarketQuote('AAPL');
+    liveProbe = {
+      ok: true,
+      symbol: 'AAPL',
+      source: probe?.meta?.source || null,
+      hasPrice: Number.isFinite(Number(probe?.quote?.c))
+    };
+  } catch (error) {
+    liveProbe = {
+      ok: false,
+      symbol: 'AAPL',
+      code: error?.code || null,
+      reason: error?.reason || null,
+      message: error?.message || null
+    };
+  }
   return res.json({
     ok: true,
     providers: {
@@ -174,6 +192,7 @@ app.get('/api/health/market-data', (_req, res) => {
       chainResolverEnabled: true
     },
     strictRealtime: Boolean(env.marketStrictRealtime),
+    liveProbe,
     ts: new Date().toISOString()
   });
 });

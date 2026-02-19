@@ -182,6 +182,7 @@ const resolveMarketMeta = (data = {}, fallbackSource = 'local') => {
   const source = String(data?.marketMeta?.source || data?.quote?.source || fallbackSource || 'local');
   const asOf = data?.marketMeta?.asOf || data?.quote?.asOf || null;
   const stale = Boolean(data?.marketMeta?.stale ?? data?.quote?.stale ?? false);
+  const unavailable = Boolean(data?.marketMeta?.unavailable ?? false);
   const fallbackLevel = Number.isFinite(Number(data?.marketMeta?.fallbackLevel))
     ? Number(data.marketMeta.fallbackLevel)
     : stale
@@ -193,7 +194,7 @@ const resolveMarketMeta = (data = {}, fallbackSource = 'local') => {
           : source === 'yahoo'
             ? 2
             : 0;
-  return { source, asOf, stale, fallbackLevel };
+  return { source, asOf, stale, unavailable, fallbackLevel };
 };
 
 export const mapServerAlertToLive = (alert) => {
@@ -619,7 +620,8 @@ export const AppProvider = ({ children }) => {
           marketMeta: {
             source: 'pending_live',
             asOf: new Date().toISOString(),
-            stale: true,
+            stale: false,
+            unavailable: true,
             fallbackLevel: 9
           }
         })
@@ -1327,7 +1329,8 @@ export const AppProvider = ({ children }) => {
             marketMeta: {
               source: 'pending_live',
               asOf: new Date().toISOString(),
-              stale: true,
+              stale: false,
+              unavailable: true,
               fallbackLevel: 9
             }
           });

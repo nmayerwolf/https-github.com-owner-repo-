@@ -5,8 +5,6 @@ const toFinite = (value) => {
   return Number.isFinite(out) ? out : null;
 };
 
-const isFinnhubUnavailable = (_error) => false;
-
 const toTwelveDataSymbol = (symbol) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
@@ -33,31 +31,6 @@ const canonicalizeSymbol = (symbol) => {
   return upper;
 };
 
-const symbolBasePrice = (_symbol) => 0;
-
-const syntheticQuote = (symbol, retryAfterMs = 0) => {
-  const c = Number(symbolBasePrice(symbol).toFixed(6));
-  return {
-    c,
-    pc: c,
-    d: null,
-    dp: null,
-    h: c,
-    l: c,
-    o: c,
-    t: Math.floor(Date.now() / 1000),
-    fallback: true,
-    retryAfterMs: Number(retryAfterMs) || 0
-  };
-};
-
-const buildMeta = (source, fallbackLevel) => ({
-  source,
-  asOf: new Date().toISOString(),
-  stale: source === 'synthetic',
-  fallbackLevel
-});
-
 const normalizeSearchCategory = (symbol, type = '') => {
   const normalizedSymbol = String(symbol || '').toUpperCase();
   const normalizedType = String(type || '').toLowerCase();
@@ -67,33 +40,14 @@ const normalizeSearchCategory = (symbol, type = '') => {
   if (normalizedType.includes('commodity') || normalizedType.includes('futures')) return 'commodity';
   if (normalizedType.includes('metal')) return 'metal';
   if (normalizedType.includes('bond') || normalizedType.includes('treasury')) return 'bond';
-  if (normalizedType.includes('index')) return 'equity';
   return 'equity';
-};
-
-const resolveTwelveDataQuote = async (symbol) => {
-  if (!twelvedata.hasKey()) return null;
-  const quoteSymbol = toTwelveDataSymbol(symbol);
-  if (!quoteSymbol) return null;
-  try {
-    const out = await twelvedata.quote(quoteSymbol);
-    const price = toFinite(out?.close ?? out?.price);
-    if (!Number.isFinite(price) || price <= 0) return null;
-    const previousClose = toFinite(out?.previous_close);
-    const directPercent = toFinite(out?.percent_change ?? out?.change_percent);
-    const pc = Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price;
-    // Performance diario viene del proveedor; no lo derivamos localmente.
-    const dp = Number.isFinite(directPercent) ? directPercent : null;
-    return { c: price, pc, dp, fallback: true };
-  } catch {
-    return null;
-  }
 };
 
 const scoreSearchResult = (query, item) => {
   const needle = String(query || '').trim().toLowerCase();
   const symbol = String(item?.symbol || '').trim().toLowerCase();
   const name = String(item?.name || '').trim().toLowerCase();
+
   let score = 0;
   if (symbol === needle) score += 120;
   else if (symbol.startsWith(needle)) score += 80;
@@ -108,48 +62,16 @@ const scoreSearchResult = (query, item) => {
   if (type.includes('right') || type.includes('warrant') || type.includes('preferred')) score -= 20;
   if (symbol.includes(':')) score -= 8;
   if (symbol.length > 12) score -= 5;
+
   return score;
 };
 
-const resolveMarketSearch = async (query) => {
-  const q = String(query || '').trim();
-  if (!q) return [];
-
-  if (twelvedata.hasKey()) {
-    try {
-      const out = await twelvedata.symbolSearch(q, 20);
-      const rows = Array.isArray(out?.data) ? out.data : [];
-      const mapped = rows
-        .map((item) => ({
-          symbol: canonicalizeSymbol(item?.symbol),
-          name: String(item?.instrument_name || '').trim(),
-          type: String(item?.instrument_type || item?.type || '').trim()
-        }))
-        .filter((item) => item.symbol && item.name)
-        .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
-        .slice(0, 20)
-        .map((item) => {
-          const category = normalizeSearchCategory(item.symbol, item.type);
-          const sourceSuffix = category === 'crypto' ? 'crypto' : category === 'fx' ? 'fx' : 'stock';
-          return {
-            symbol: item.symbol,
-            name: item.name,
-            category,
-            source: `twelvedata_${sourceSuffix}`,
-            type: item.type
-          };
-        });
-      if (mapped.length) return mapped;
-    } catch {
-      // Fallback to Finnhub below.
-    }
-  }
-
-  return [];
-};
-
 const makeLiveUnavailableError = (reason, symbol = '') => {
-  const error = new Error(reason === 'TWELVE_DATA_KEY_MISSING' ? 'Missing TWELVE_DATA_KEY' : `No live quote available for ${symbol}`);
+  const error = new Error(
+    reason === 'TWELVE_DATA_KEY_MISSING'
+      ? 'Missing TWELVE_DATA_KEY'
+      : `No live quote available for ${symbol}`
+  );
   error.code = 'NO_LIVE_DATA';
   error.status = 503;
   error.reason = reason;
@@ -157,21 +79,75 @@ const makeLiveUnavailableError = (reason, symbol = '') => {
   return error;
 };
 
-const resolveMarketQuote = async (symbol, options = {}) => {
+const resolveMarketQuote = async (symbol) => {
   const upper = String(symbol || '').trim().toUpperCase();
-  if (!upper) return null;
-  void options;
-
-  const twelve = await resolveTwelveDataQuote(upper);
-  if (twelve) return { quote: twelve, meta: buildMeta('twelvedata', 0) };
+  if (!upper) throw makeLiveUnavailableError('SYMBOL_REQUIRED', upper);
 
   if (!twelvedata.hasKey()) throw makeLiveUnavailableError('TWELVE_DATA_KEY_MISSING', upper);
-  throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
+
+  const quoteSymbol = toTwelveDataSymbol(upper);
+  if (!quoteSymbol) throw makeLiveUnavailableError('INVALID_SYMBOL', upper);
+
+  let out;
+  try {
+    out = await twelvedata.quote(quoteSymbol);
+  } catch {
+    throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
+  }
+
+  const price = toFinite(out?.close ?? out?.price);
+  if (!Number.isFinite(price) || price <= 0) throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
+
+  const previousClose = toFinite(out?.previous_close);
+  const pct = toFinite(out?.percent_change ?? out?.change_percent);
+
+  return {
+    quote: {
+      c: price,
+      pc: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price,
+      dp: Number.isFinite(pct) ? pct : null
+    },
+    meta: {
+      source: 'twelvedata',
+      asOf: new Date().toISOString(),
+      stale: false,
+      fallbackLevel: 0
+    }
+  };
+};
+
+const resolveMarketSearch = async (query) => {
+  const q = String(query || '').trim();
+  if (!q || !twelvedata.hasKey()) return [];
+
+  const out = await twelvedata.symbolSearch(q, 20);
+  const rows = Array.isArray(out?.data) ? out.data : [];
+
+  return rows
+    .map((item) => ({
+      symbol: canonicalizeSymbol(item?.symbol),
+      name: String(item?.instrument_name || '').trim(),
+      type: String(item?.instrument_type || item?.type || '').trim()
+    }))
+    .filter((item) => item.symbol && item.name)
+    .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
+    .slice(0, 20)
+    .map((item) => {
+      const category = normalizeSearchCategory(item.symbol, item.type);
+      const sourceSuffix = category === 'crypto' ? 'crypto' : category === 'fx' ? 'fx' : 'stock';
+      return {
+        symbol: item.symbol,
+        name: item.name,
+        category,
+        source: `twelvedata_${sourceSuffix}`,
+        type: item.type
+      };
+    });
 };
 
 module.exports = {
   resolveMarketQuote,
   resolveMarketSearch,
-  syntheticQuote,
-  isFinnhubUnavailable
+  syntheticQuote: () => null,
+  isFinnhubUnavailable: () => false
 };
