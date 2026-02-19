@@ -14,6 +14,8 @@ const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
 
 const router = express.Router();
 let newsTelemetryReady = false;
+const MAX_MARKET_WATCHLIST_SYMBOLS = 15;
+const SYMBOL_PATTERN = /^[A-Z0-9.^/_:-]{1,24}$/;
 const LIVE_ERROR_CODES = new Set(
   [
     ErrorCodes?.NO_LIVE_DATA,
@@ -101,6 +103,122 @@ const normalizeSearchText = (value) =>
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
 
+const normalizeSymbol = (value) => String(value || '').trim().toUpperCase();
+
+const normalizeWatchlistCategory = (symbol, incomingCategory = '') => {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const category = String(incomingCategory || '').trim().toLowerCase();
+  if (category) return category;
+  if (normalizedSymbol.endsWith('USDT')) return 'crypto';
+  if (normalizedSymbol.includes('_')) return 'fx';
+  return 'equity';
+};
+
+const normalizeWatchlistType = (category) => {
+  const normalized = String(category || '').trim().toLowerCase();
+  if (normalized === 'crypto') return 'crypto';
+  if (normalized === 'fx') return 'forex';
+  return 'stock';
+};
+
+router.get('/watchlist', async (req, res, next) => {
+  try {
+    const rows = await query(
+      'SELECT symbol, name, type, category, added_at FROM watchlist_items WHERE user_id = $1 ORDER BY added_at DESC',
+      [req.user.id]
+    );
+    return res.json({ symbols: rows.rows, max: MAX_MARKET_WATCHLIST_SYMBOLS });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/watchlist', async (req, res, next) => {
+  try {
+    const incoming = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
+    const unique = Array.from(new Set(incoming.map((x) => normalizeSymbol(x?.symbol || x)).filter(Boolean)));
+
+    if (unique.length > MAX_MARKET_WATCHLIST_SYMBOLS) {
+      return res.status(403).json({
+        error: 'LIMIT_REACHED',
+        message: `Maximo ${MAX_MARKET_WATCHLIST_SYMBOLS} simbolos`
+      });
+    }
+
+    for (const symbol of unique) {
+      if (!SYMBOL_PATTERN.test(symbol)) throw badRequest(`Simbolo invalido: ${symbol}`);
+    }
+
+    await query('DELETE FROM watchlist_items WHERE user_id = $1', [req.user.id]);
+
+    const byUniverse = Object.fromEntries(MARKET_UNIVERSE.map((item) => [String(item?.symbol || '').toUpperCase(), item]));
+    for (const symbol of unique) {
+      const meta = byUniverse[symbol] || {};
+      const category = normalizeWatchlistCategory(symbol, meta?.category);
+      const type = normalizeWatchlistType(category);
+      await query(
+        `INSERT INTO watchlist_items (user_id, symbol, name, type, category)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (user_id, symbol) DO NOTHING`,
+        [req.user.id, symbol, String(meta?.name || symbol), type, category]
+      );
+    }
+
+    const rows = await query(
+      'SELECT symbol, name, type, category, added_at FROM watchlist_items WHERE user_id = $1 ORDER BY added_at DESC',
+      [req.user.id]
+    );
+    return res.json({ ok: true, symbols: rows.rows, max: MAX_MARKET_WATCHLIST_SYMBOLS });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/prices', async (req, res, next) => {
+  try {
+    const rows = await query(
+      'SELECT symbol, name, type, category, added_at FROM watchlist_items WHERE user_id = $1 ORDER BY added_at DESC',
+      [req.user.id]
+    );
+    const symbols = rows.rows.map((row) => normalizeSymbol(row.symbol)).filter(Boolean).slice(0, MAX_MARKET_WATCHLIST_SYMBOLS);
+    const out = [];
+
+    for (const symbol of symbols) {
+      const cacheKey = `snapshot:${symbol}`;
+      const cached = cache.get(cacheKey);
+      if (cached?.quote) {
+        out.push({
+          symbol,
+          price: toFinite(cached.quote.c),
+          prevClose: toFinite(cached.quote.pc),
+          changePct: toFinite(cached.quote.dp),
+          source: cached?.marketMeta?.source || 'finnhub',
+          asOf: cached?.marketMeta?.asOf || null
+        });
+        continue;
+      }
+
+      try {
+        const resolved = await resolveMarketQuote(symbol);
+        out.push({
+          symbol,
+          price: toFinite(resolved?.quote?.c),
+          prevClose: toFinite(resolved?.quote?.pc),
+          changePct: toFinite(resolved?.quote?.dp),
+          source: resolved?.meta?.source || 'finnhub',
+          asOf: resolved?.meta?.asOf || null
+        });
+      } catch {
+        out.push({ symbol, price: null, prevClose: null, changePct: null, source: 'finnhub', asOf: null });
+      }
+    }
+
+    return res.json({ prices: out, count: out.length, max: MAX_MARKET_WATCHLIST_SYMBOLS });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/quote', async (req, res, next) => {
   try {
     if (!req.query.symbol) throw badRequest('symbol requerido');
@@ -124,7 +242,7 @@ router.get('/candles', async (req, res, next) => {
     const { symbol, resolution = 'D', from, to } = req.query;
     if (!symbol || !from || !to) throw badRequest('symbol/from/to requeridos');
     const key = `candles:${symbol}:${resolution}:${from}:${to}`;
-    const data = await getOrSet(key, 180, async () => resolveMarketCandles({ symbol, resolution, outputsize: 120 }));
+    const data = await getOrSet(key, 180, async () => resolveMarketCandles({ symbol, resolution, from, to, outputsize: 120 }));
     return res.json(data);
   } catch (error) {
     return next(error);
@@ -136,7 +254,7 @@ router.get('/crypto-candles', async (req, res, next) => {
     const { symbol, resolution = 'D', from, to } = req.query;
     if (!symbol || !from || !to) throw badRequest('symbol/from/to requeridos');
     const key = `crypto:${symbol}:${resolution}:${from}:${to}`;
-    const data = await getOrSet(key, 180, async () => resolveMarketCandles({ symbol, resolution, outputsize: 120 }));
+    const data = await getOrSet(key, 180, async () => resolveMarketCandles({ symbol, resolution, from, to, outputsize: 120 }));
     return res.json(data);
   } catch (error) {
     return next(error);
@@ -149,7 +267,7 @@ router.get('/forex-candles', async (req, res, next) => {
     if (!from || !to || !fromTs || !toTs) throw badRequest('from/to/fromTs/toTs requeridos');
     const key = `fx:${from}:${to}:${resolution}:${fromTs}:${toTs}`;
     const pair = `${String(from).toUpperCase()}_${String(to).toUpperCase()}`;
-    const data = await getOrSet(key, 180, async () => resolveMarketCandles({ symbol: pair, resolution, outputsize: 120 }));
+    const data = await getOrSet(key, 180, async () => resolveMarketCandles({ symbol: pair, resolution, from: fromTs, to: toTs, outputsize: 120 }));
     return res.json(data);
   } catch (error) {
     return next(error);
@@ -206,7 +324,7 @@ router.get('/snapshot', async (req, res, next) => {
           quote: { c: null, pc: null, dp: null },
           candles: { s: 'no_data', c: [], h: [], l: [], v: [] },
           marketMeta: {
-            source: 'twelvedata',
+            source: 'finnhub',
             asOf: new Date().toISOString(),
             stale: false,
             unavailable: true,
@@ -479,7 +597,7 @@ router.get('/search', async (req, res, next) => {
         symbol,
         name: String(item?.name || ''),
         category: String(item?.category || 'equity'),
-        source: 'twelvedata'
+        source: 'finnhub'
       });
     });
 

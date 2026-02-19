@@ -12,7 +12,6 @@ const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const av = require('./services/alphavantage');
-const twelvedata = require('./services/twelvedata');
 const { resolveMarketQuote } = require('./services/marketDataProvider');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
@@ -181,9 +180,9 @@ app.get('/api/health/market-data', async (_req, res) => {
 
   return res.json({
     ok: true,
-    providerMode: 'twelvedata-only',
-    keyPresent: twelvedata.hasKey(),
-    keyLength: twelvedata.keyLength(),
+    providerMode: 'finnhub-polling',
+    keyPresent: Boolean(String(env.finnhubKey || '').trim()),
+    keyLength: String(env.finnhubKey || '').trim().length,
     universe: {
       count: symbols.size,
       hasMerval: symbols.has('^MERV'),
@@ -192,7 +191,6 @@ app.get('/api/health/market-data', async (_req, res) => {
     ws: { chainResolverEnabled: true },
     strictRealtime: Boolean(env.marketStrictRealtime),
     probes,
-    metrics: twelvedata.getMetrics(),
     ts: new Date().toISOString()
   });
 });
@@ -248,7 +246,7 @@ const providerForRealtimeSymbol = (symbol) =>
     .toUpperCase()
     .startsWith(AV_SYMBOL_PREFIX)
     ? 'alphavantage'
-    : 'market-chain';
+    : 'finnhub';
 
 const canonicalSymbolFromRealtime = (symbol) => {
   const upper = String(symbol || '').trim().toUpperCase();

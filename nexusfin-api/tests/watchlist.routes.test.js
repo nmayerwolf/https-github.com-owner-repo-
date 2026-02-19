@@ -29,8 +29,8 @@ describe('watchlist routes', () => {
     query.mockReset();
   });
 
-  it('rejects add symbol when user reached 50 symbols', async () => {
-    query.mockResolvedValueOnce({ rows: [{ total: 50 }] });
+  it('rejects add symbol when user reached 15 symbols', async () => {
+    query.mockResolvedValueOnce({ rows: [{ total: 15 }] });
 
     const app = makeApp();
     const res = await request(app).post('/api/watchlist').send({

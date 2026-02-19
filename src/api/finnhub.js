@@ -9,7 +9,7 @@ const stats = {
   fallbackActive: false,
   lastError: '',
   lastCallAt: 0,
-  source: 'backend_proxy_twelvedata'
+  source: 'backend_proxy_finnhub'
 };
 
 const nowSec = () => Math.floor(Date.now() / 1000);
