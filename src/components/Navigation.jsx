@@ -14,18 +14,6 @@ const links = [
     )
   },
   {
-    to: '/markets',
-    label: 'Mercados',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M4 18V6" />
-        <path d="M10 18v-8" />
-        <path d="M16 18V9" />
-        <path d="M22 18v-5" />
-      </svg>
-    )
-  },
-  {
     to: '/portfolio',
     label: 'Cartera',
     icon: (
