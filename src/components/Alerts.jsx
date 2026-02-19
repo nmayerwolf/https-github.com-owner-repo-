@@ -511,11 +511,11 @@ const Alerts = () => {
         name: currentAsset.name || name || normalized,
         category: currentAsset.category || 'equity',
         sector: currentAsset.sector || 'general',
-        source: currentAsset.source || 'twelvedata'
+        source: currentAsset.source || 'finnhub'
       };
     }
     const category = normalized.endsWith('USDT') ? 'crypto' : normalized.includes('_') ? 'fx' : 'equity';
-    const source = category === 'crypto' ? 'twelvedata' : category === 'fx' ? 'twelvedata' : 'twelvedata';
+    const source = category === 'crypto' ? 'finnhub' : category === 'fx' ? 'finnhub' : 'finnhub';
     return { symbol: normalized, name: name || normalized, category, sector: category, source };
   };
 

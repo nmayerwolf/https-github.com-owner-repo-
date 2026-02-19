@@ -23,16 +23,7 @@ jest.mock('../src/services/alphavantage', () => ({
   digitalDaily: jest.fn()
 }));
 
-jest.mock('../src/services/twelvedata', () => ({
-  hasKey: jest.fn(() => true),
-  quote: jest.fn(),
-  symbolSearch: jest.fn(),
-  timeSeries: jest.fn()
-}));
-
 const finnhub = require('../src/services/finnhub');
-const av = require('../src/services/alphavantage');
-const twelvedata = require('../src/services/twelvedata');
 const { cache } = require('../src/config/cache');
 const marketRoutes = require('../src/routes/market');
 const { errorHandler } = require('../src/middleware/errorHandler');
@@ -71,11 +62,13 @@ describe('market routes', () => {
   });
 
   it('caches candles response for same params', async () => {
-    twelvedata.timeSeries.mockResolvedValue({
-      values: [
-        { datetime: '2026-02-18', close: '10', high: '11', low: '9', volume: '1000' },
-        { datetime: '2026-02-19', close: '11', high: '12', low: '10', volume: '1200' }
-      ]
+    finnhub.candles.mockResolvedValue({
+      s: 'ok',
+      c: [10, 11],
+      h: [11, 12],
+      l: [9, 10],
+      v: [1000, 1200],
+      t: [1700000000, 1701000000]
     });
 
     const app = makeApp();
@@ -86,7 +79,7 @@ describe('market routes', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(twelvedata.timeSeries).toHaveBeenCalledTimes(1);
+    expect(finnhub.candles).toHaveBeenCalledTimes(1);
   });
 
   it('returns profile data from market universe fallback', async () => {
@@ -125,8 +118,8 @@ describe('market routes', () => {
   });
 
   it('returns market search results merged from universe and provider', async () => {
-    twelvedata.symbolSearch.mockResolvedValueOnce({
-      data: [{ symbol: 'NSRGY', instrument_name: 'Nestle SA ADR', instrument_type: 'Common Stock' }]
+    finnhub.symbolSearch.mockResolvedValueOnce({
+      result: [{ symbol: 'NSRGY', description: 'Nestle SA ADR' }]
     });
 
     const app = makeApp();
@@ -138,10 +131,10 @@ describe('market routes', () => {
   });
 
   it('ranks market search results by relevance', async () => {
-    twelvedata.symbolSearch.mockResolvedValueOnce({
-      data: [
-        { symbol: 'NESTL.ZZ', instrument_name: 'Nestle Placeholder Right', instrument_type: 'Right' },
-        { symbol: 'NSRGY', instrument_name: 'Nestle SA ADR', instrument_type: 'ADR' }
+    finnhub.symbolSearch.mockResolvedValueOnce({
+      result: [
+        { symbol: 'NESTL.ZZ', description: 'Nestle Placeholder Right' },
+        { symbol: 'NSRGY', description: 'Nestle SA ADR' }
       ]
     });
 
@@ -158,7 +151,7 @@ describe('market routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
-    expect(twelvedata.symbolSearch).not.toHaveBeenCalled();
+    expect(finnhub.symbolSearch).not.toHaveBeenCalled();
   });
 
   it('returns proxied company news list', async () => {
@@ -225,12 +218,26 @@ describe('market routes', () => {
   });
 
   it('returns bulk snapshot with successes and per-symbol errors', async () => {
-    twelvedata.quote.mockImplementation(async (symbol) => {
+    finnhub.quote.mockImplementation(async (symbol) => {
       if (symbol === 'MSFT') throw new Error('unexpected failure');
-      return { close: 120, previous_close: 100, percent_change: 20 };
+      if (symbol === 'BINANCE:BTCUSDT') return { c: 62000, pc: 60000, dp: 3.3 };
+      return { c: 120, pc: 100, dp: 20 };
     });
-    twelvedata.timeSeries.mockResolvedValue({
-      values: [{ datetime: '2026-02-19', close: '120', high: '121', low: '119', volume: '1000' }]
+    finnhub.candles.mockResolvedValue({
+      s: 'ok',
+      c: [110, 120],
+      h: [111, 121],
+      l: [109, 119],
+      v: [1000, 1200],
+      t: [1700000000, 1701000000]
+    });
+    finnhub.cryptoCandles.mockResolvedValue({
+      s: 'ok',
+      c: [60000, 62000],
+      h: [60100, 62100],
+      l: [59900, 61900],
+      v: [100, 120],
+      t: [1700000000, 1701000000]
     });
 
     const app = makeApp();
@@ -246,7 +253,7 @@ describe('market routes', () => {
   });
 
   it('returns per-symbol NO_LIVE_DATA errors when single source has no quote', async () => {
-    twelvedata.quote.mockRejectedValueOnce(new Error('upstream unavailable'));
+    finnhub.quote.mockRejectedValueOnce(new Error('upstream unavailable'));
 
     const app = makeApp();
     const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
