@@ -10,13 +10,13 @@ Objetivo: llevar el esquema actual a la especificación `SPEC_MVP_V1_1_LOCKED.md
 ## B) Estructuras nuevas mínimas (MVP strict)
 
 ### 1. Job control
-- [ ] Crear `job_runs`:
+- [x] Crear `job_runs`:
   - columnas: `id`, `job_name`, `run_date`, `status`, `started_at`, `finished_at`, `error`
   - unique: `(job_name, run_date)`
   - índices por `status`, `run_date`.
 
 ### 2. Agent profile
-- [ ] Crear/ajustar `user_agent_profile`:
+- [x] Crear/ajustar `user_agent_profile`:
   - `preset_type` enum/value check: `strategic_core|balanced|opportunistic`
   - `risk_level NUMERIC` check `[0,1]`
   - `horizon NUMERIC` check `[0,1]`
@@ -24,54 +24,54 @@ Objetivo: llevar el esquema actual a la especificación `SPEC_MVP_V1_1_LOCKED.md
   - unique por `user_id`.
 
 ### 3. Portfolio ACL y límites
-- [ ] Asegurar `portfolio_members` con rol:
-  - `role` check `owner|editor|viewer`
+- [x] Asegurar tabla de colaboradores con rol (`portfolio_collaborators`):
+  - `role` check `editor|viewer` (owner deriva de `portfolios.user_id`)
   - unique `(portfolio_id, user_id)`.
-- [ ] Límite 3 portfolios por user:
+- [x] Límite 3 portfolios por user:
   - enforcement en app + opcional trigger defensivo DB.
-- [ ] Límite 15 holdings por portfolio:
+- [x] Límite 15 holdings por portfolio:
   - enforcement en app + opcional trigger defensivo DB.
-- [ ] Unique lógico holding:
+- [x] Unique lógico holding:
   - unique parcial recomendado `(portfolio_id, symbol)` para holding activo.
 
 ### 4. Regime y crisis diarios
-- [ ] `regime_state` unique `(date)`.
-- [ ] `crisis_state` unique `(date)`.
-- [ ] checks de enum:
+- [x] `regime_state` unique `(date)`.
+- [x] `crisis_state` unique `(date)`.
+- [x] checks de enum:
   - `regime`: `risk_on|risk_off|transition`
   - `volatility_regime`: `normal|elevated|crisis`.
 
 ### 5. Digest y recomendaciones diarios
-- [ ] `daily_digest` unique `(user_id, date)`.
-- [ ] `user_recommendations` unique `(user_id, date)`.
-- [ ] columnas JSON/JSONB para secciones y metadata de crisis/regime.
+- [x] `daily_digest` unique `(user_id, date)`.
+- [x] `user_recommendations` unique `(user_id, date)`.
+- [x] columnas JSON/JSONB para secciones y metadata de crisis/regime.
 
 ### 6. Market/fundamentals snapshots
-- [ ] `market_daily_bars` unique `(symbol, date)`.
-- [ ] `market_metrics_daily` unique `(symbol, date)`.
-- [ ] `fundamentals_snapshot` unique `(symbol, asof_date)`.
-- [ ] `fundamentals_derived` unique `(symbol, asof_date)`.
+- [x] `market_daily_bars` unique `(symbol, date)`.
+- [x] `market_metrics_daily` unique `(symbol, date)`.
+- [x] `fundamentals_snapshot` unique `(symbol, asof_date)`.
+- [x] `fundamentals_derived` unique `(symbol, asof_date)`.
 
 ### 7. Portfolio snapshots
-- [ ] `portfolio_snapshots` unique `(portfolio_id, date)`.
-- [ ] `portfolio_metrics` unique `(portfolio_id, date)`.
+- [x] `portfolio_snapshots` unique `(portfolio_id, date)`.
+- [x] `portfolio_metrics` unique `(portfolio_id, date)`.
 
 ## C) Constraints de contratos de salida
 
 ### 1. Ideas (base/user)
-- [ ] `action` check `BUY|SELL|WATCH`.
-- [ ] `confidence` check `[0,1]`.
-- [ ] `timeframe` check `weeks|months`.
-- [ ] límites por categoría (en capa app + validación):
-  - strategic max 4
-  - opportunistic max 3
-  - risk max 4.
+- [x] `action` check `BUY|SELL|WATCH`.
+- [x] `confidence` check `[0,1]`.
+- [x] `timeframe` check `weeks|months`.
+- [x] límites por categoría (en capa app + validación):
+  - [x] strategic max 4
+  - [x] opportunistic max 3
+  - [x] risk max 4.
 
 ### 2. Risk severity
-- [ ] check `low|med|high`.
+- [x] check `low|med|high`.
 
 ### 3. Opportunistic type
-- [ ] check `value_dislocation|overreaction|macro_divergence` (nullable fuera de opportunistic).
+- [x] check `value_dislocation|overreaction|macro_divergence` (nullable fuera de opportunistic).
 
 ## D) Migración de datos existentes
 - [ ] Backfill `portfolio_collaborators.role`:
@@ -81,7 +81,7 @@ Objetivo: llevar el esquema actual a la especificación `SPEC_MVP_V1_1_LOCKED.md
 - [ ] Validar no existan portfolios >3 o holdings >15 antes de habilitar validaciones estrictas.
 
 ## E) Validación post-migración
-- [ ] `npm test` en `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`.
+- [x] `npm test` en `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`.
 - [ ] smoke SQL:
   - inserción duplicada en keys únicas debe fallar.
   - upsert por `run_date` debe funcionar sin duplicar.

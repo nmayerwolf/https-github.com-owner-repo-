@@ -141,7 +141,7 @@ describe('notifications routes', () => {
     const app = makeApp();
     const res = await request(app).put('/api/notifications/preferences').send({ quietHoursStart: '25:99' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -173,7 +173,7 @@ describe('notifications routes', () => {
     const app = makeApp();
     const res = await request(app).post('/api/notifications/test').send({ respectQuietHours: 'si' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 

@@ -76,7 +76,7 @@ describe('portfolio routes', () => {
     const app = makeApp();
     const res = await request(app).patch('/api/portfolio/p1').send({ sellDate: '2026-02-13' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -91,7 +91,7 @@ describe('portfolio routes', () => {
       quantity: 1
     });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });
@@ -153,10 +153,62 @@ describe('portfolio routes', () => {
 
     expect(res.status).toBe(201);
     expect(query).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.stringContaining('INSERT INTO positions'),
       ['u1', '11111111-1111-4111-8111-111111111111', 'AAPL', 'Apple Inc.', 'equity', '2026-02-13', 100, 1, 'hola mundo']
     );
+  });
+
+  it('rejects create when active holding with same symbol already exists in portfolio', async () => {
+    query.mockImplementation(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM portfolios p') && text.includes('WHERE p.id = $1')) {
+        return { rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', is_owner: true, collaborator_role: null }] };
+      }
+      if (text.includes('COUNT(*)::int AS total FROM positions WHERE portfolio_id = $1')) {
+        return { rows: [{ total: 0 }] };
+      }
+      if (text.includes('FROM positions') && text.includes('symbol = $2') && text.includes('sell_date IS NULL')) {
+        return { rows: [{ id: 'dup-1' }] };
+      }
+      return { rows: [] };
+    });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/portfolio').send({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      category: 'equity',
+      buyDate: '2026-02-13',
+      buyPrice: 100,
+      quantity: 1,
+      portfolioId: '11111111-1111-4111-8111-111111111111'
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DUPLICATE_HOLDING');
+  });
+
+  it('maps unique violation to DUPLICATE_HOLDING on create race', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', is_owner: true, collaborator_role: null }] })
+      .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce({ code: '23505' });
+
+    const app = makeApp();
+    const res = await request(app).post('/api/portfolio').send({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      category: 'equity',
+      buyDate: '2026-02-13',
+      buyPrice: 100,
+      quantity: 1,
+      portfolioId: '11111111-1111-4111-8111-111111111111'
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DUPLICATE_HOLDING');
   });
 
   it('creates portfolio up to max 3', async () => {
@@ -225,5 +277,40 @@ describe('portfolio routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe('p1');
+  });
+
+  it('returns INVITE_NOT_FOUND when invitation does not exist', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const app = makeApp('u1');
+    const res = await request(app)
+      .post('/api/portfolio/invitations/11111111-1111-4111-8111-111111111111/respond')
+      .send({ action: 'accept' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('INVITE_NOT_FOUND');
+  });
+
+  it('returns INVITE_ALREADY_ACCEPTED when invitation was already accepted', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'inv-1',
+          portfolio_id: '11111111-1111-4111-8111-111111111111',
+          invited_email: 'user@mail.com',
+          status: 'accepted',
+          owner_user_id: 'u2',
+          deleted_at: null
+        }
+      ]
+    });
+
+    const app = makeApp('u1');
+    const res = await request(app)
+      .post('/api/portfolio/invitations/inv-1/respond')
+      .send({ action: 'accept' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('INVITE_ALREADY_ACCEPTED');
   });
 });

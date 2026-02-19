@@ -69,6 +69,7 @@ Estado actual:
 
 Estado actual:
 - Alineado a `422` para límites de negocio.
+- Alineado a `400` para `BAD_REQUEST` de payload inválido (`VALIDATION_ERROR` y derivados).
 
 ## 6) Access Control Test
 
@@ -106,3 +107,5 @@ npm run test:e2e -- tests/e2e/auth-portfolio-flow.spec.js
 - [x] Crear `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/tests/regime.service.test.js`.
 - [x] Crear `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/tests/profileFocus.service.test.js`.
 - [x] Alinear status code de límites y ACL al contrato final (`422/403` según spec locked).
+- [x] Alinear `BAD_REQUEST` de validación a `400` en rutas y suites API.
+- [x] Cubrir códigos de invitaciones: `INVITE_NOT_FOUND` (`404`) y `INVITE_ALREADY_ACCEPTED` (`409`) en `/api/portfolio/invitations/:id/respond`.

@@ -220,14 +220,14 @@ describe('auth routes', () => {
     expect(res.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
   });
 
-  it('returns 422 when new password is weak on reset-password', async () => {
+  it('returns 400 when new password is weak on reset-password', async () => {
     const app = makeApp();
     const res = await request(app)
       .post('/api/auth/reset-password/authenticated')
       .set('Authorization', 'Bearer old.token')
       .send({ currentPassword: 'abc12345', newPassword: 'abc' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('WEAK_PASSWORD');
     expect(query).not.toHaveBeenCalled();
   });
@@ -305,7 +305,7 @@ describe('auth routes', () => {
       newPassword: 'newpass123'
     });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_TOKEN');
   });
 
@@ -338,14 +338,14 @@ describe('auth routes', () => {
     );
   });
 
-  it('returns 422 for invalid onboardingCompleted in patch me', async () => {
+  it('returns 400 for invalid onboardingCompleted in patch me', async () => {
     const app = makeApp();
     const res = await request(app)
       .patch('/api/auth/me')
       .set('Authorization', 'Bearer old.token')
       .send({ onboardingCompleted: 'si' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -475,11 +475,11 @@ describe('auth routes', () => {
     expect(res.headers.location).toContain('oauth_error_description=boom');
   });
 
-  it('returns 422 when mobile oauth redirect_uri is invalid', async () => {
+  it('returns 400 when mobile oauth redirect_uri is invalid', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/auth/apple').query({ platform: 'mobile', redirect_uri: 'https://evil.test/callback' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 

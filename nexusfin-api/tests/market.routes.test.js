@@ -53,11 +53,11 @@ describe('market routes', () => {
     global.fetch = originalFetch;
   });
 
-  it('returns 422 when quote symbol is missing', async () => {
+  it('returns 400 when quote symbol is missing', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/market/quote');
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 

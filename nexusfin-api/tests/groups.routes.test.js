@@ -73,7 +73,7 @@ describe('groups routes', () => {
     const app = makeApp('u-admin');
     const res = await request(app).post('/api/groups/join').send({ code: 'BAD' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe('groups routes', () => {
     const app = makeApp('u-admin');
     const res = await request(app).patch('/api/groups/g1').send({ name: '   ' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -172,7 +172,7 @@ describe('groups routes', () => {
     const app = makeApp('u-admin');
     const res = await request(app).delete('/api/groups/g1/members/u-admin');
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('USE_LEAVE_FOR_SELF');
   });
 
@@ -303,7 +303,7 @@ describe('groups routes', () => {
     const app = makeApp('u-member');
     const res = await request(app).post('/api/groups/g1/feed').send({ message: '   ' });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
@@ -314,7 +314,7 @@ describe('groups routes', () => {
     const longMessage = 'x'.repeat(281);
     const res = await request(app).post('/api/groups/g1/feed').send({ message: longMessage });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 

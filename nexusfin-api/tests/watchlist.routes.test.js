@@ -112,7 +112,7 @@ describe('watchlist routes', () => {
       category: 'equity'
     });
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
 const express = require('express');
 const { query } = require('../config/db');
-const { badRequest, forbidden, notFound } = require('../utils/errors');
+const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
 const { validatePositiveNumber, sanitizeText } = require('../utils/validate');
 
 const router = express.Router();
@@ -202,13 +202,18 @@ router.post('/invitations/:id/respond', async (req, res, next) => {
        FROM portfolio_invitations i
        JOIN portfolios p ON p.id = i.portfolio_id
        WHERE i.id = $1
-         AND i.status = 'pending'
          AND (LOWER(i.invited_email) = LOWER($2) OR i.invited_user_id = $3)
        LIMIT 1`,
       [req.params.id, req.user.email, req.user.id]
     );
-    if (!invite.rows.length) throw notFound('Invitación no encontrada');
+    if (!invite.rows.length) throw notFound('Invitación no encontrada', 'INVITE_NOT_FOUND');
     const invitation = invite.rows[0];
+    if (invitation.status !== 'pending') {
+      if (invitation.status === 'accepted') {
+        throw conflict('Invitación ya aceptada', 'INVITE_ALREADY_ACCEPTED');
+      }
+      throw conflict('Invitación ya procesada', 'INVITE_ALREADY_ACCEPTED');
+    }
     if (invitation.deleted_at) throw notFound('Portfolio no disponible');
 
     if (action === 'decline') {
@@ -329,6 +334,24 @@ router.post('/', async (req, res, next) => {
         }
       });
     }
+    const duplicate = await query(
+      `SELECT id
+       FROM positions
+       WHERE portfolio_id = $1
+         AND symbol = $2
+         AND sell_date IS NULL
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [targetPortfolioId, normalizedSymbol]
+    );
+    if (duplicate.rows.length) {
+      return res.status(409).json({
+        error: {
+          code: 'DUPLICATE_HOLDING',
+          message: 'Ya existe un holding activo para ese símbolo en este portfolio'
+        }
+      });
+    }
 
     const row = await query(
       `INSERT INTO positions (user_id, portfolio_id, symbol, name, category, buy_date, buy_price, quantity, notes)
@@ -349,6 +372,14 @@ router.post('/', async (req, res, next) => {
 
     return res.status(201).json(row.rows[0]);
   } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({
+        error: {
+          code: 'DUPLICATE_HOLDING',
+          message: 'Ya existe un holding activo para ese símbolo en este portfolio'
+        }
+      });
+    }
     return next(error);
   }
 });
