@@ -137,6 +137,12 @@ const toWsMarketSymbol = (asset) => {
   if (asset.source === 'finnhub_stock') return String(asset.symbol).toUpperCase();
   if (asset.source === 'finnhub_crypto') return `BINANCE:${String(asset.symbol).toUpperCase()}`;
   if (asset.source === 'finnhub_fx') return `OANDA:${String(asset.symbol).toUpperCase()}`;
+  if (String(asset.source || '').startsWith('twelvedata_')) {
+    const symbol = String(asset.symbol).toUpperCase();
+    if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
+    if (symbol.includes('_')) return `OANDA:${symbol}`;
+    return symbol;
+  }
   if (asset.source === 'alphavantage_macro') {
     const key = String(asset.symbol).toUpperCase();
     if (key === 'XAU') return 'AV:GOLD';

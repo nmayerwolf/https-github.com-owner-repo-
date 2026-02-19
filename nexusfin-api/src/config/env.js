@@ -27,6 +27,7 @@ const env = {
   csrfSecret: process.env.CSRF_SECRET || process.env.JWT_SECRET,
   finnhubKey: process.env.FINNHUB_KEY || '',
   alphaVantageKey: process.env.ALPHA_VANTAGE_KEY || '',
+  twelveDataKey: process.env.TWELVE_DATA_KEY || '',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   nodeEnv: process.env.NODE_ENV || 'development',
   cookieDomain: process.env.COOKIE_DOMAIN || '',

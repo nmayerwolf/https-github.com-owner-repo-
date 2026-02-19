@@ -62,6 +62,7 @@ const MARKET_UNIVERSE = [
   { id: 'hyg', symbol: 'HYG', wsSymbol: 'HYG', name: 'High Yield Bonds ETF', category: 'bond' },
 
   { id: 'gld', symbol: 'GLD', wsSymbol: 'GLD', name: 'Gold ETF', category: 'metal' },
+  { id: 'xauusd', symbol: 'XAU_USD', wsSymbol: 'XAU_USD', name: 'Gold Spot (XAU/USD)', category: 'metal' },
   { id: 'slv', symbol: 'SLV', wsSymbol: 'SLV', name: 'Silver ETF', category: 'metal' },
   { id: 'pplt', symbol: 'PPLT', wsSymbol: 'PPLT', name: 'Platinum ETF', category: 'metal' },
   { id: 'pall', symbol: 'PALL', wsSymbol: 'PALL', name: 'Palladium ETF', category: 'metal' },
@@ -100,7 +101,8 @@ const MARKET_UNIVERSE = [
   { id: 'eurgbp', symbol: 'EUR_GBP', wsSymbol: 'OANDA:EUR_GBP', name: 'EUR/GBP', category: 'fx' },
   { id: 'gbpjpy', symbol: 'GBP_JPY', wsSymbol: 'OANDA:GBP_JPY', name: 'GBP/JPY', category: 'fx' },
   { id: 'audjpy', symbol: 'AUD_JPY', wsSymbol: 'OANDA:AUD_JPY', name: 'AUD/JPY', category: 'fx' },
-  { id: 'usdbrl', symbol: 'USD_BRL', wsSymbol: 'OANDA:USD_BRL', name: 'USD/BRL', category: 'fx' }
+  { id: 'usdbrl', symbol: 'USD_BRL', wsSymbol: 'OANDA:USD_BRL', name: 'USD/BRL', category: 'fx' },
+  { id: 'merval', symbol: '^MERV', wsSymbol: '^MERV', name: 'S&P Merval (Argentina)', category: 'equity' }
 ];
 
 module.exports = { MARKET_UNIVERSE };

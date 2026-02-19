@@ -3,7 +3,7 @@ const { cache } = require('../config/cache');
 const { query } = require('../config/db');
 const av = require('../services/alphavantage');
 const finnhub = require('../services/finnhub');
-const { resolveMarketQuote, isFinnhubUnavailable } = require('../services/marketDataProvider');
+const { resolveMarketQuote, resolveMarketSearch, isFinnhubUnavailable } = require('../services/marketDataProvider');
 const { rankNews } = require('../services/newsRanker');
 const { badRequest } = require('../utils/errors');
 const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
@@ -84,30 +84,6 @@ const normalizeSearchText = (value) =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
-
-const scoreSearchResult = (query, item) => {
-  const needle = normalizeSearchText(query);
-  const symbol = normalizeSearchText(item?.symbol);
-  const displaySymbol = normalizeSearchText(item?.displaySymbol);
-  const description = normalizeSearchText(item?.description || item?.name);
-  const type = normalizeSearchText(item?.type);
-
-  let score = 0;
-  if (symbol === needle || displaySymbol === needle) score += 120;
-  else if (symbol.startsWith(needle) || displaySymbol.startsWith(needle)) score += 80;
-  else if (symbol.includes(needle) || displaySymbol.includes(needle)) score += 55;
-
-  if (description === needle) score += 95;
-  else if (description.startsWith(needle)) score += 70;
-  else if (description.includes(needle)) score += 45;
-
-  if (type.includes('common stock') || type.includes('adr') || type.includes('etf')) score += 20;
-  if (type.includes('right') || type.includes('warrant') || type.includes('preferred') || type.includes('fund')) score -= 20;
-  if (symbol.includes(':')) score -= 8;
-  if (symbol.length > 7) score -= 5;
-
-  return score;
-};
 
 const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
   const current = toFinite(price);
@@ -535,36 +511,7 @@ router.get('/search', async (req, res, next) => {
     }).slice(0, 20);
 
     const key = `market:search:${normalizeSearchText(q)}`;
-    const remote = await getOrSet(key, 600, async () => {
-      try {
-        const out = await finnhub.symbolSearch(q);
-        const rows = Array.isArray(out?.result) ? out.result : [];
-        return rows
-          .filter((item) => String(item?.symbol || '').trim() && String(item?.description || '').trim())
-          .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
-          .slice(0, 20)
-          .map((item) => {
-            const symbol = String(item.symbol || '').trim().toUpperCase();
-            const description = String(item.description || '').trim();
-            const type = String(item.type || '').trim().toLowerCase();
-            const category = type.includes('crypto')
-              ? 'crypto'
-              : type.includes('forex') || symbol.includes('_')
-                ? 'fx'
-                : type.includes('etf')
-                  ? 'equity'
-                  : 'equity';
-            return {
-              symbol,
-              name: description,
-              category,
-              source: category === 'crypto' ? 'finnhub_crypto' : category === 'fx' ? 'finnhub_fx' : 'finnhub_stock'
-            };
-          });
-      } catch {
-        return [];
-      }
-    });
+    const remote = await getOrSet(key, 600, async () => resolveMarketSearch(q));
 
     const merged = new Map();
     [...cachedUniverse, ...(Array.isArray(remote) ? remote : [])].forEach((item) => {
