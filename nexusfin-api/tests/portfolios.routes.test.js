@@ -47,6 +47,57 @@ describe('portfolios v2 routes', () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('HOLDING_LIMIT_REACHED');
+    expect(res.body.error.details).toEqual({ limit: 15, attempted: 16 });
+  });
+
+  it('rejects duplicate holdings symbols with conflict', async () => {
+    query.mockResolvedValueOnce({ rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', role: 'owner', name: 'Core', currency: 'USD' }] });
+
+    const res = await request(makeApp())
+      .put('/api/portfolios/11111111-1111-4111-8111-111111111111/holdings')
+      .send({
+        holdings: [
+          { symbol: 'AAPL', qty: 1, avg_cost: 100 },
+          { symbol: 'aapl', qty: 2, avg_cost: 110 }
+        ]
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DUPLICATE_HOLDING');
+    expect(res.body.error.details).toEqual({ symbol: 'AAPL' });
+  });
+
+  it('returns INVITE_ALREADY_ACCEPTED when accepting an already accepted invitation', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: '11111111-1111-4111-8111-111111111112',
+          portfolio_id: '11111111-1111-4111-8111-111111111111',
+          invited_user_id: 'u1',
+          invited_email: 'user@mail.com',
+          role: 'editor',
+          status: 'accepted'
+        }
+      ]
+    });
+
+    const res = await request(makeApp())
+      .post('/api/portfolios/11111111-1111-4111-8111-111111111111/accept')
+      .send({ inviteId: '11111111-1111-4111-8111-111111111112' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('INVITE_ALREADY_ACCEPTED');
+  });
+
+  it('returns INVITE_NOT_FOUND when invite does not exist', async () => {
+    query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp())
+      .post('/api/portfolios/11111111-1111-4111-8111-111111111111/accept')
+      .send({ invite_id: '11111111-1111-4111-8111-111111111112' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('INVITE_NOT_FOUND');
   });
 
   it('returns portfolio contract with holdings + snapshot + alignment + exposures + ai notes', async () => {

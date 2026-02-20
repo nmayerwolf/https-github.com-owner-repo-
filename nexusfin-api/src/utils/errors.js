@@ -11,7 +11,7 @@ const badRequest = (message, code = 'VALIDATION_ERROR', details = null) => new A
 const unauthorized = (message = 'No autorizado', code = 'UNAUTHORIZED') => new AppError(401, code, message);
 const forbidden = (message = 'Operación no permitida', code = 'FORBIDDEN') => new AppError(403, code, message);
 const notFound = (message = 'No encontrado', code = 'NOT_FOUND') => new AppError(404, code, message);
-const conflict = (message, code = 'CONFLICT') => new AppError(409, code, message);
+const conflict = (message, code = 'CONFLICT', details = null) => new AppError(409, code, message, details);
 const tooManyRequests = (message = 'Demasiados intentos', code = 'TOO_MANY_REQUESTS', details = null) =>
   new AppError(429, code, message, details);
 const serviceUnavailable = (message = 'Servicio no disponible', code = 'SERVICE_UNAVAILABLE') =>

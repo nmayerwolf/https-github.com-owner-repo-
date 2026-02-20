@@ -248,6 +248,16 @@ describe('auth routes', () => {
     expect(res.body.error.code).toBe('OAUTH_PROVIDER_DISABLED');
   });
 
+  it('returns oauth providers contract with gmailOnly flag', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/auth/oauth/providers');
+
+    expect(res.status).toBe(200);
+    expect(res.body.google).toBe(true);
+    expect(res.body.apple).toBe(false);
+    expect(res.body.gmailOnly).toBe(true);
+  });
+
   it('redirects with provider disabled on apple callback', async () => {
     const app = makeApp();
     const res = await request(app)
@@ -262,14 +272,14 @@ describe('auth routes', () => {
     mockExchangeGoogleCode.mockResolvedValueOnce({
       provider: 'google',
       oauthId: 'google-uid-1',
-      email: 'user@mail.com',
+      email: 'user@gmail.com',
       displayName: 'User Name',
       avatarUrl: 'https://avatar.test/u.png'
     });
     query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
+      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@gmail.com' }] });
 
     const app = makeApp();
     const res = await request(app)
@@ -285,6 +295,27 @@ describe('auth routes', () => {
     expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
     expect(mockExchangeGoogleCode).toHaveBeenCalledWith('google-code-mobile');
     expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+  });
+
+  it('rejects non-gmail google callback in mobile mode', async () => {
+    mockExchangeGoogleCode.mockResolvedValueOnce({
+      provider: 'google',
+      oauthId: 'google-uid-2',
+      email: 'user@company.com',
+      displayName: 'User Name',
+      avatarUrl: null
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/auth/google/callback')
+      .query({ state: 'valid-state', code: 'google-code-mobile' })
+      .set('Cookie', ['nxf_oauth_state=valid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('oauth_error=google_callback_failed');
+    expect(res.headers.location).toContain('oauth_error_description=Solo+se+permiten+cuentas+Gmail+para+iniciar+sesi%C3%B3n.');
+    expect(mockStoreSession).not.toHaveBeenCalled();
   });
 
   it('rejects google callback with invalid oauth state in mobile mode', async () => {
