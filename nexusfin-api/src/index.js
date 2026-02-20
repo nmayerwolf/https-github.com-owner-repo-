@@ -22,6 +22,7 @@ const { createMvpDailyPipeline } = require('./services/mvpDailyPipeline');
 const { createPortfolioSnapshotsService } = require('./services/portfolioSnapshots');
 const { createNotificationPolicyService } = require('./services/notificationPolicy');
 const { createMarketIngestionService } = require('./services/marketIngestion');
+const { createHorsaiDailyService } = require('./services/horsaiDaily');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -39,6 +40,7 @@ const recoRoutes = require('./routes/reco');
 const crisisRoutes = require('./routes/crisis');
 const portfoliosRoutes = require('./routes/portfolios');
 const adminJobsRoutes = require('./routes/adminJobs');
+const horsaiRoutes = require('./routes/horsai');
 const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
   'AV:GOLD': { fn: 'GOLD' },
@@ -247,6 +249,7 @@ app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
 app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
 app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
 app.use('/api/admin/jobs', authRequired, requireCsrf, adminJobsLimiter, adminJobsRoutes);
+app.use('/api/horsai', authRequired, requireCsrf, horsaiRoutes);
 
 app.use(errorHandler);
 
@@ -459,12 +462,14 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
   const portfolioSnapshots = createPortfolioSnapshotsService({ query, logger: console });
   const notificationPolicy = createNotificationPolicyService({ query, pushNotifier, logger: console });
+  const horsaiDaily = createHorsaiDailyService({ query, logger: console });
   app.locals.macroRadar = macroRadar;
   app.locals.portfolioAdvisor = portfolioAdvisor;
   app.locals.marketIngestion = marketIngestion;
   app.locals.mvpDailyPipeline = mvpDailyPipeline;
   app.locals.portfolioSnapshots = portfolioSnapshots;
   app.locals.notificationPolicy = notificationPolicy;
+  app.locals.horsaiDaily = horsaiDaily;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
@@ -510,11 +515,16 @@ const startHttpServer = ({ port = env.port } = {}) => {
       };
     },
     portfolioDaily: async () => {
-      const [snapshotsOut, advisorOut] = await Promise.all([portfolioSnapshots.runDaily(), portfolioAdvisor.runGlobalDaily()]);
+      const [snapshotsOut, advisorOut, horsaiOut] = await Promise.all([
+        portfolioSnapshots.runDaily(),
+        portfolioAdvisor.runGlobalDaily(),
+        horsaiDaily.runGlobalDaily()
+      ]);
       return {
-        generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0),
+        generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0) + Number(horsaiOut?.generated || 0),
         snapshots: snapshotsOut,
-        advisor: advisorOut
+        advisor: advisorOut,
+        horsai: horsaiOut
       };
     }
   });

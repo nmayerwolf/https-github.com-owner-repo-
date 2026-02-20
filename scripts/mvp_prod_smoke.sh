@@ -62,6 +62,23 @@ request_json "GET" "$API_BASE/auth/me" "200" "${AUTH_HEADER[@]}"
 request_json "GET" "$API_BASE/news/digest/today" "200" "${AUTH_HEADER[@]}"
 request_json "GET" "$API_BASE/reco/today" "200" "${AUTH_HEADER[@]}"
 request_json "GET" "$API_BASE/crisis/today" "200" "${AUTH_HEADER[@]}"
+request_json "GET" "$API_BASE/portfolios" "200" "${AUTH_HEADER[@]}"
+
+if [[ "$has_jq" -eq 1 ]]; then
+  tmp_portfolios="$(mktemp)"
+  curl -sS -o "$tmp_portfolios" -X "GET" "$API_BASE/portfolios" "${AUTH_HEADER[@]}"
+  first_portfolio_id="$(jq -r '.portfolios[0].id // empty' "$tmp_portfolios" 2>/dev/null || true)"
+  rm -f "$tmp_portfolios"
+
+  if [[ -n "$first_portfolio_id" ]]; then
+    request_json "GET" "$API_BASE/horsai/portfolio/$first_portfolio_id/summary" "200" "${AUTH_HEADER[@]}"
+    request_json "GET" "$API_BASE/horsai/portfolio/$first_portfolio_id/signal-review?days=90" "200" "${AUTH_HEADER[@]}"
+  else
+    echo "INFO  Sin portfolios disponibles: se omiten endpoints HORSAI por portfolio."
+  fi
+else
+  echo "INFO  jq no instalado: se omiten checks dinámicos de endpoints HORSAI por portfolio."
+fi
 
 if [[ -z "$ADMIN_JOB_TOKEN" ]]; then
   echo ""
@@ -77,8 +94,8 @@ request_json "GET" "$API_BASE/admin/jobs/runs?limit=5" "200" "${ADMIN_HEADERS[@]
 request_json "GET" "$API_BASE/admin/jobs/status?limit=5" "200" "${ADMIN_HEADERS[@]}"
 
 echo ""
-echo "[4/4] Admin jobs run endpoint (single safe job)"
-request_json "POST" "$API_BASE/admin/jobs/run" "200" "${ADMIN_HEADERS[@]}" --data '{"jobs":["news_ingest_daily"]}'
+echo "[4/4] Admin jobs run endpoint (safe jobs)"
+request_json "POST" "$API_BASE/admin/jobs/run" "200" "${ADMIN_HEADERS[@]}" --data '{"jobs":["news_ingest_daily","horsai_daily"]}'
 
 echo ""
 echo "Smoke MVP PROD: OK"
