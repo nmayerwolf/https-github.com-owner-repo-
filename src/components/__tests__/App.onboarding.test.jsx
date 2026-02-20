@@ -94,7 +94,7 @@ describe('App onboarding flow', () => {
 
     expect(await screen.findByText('Bienvenido a Horsai')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Finalizar onboarding' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalizar incorporación' }));
 
     await waitFor(() => {
       expect(authCtxMock.completeOnboarding).toHaveBeenCalled();

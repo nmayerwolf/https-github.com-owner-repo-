@@ -142,7 +142,7 @@ describe('Settings', () => {
 
     await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByLabelText(/Stop loss/));
+    fireEvent.click(screen.getByLabelText(/Límite de pérdida/));
     fireEvent.change(screen.getByLabelText(/Silencio desde/), { target: { value: '23:00' } });
     fireEvent.change(screen.getByLabelText(/Silencio hasta/), { target: { value: '08:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar preferencias' }));
@@ -158,9 +158,9 @@ describe('Settings', () => {
 
     await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones push' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones' }));
 
     await waitFor(() => expect(subscribeBrowserPushMock).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('Notificaciones push activadas.')).toBeTruthy();
+    expect(await screen.findByText('Notificaciones activadas.')).toBeTruthy();
   });
 });

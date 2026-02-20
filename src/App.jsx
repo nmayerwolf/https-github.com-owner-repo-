@@ -17,6 +17,7 @@ import AuthScreen from './components/AuthScreen';
 import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
+import { useLanguage } from './store/LanguageContext';
 
 const MIGRATION_DISMISSED_KEY = 'horsai_migration_prompt_dismissed_v1';
 const LEGACY_KEYS = {
@@ -48,33 +49,33 @@ const loadLegacyMigrationPayload = () => {
   }
 };
 
-const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
+const MigrationModal = ({ stats, onAccept, onSkip, loading, isSpanish }) => (
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
-      <h3>Migrar datos locales</h3>
+      <h3>{isSpanish ? 'Migrar datos locales' : 'Migrate local data'}</h3>
       <p className="muted" style={{ marginTop: 8 }}>
-        Encontramos datos locales de Fase 1.
+        {isSpanish ? 'Encontramos datos locales de Fase 1.' : 'We found local data from Phase 1.'}
       </p>
       <div className="grid" style={{ marginTop: 8 }}>
         <div className="row">
-          <span>Posiciones</span>
+          <span>{isSpanish ? 'Posiciones' : 'Positions'}</span>
           <strong>{stats.positions}</strong>
         </div>
         <div className="row">
-          <span>Seguimiento</span>
+          <span>{isSpanish ? 'Seguimiento' : 'Watchlist'}</span>
           <strong>{stats.watchlist}</strong>
         </div>
         <div className="row">
-          <span>Ajustes</span>
-          <strong>{stats.hasConfig ? 'Sí' : 'No'}</strong>
+          <span>{isSpanish ? 'Ajustes' : 'Settings'}</span>
+          <strong>{stats.hasConfig ? (isSpanish ? 'Sí' : 'Yes') : 'No'}</strong>
         </div>
       </div>
       <div className="row" style={{ marginTop: 10 }}>
         <button type="button" onClick={onSkip} disabled={loading}>
-          Más tarde
+          {isSpanish ? 'Más tarde' : 'Later'}
         </button>
         <button type="button" onClick={onAccept} disabled={loading}>
-          {loading ? 'Migrando...' : 'Migrar ahora'}
+          {loading ? (isSpanish ? 'Migrando...' : 'Migrating...') : isSpanish ? 'Migrar ahora' : 'Migrate now'}
         </button>
       </div>
     </section>
@@ -83,18 +84,22 @@ const MigrationModal = ({ stats, onAccept, onSkip, loading }) => (
 
 const RouteBoundary = ({ moduleName, children }) => <ErrorBoundary moduleName={moduleName}>{children}</ErrorBoundary>;
 
-const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushError }) => (
+const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushError, isSpanish }) => (
   <div className="modal-backdrop" role="presentation">
     <section className="modal-card" role="dialog" aria-modal="true">
       <div className="row">
-        <h3>Bienvenido a Horsai</h3>
-        <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>Inicio rápido</span>
+        <h3>{isSpanish ? 'Bienvenido a Horsai' : 'Welcome to Horsai'}</h3>
+        <span className="badge" style={{ background: '#60A5FA22', color: '#60A5FA' }}>{isSpanish ? 'Inicio rápido' : 'Quick start'}</span>
       </div>
 
       <div className="grid" style={{ marginTop: 10 }}>
-        <p className="muted">Podés activar notificaciones ahora (opcional). El perfil inversor se configura automáticamente.</p>
+        <p className="muted">
+          {isSpanish
+            ? 'Podés activar notificaciones ahora (opcional). El perfil inversor se configura automáticamente.'
+            : 'You can enable notifications now (optional). Your investment profile is configured automatically.'}
+        </p>
         <button type="button" onClick={onComplete.enablePush} disabled={pushLoading}>
-          {pushLoading ? 'Activando...' : 'Activar notificaciones push'}
+          {pushLoading ? (isSpanish ? 'Activando...' : 'Enabling...') : isSpanish ? 'Activar notificaciones' : 'Enable push notifications'}
         </button>
         {pushMessage && <div className="card" style={{ borderColor: '#00E08E88' }}>{pushMessage}</div>}
         {pushError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{pushError}</div>}
@@ -102,47 +107,47 @@ const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushErr
 
       <div className="row" style={{ marginTop: 12 }}>
         <button type="button" onClick={onComplete.finish} disabled={saving}>
-          {saving ? 'Finalizando...' : 'Finalizar onboarding'}
+          {saving ? (isSpanish ? 'Finalizando...' : 'Finishing...') : isSpanish ? 'Finalizar incorporación' : 'Finish onboarding'}
         </button>
       </div>
     </section>
   </div>
 );
 
-const AdminDashboardModal = ({ open, loading, error, data, onClose, onRefresh }) => {
+const AdminDashboardModal = ({ open, loading, error, data, onClose, onRefresh, isSpanish }) => {
   if (!open) return null;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <section className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-          <h3>Admin Dashboard</h3>
-          <button type="button" className="icon-btn" aria-label="Cerrar panel admin" onClick={onClose}>
+          <h3>{isSpanish ? 'Panel de administración' : 'Admin dashboard'}</h3>
+          <button type="button" className="icon-btn" aria-label={isSpanish ? 'Cerrar panel de administración' : 'Close admin panel'} onClick={onClose}>
             ✕
           </button>
         </div>
-        {loading ? <p className="muted" style={{ marginTop: 8 }}>Cargando métricas...</p> : null}
+        {loading ? <p className="muted" style={{ marginTop: 8 }}>{isSpanish ? 'Cargando métricas...' : 'Loading metrics...'}</p> : null}
         {error ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{error}</div> : null}
         {!loading && !error && data ? (
           <>
             <div className="grid" style={{ marginTop: 8, gap: 8 }}>
-              <div className="row"><span>Users</span><strong>{data.total_users}</strong></div>
-              <div className="row"><span>Active today</span><strong>{data.active_today}</strong></div>
-              <div className="row"><span>Cost today</span><strong>${Number(data.cost_today_usd || 0).toFixed(4)}</strong></div>
-              <div className="row"><span>Month</span><strong>${Number(data.cost_this_month_usd || 0).toFixed(4)}</strong></div>
+              <div className="row"><span>{isSpanish ? 'Usuarios' : 'Users'}</span><strong>{data.total_users}</strong></div>
+              <div className="row"><span>{isSpanish ? 'Activos hoy' : 'Active today'}</span><strong>{data.active_today}</strong></div>
+              <div className="row"><span>{isSpanish ? 'Costo hoy' : 'Cost today'}</span><strong>${Number(data.cost_today_usd || 0).toFixed(4)}</strong></div>
+              <div className="row"><span>{isSpanish ? 'Mes' : 'Month'}</span><strong>${Number(data.cost_this_month_usd || 0).toFixed(4)}</strong></div>
             </div>
             <div style={{ marginTop: 10 }}>
-              <strong>Top users today</strong>
+              <strong>{isSpanish ? 'Top usuarios hoy' : 'Top users today'}</strong>
               <div className="grid" style={{ marginTop: 6, gap: 6 }}>
                 {Array.isArray(data.top_users_today) && data.top_users_today.length ? (
                   data.top_users_today.map((row) => (
                     <div key={row.email} className="row">
                       <span className="mono" style={{ fontSize: 12 }}>{row.email}</span>
-                      <strong>${Number(row.cost_usd || 0).toFixed(4)} · {Number(row.calls || 0)} calls</strong>
+                      <strong>${Number(row.cost_usd || 0).toFixed(4)} · {Number(row.calls || 0)} {isSpanish ? 'llamadas' : 'calls'}</strong>
                     </div>
                   ))
                 ) : (
-                  <div className="muted">Sin actividad registrada hoy.</div>
+                  <div className="muted">{isSpanish ? 'Sin actividad registrada hoy.' : 'No activity registered today.'}</div>
                 )}
               </div>
             </div>
@@ -150,9 +155,9 @@ const AdminDashboardModal = ({ open, loading, error, data, onClose, onRefresh })
         ) : null}
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
           <button type="button" className="inline-link-btn" onClick={onRefresh} disabled={loading}>
-            Actualizar
+            {isSpanish ? 'Actualizar' : 'Refresh'}
           </button>
-          <button type="button" onClick={onClose}>Cerrar</button>
+          <button type="button" onClick={onClose}>{isSpanish ? 'Cerrar' : 'Close'}</button>
         </div>
       </section>
     </div>
@@ -161,6 +166,7 @@ const AdminDashboardModal = ({ open, loading, error, data, onClose, onRefresh })
 
 const App = () => {
   const navigate = useNavigate();
+  const { isSpanish } = useLanguage();
   const { state } = useApp();
   const { isAuthenticated, user, logout, loading: authLoading, completeOnboarding } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
@@ -360,13 +366,13 @@ const App = () => {
       const symbol = String(alert?.symbol || '').toUpperCase();
       pushImportantNotification({
         key: `risk-${type}-${symbol}`,
-        title: type === 'stoploss' ? `Alerta SL en ${symbol}` : `Alerta TP en ${symbol}`,
-        message: type === 'stoploss' ? 'Se alcanzó el nivel de stop loss.' : 'Se alcanzó el nivel de take profit.',
+        title: type === 'stoploss' ? (isSpanish ? `Alerta de límite de pérdida en ${symbol}` : `Stop-loss alert on ${symbol}`) : isSpanish ? `Alerta de toma de ganancia en ${symbol}` : `Take-profit alert on ${symbol}`,
+        message: type === 'stoploss' ? (isSpanish ? 'Se alcanzó el nivel de límite de pérdida.' : 'Stop-loss level was reached.') : isSpanish ? 'Se alcanzó el nivel de toma de ganancia.' : 'Take-profit level was reached.',
         level: type === 'stoploss' ? 'critical' : 'positive',
         route: '/portfolio'
       });
     }
-  }, [state.realtimeAlerts]);
+  }, [state.realtimeAlerts, isSpanish]);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
@@ -383,8 +389,10 @@ const App = () => {
           seenInviteRef.current.add(id);
           pushImportantNotification({
             key: `invite-${id}`,
-            title: 'Nueva invitación a portfolio',
-            message: `${inv?.invited_by_email || 'Usuario'} te invitó a "${inv?.portfolio_name || 'Portfolio'}".`,
+            title: isSpanish ? 'Nueva invitación al portafolio' : 'New portfolio invitation',
+            message: isSpanish
+              ? `${inv?.invited_by_email || 'Usuario'} te invitó a "${inv?.portfolio_name || 'Portafolio'}".`
+              : `${inv?.invited_by_email || 'User'} invited you to "${inv?.portfolio_name || 'Portfolio'}".`,
             level: 'info',
             route: '/portfolio'
           });
@@ -406,23 +414,29 @@ const App = () => {
     if (state.wsStatus !== 'auth_error') return;
     pushImportantNotification({
       key: 'ws-auth-error',
-      title: 'Sesión de tiempo real expirada',
-      message: 'Reingresá para reconectar WebSocket.',
+      title: isSpanish ? 'Sesión de tiempo real expirada' : 'Realtime session expired',
+      message: isSpanish ? 'Volvé a iniciar sesión para reconectar el canal en tiempo real.' : 'Sign in again to reconnect realtime channel.',
       level: 'critical',
       route: '/settings'
     });
-  }, [state.wsStatus]);
+  }, [state.wsStatus, isSpanish]);
 
   useEffect(() => {
     if (!backendOffline && !networkOffline) return;
     pushImportantNotification({
       key: networkOffline ? 'network-offline' : 'backend-offline',
-      title: networkOffline ? 'Sin conexión de red' : 'Sin conexión con backend',
-      message: networkOffline ? 'Mostrando datos en cache.' : 'Modo degradado hasta recuperar conexión.',
+      title: networkOffline ? (isSpanish ? 'Sin conexión de red' : 'Network offline') : isSpanish ? 'Sin conexión con backend' : 'Backend offline',
+      message: networkOffline
+        ? isSpanish
+          ? 'Mostrando datos en caché.'
+          : 'Showing cached data.'
+        : isSpanish
+          ? 'Modo degradado hasta recuperar conexión.'
+          : 'Degraded mode until connection is restored.',
       level: 'warning',
       route: '/settings'
     });
-  }, [backendOffline, networkOffline]);
+  }, [backendOffline, networkOffline, isSpanish]);
 
   const openNotification = (item) => {
     setNotifItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, read: true } : x)));
@@ -439,7 +453,7 @@ const App = () => {
       const out = await api.getAdminDashboard();
       setAdminDashboard(out || null);
     } catch {
-      setAdminError('No se pudo cargar el dashboard admin.');
+      setAdminError(isSpanish ? 'No se pudo cargar el panel de administración.' : 'Could not load admin dashboard.');
     } finally {
       setAdminLoading(false);
     }
@@ -469,12 +483,14 @@ const App = () => {
     try {
       const out = await subscribeBrowserPush();
       if (out?.ok) {
-        setOnboardingPushMessage('Notificaciones activadas.');
+        setOnboardingPushMessage(isSpanish ? 'Notificaciones activadas.' : 'Notifications enabled.');
       } else {
-        setOnboardingPushError('No se pudieron activar notificaciones en este dispositivo.');
+        setOnboardingPushError(
+          isSpanish ? 'No se pudieron activar notificaciones en este dispositivo.' : 'Could not enable notifications on this device.'
+        );
       }
     } catch {
-      setOnboardingPushError('No se pudieron activar notificaciones.');
+      setOnboardingPushError(isSpanish ? 'No se pudieron activar notificaciones.' : 'Could not enable notifications.');
     } finally {
       setOnboardingPushLoading(false);
     }
@@ -493,17 +509,19 @@ const App = () => {
   }
 
   const lastUpdatedLabel = state.lastUpdated
-    ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
-    : 'sin datos';
+    ? new Date(state.lastUpdated).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'medium' })
+    : isSpanish
+      ? 'sin datos'
+      : 'no data';
   const backendLastOkLabel = backendLastOkAt
-    ? new Date(backendLastOkAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+    ? new Date(backendLastOkAt).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })
     : null;
   const unreadNotifCount = notifItems.filter((item) => !item.read).length;
 
   return (
     <div className="app">
       {migrationPrompt && !onboardingOpen && (
-        <MigrationModal stats={migrationPrompt} onAccept={runMigration} onSkip={skipMigrationPrompt} loading={migrationLoading} />
+        <MigrationModal stats={migrationPrompt} onAccept={runMigration} onSkip={skipMigrationPrompt} loading={migrationLoading} isSpanish={isSpanish} />
       )}
 
       {onboardingOpen && (
@@ -513,6 +531,7 @@ const App = () => {
           pushLoading={onboardingPushLoading}
           pushMessage={onboardingPushMessage}
           pushError={onboardingPushError}
+          isSpanish={isSpanish}
         />
       )}
 
@@ -523,6 +542,7 @@ const App = () => {
         data={adminDashboard}
         onClose={() => setAdminOpen(false)}
         onRefresh={loadAdminDashboard}
+        isSpanish={isSpanish}
       />
 
       <header className="header">
@@ -535,7 +555,7 @@ const App = () => {
           </div>
           <div className="header-actions">
             {isSuperadmin ? (
-              <button type="button" className="icon-btn" aria-label="Admin dashboard" onClick={openAdmin}>
+              <button type="button" className="icon-btn" aria-label={isSpanish ? 'Panel de administración' : 'Admin dashboard'} onClick={openAdmin}>
                 🛡️
               </button>
             ) : null}
@@ -543,7 +563,7 @@ const App = () => {
               <button
                 type="button"
                 className="icon-btn"
-                aria-label="Notificaciones"
+                aria-label={isSpanish ? 'Notificaciones' : 'Notifications'}
                 aria-expanded={notifOpen}
                 onClick={() => setNotifOpen((prev) => !prev)}
               >
@@ -556,17 +576,17 @@ const App = () => {
               {notifOpen ? (
                 <div className="notif-menu card">
                   <div className="notif-menu-head">
-                    <strong>Importantes</strong>
+                    <strong>{isSpanish ? 'Importantes' : 'Important'}</strong>
                     <button
                       type="button"
                       className="inline-link-btn"
                       onClick={() => setNotifItems((prev) => prev.map((item) => ({ ...item, read: true })))}
                     >
-                      Marcar leídas
+                      {isSpanish ? 'Marcar leídas' : 'Mark read'}
                     </button>
                   </div>
                   <div className="notif-menu-list">
-                    {!notifItems.length ? <div className="muted">Sin notificaciones importantes.</div> : null}
+                    {!notifItems.length ? <div className="muted">{isSpanish ? 'Sin notificaciones importantes.' : 'No important notifications.'}</div> : null}
                     {notifItems.map((item) => (
                       <article
                         key={item.id}
@@ -584,7 +604,7 @@ const App = () => {
                         <div className={`notif-level ${item.level}`}>{item.title}</div>
                         {item.message ? <div className="muted notif-msg">{item.message}</div> : null}
                         <div className="muted notif-time">
-                          {new Date(item.ts).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {new Date(item.ts).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}
                         </div>
                       </article>
                     ))}
@@ -592,7 +612,7 @@ const App = () => {
                 </div>
               ) : null}
             </div>
-            <button type="button" className="icon-btn" aria-label="Buscar">
+            <button type="button" className="icon-btn" aria-label={isSpanish ? 'Buscar' : 'Search'}>
               <svg viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="7" />
                 <path d="M20 20l-3.8-3.8" />
@@ -602,7 +622,7 @@ const App = () => {
               <button
                 type="button"
                 className="user-avatar"
-                aria-label="Menú de usuario"
+                aria-label={isSpanish ? 'Menú de usuario' : 'User menu'}
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
               >
@@ -622,24 +642,24 @@ const App = () => {
                   <button
                     type="button"
                     className="logout-btn"
-                    aria-label="Configuración"
+                    aria-label={isSpanish ? 'Configuración' : 'Settings'}
                     onClick={() => {
                       setUserMenuOpen(false);
                       navigate('/settings');
                     }}
                   >
-                    Settings
+                    {isSpanish ? 'Configuración' : 'Settings'}
                   </button>
                   <button
                     type="button"
                     className="logout-btn"
-                    aria-label="Cerrar sesión"
+                    aria-label={isSpanish ? 'Cerrar sesión' : 'Sign out'}
                     onClick={() => {
                       setUserMenuOpen(false);
                       logout();
                     }}
                   >
-                    Cerrar sesión
+                    {isSpanish ? 'Cerrar sesión' : 'Sign out'}
                   </button>
                 </div>
               ) : null}
@@ -649,25 +669,29 @@ const App = () => {
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
           <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
-            Actualizado: {lastUpdatedLabel}
+            {isSpanish ? `Actualizado: ${lastUpdatedLabel}` : `Updated: ${lastUpdatedLabel}`}
           </span>
         </div>
 
         {(backendOffline || networkOffline) && (
           <section className="card" style={{ marginTop: 8, borderColor: '#FBBF24AA' }} role="status" aria-live="polite">
-            <strong>{networkOffline ? 'Sin conexión' : 'Modo offline'}</strong>
+            <strong>{networkOffline ? (isSpanish ? 'Sin conexión' : 'No connection') : isSpanish ? 'Modo offline' : 'Offline mode'}</strong>
             <div className="muted">
               {networkOffline
-                ? 'Tu dispositivo está sin red. Mostramos datos guardados cuando están disponibles.'
-                : 'No se pudo conectar con el backend. Verificá tu conexión o VITE_API_URL.'}
+                ? isSpanish
+                  ? 'Tu dispositivo está sin red. Mostramos datos guardados cuando están disponibles.'
+                  : 'Your device is offline. Cached data is shown when available.'
+                : isSpanish
+                  ? 'No se pudo conectar con el backend. Verificá tu conexión o VITE_API_URL.'
+                  : 'Could not connect to backend. Check your network or VITE_API_URL.'}
             </div>
             {!networkOffline && backendLastOkLabel ? (
               <div className="muted" style={{ marginTop: 6 }}>
-                Última sincronización backend: {backendLastOkLabel}
+                {isSpanish ? `Última sincronización backend: ${backendLastOkLabel}` : `Last backend sync: ${backendLastOkLabel}`}
               </div>
             ) : null}
             {!networkOffline && backendFailures > 0 ? (
-              <div className="muted">Reintentos fallidos: {backendFailures}</div>
+              <div className="muted">{isSpanish ? `Reintentos fallidos: ${backendFailures}` : `Failed retries: ${backendFailures}`}</div>
             ) : null}
           </section>
         )}
