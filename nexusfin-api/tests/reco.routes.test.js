@@ -25,7 +25,7 @@ const makeApp = () => {
 describe('reco routes', () => {
   beforeEach(() => query.mockReset());
 
-  it('returns grouped sections', async () => {
+  it('returns task2 recommendation payload', async () => {
     query
       .mockResolvedValueOnce({
         rows: [
@@ -33,7 +33,7 @@ describe('reco routes', () => {
             items: [
               { ideaId: 's1', category: 'strategic', symbol: 'AAPL', confidence: 0.7, rationale: ['a'], risks: ['r'] },
               { ideaId: 'o1', category: 'opportunistic', symbol: 'TSLA', confidence: 0.6, rationale: ['a'], risks: ['r'] },
-              { ideaId: 'r1', category: 'risk', symbol: null, confidence: 0.9, rationale: ['a'], risks: ['r'] }
+              { ideaId: 'r1', category: 'risk', title: 'Volatility spike', severity: 'high', bullets: ['a', 'b'], tags: ['risk'] }
             ]
           }
         ]
@@ -44,9 +44,11 @@ describe('reco routes', () => {
     const res = await request(makeApp()).get('/api/reco/2026-02-20');
 
     expect(res.status).toBe(200);
-    expect(res.body.sections.strategic).toHaveLength(1);
-    expect(res.body.sections.opportunistic).toHaveLength(1);
-    expect(res.body.sections.riskAlerts).toHaveLength(1);
+    expect(res.body.regime).toBe('risk_on');
+    expect(res.body.regime_label).toBe('Supportive');
+    expect(res.body.strategic).toHaveLength(1);
+    expect(res.body.opportunistic).toHaveLength(1);
+    expect(res.body.risk_alerts).toHaveLength(1);
   });
 
   it('limits risks to 2 and only includes opportunisticType for opportunistic cards', async () => {
@@ -83,9 +85,24 @@ describe('reco routes', () => {
     const res = await request(makeApp()).get('/api/reco/2026-02-20');
 
     expect(res.status).toBe(200);
-    expect(res.body.sections.strategic[0].risks).toHaveLength(2);
-    expect(res.body.sections.opportunistic[0].risks).toHaveLength(2);
-    expect(res.body.sections.strategic[0].opportunisticType).toBeUndefined();
-    expect(res.body.sections.opportunistic[0].opportunisticType).toBe('overreaction');
+    expect(res.body.strategic[0].risks).toHaveLength(2);
+    expect(res.body.opportunistic[0].risks).toHaveLength(2);
+    expect(res.body.strategic[0].opportunisticType).toBeUndefined();
+    expect(res.body.opportunistic[0].opportunisticType).toBe('overreaction');
+  });
+
+  it('returns pending when no recommendations for date', async () => {
+    query.mockImplementation(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM user_recommendations')) return { rows: [] };
+      if (text.includes('FROM base_ideas')) return { rows: [] };
+      if (text.includes('FROM regime_state')) return { rows: [{ regime: 'risk_on', volatility_regime: 'normal', leadership: [], macro_drivers: [], risk_flags: [], confidence: 0.8 }] };
+      if (text.includes('FROM crisis_state')) return { rows: [{ is_active: false }] };
+      return { rows: [] };
+    });
+
+    const res = await request(makeApp()).get('/api/reco/2026-02-20');
+    expect(res.status).toBe(200);
+    expect(res.body.pending).toBe(true);
   });
 });

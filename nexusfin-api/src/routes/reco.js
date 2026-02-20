@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest } = require('../utils/errors');
+const { regimeLabel, volatilityLabel, confidenceLabel } = require('../utils/regimeLabels');
 
 const router = express.Router();
 
@@ -14,38 +15,34 @@ const toDate = (raw) => {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-const toCrisis = (row = {}) => {
-  const isActive = Boolean(row.is_active);
-  return {
-    isActive,
-    title: isActive ? 'High Volatility Environment' : 'Normal Market Environment',
-    summary: String(row.summary || (isActive ? 'Volatilidad elevada: se prioriza preservación de capital.' : 'Sin crisis activa.')),
-    learnMore: row.learn_more && typeof row.learn_more === 'object'
-      ? row.learn_more
-      : {
-          triggers: Array.isArray(row.triggers) ? row.triggers : [],
-          changes: isActive
-            ? [
-                'Sube el umbral mínimo de confianza.',
-                'Se reduce la cantidad de ideas mostradas.',
-                'Se muestran primero Risk Alerts.'
-              ]
-            : []
-        }
-  };
-};
-
 const toRegime = (row = {}) => ({
   regime: row.regime || null,
+  regime_label: regimeLabel(row.regime),
   volatilityRegime: row.volatility_regime || null,
+  volatility_label: volatilityLabel(row.volatility_regime),
   leadership: Array.isArray(row.leadership) ? row.leadership : [],
   macroDrivers: Array.isArray(row.macro_drivers) ? row.macro_drivers : [],
   riskFlags: Array.isArray(row.risk_flags) ? row.risk_flags : [],
-  confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null
+  confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null,
+  confidence_label: confidenceLabel(row.confidence)
 });
 
 const normalizeItem = (row = {}) => {
   const category = row.category || 'strategic';
+  if (category === 'risk') {
+    return {
+      category: 'risk',
+      severity: row.severity || 'medium',
+      title: row.title || 'Risk Alert',
+      bullets: Array.isArray(row.bullets)
+        ? row.bullets.slice(0, 3)
+        : Array.isArray(row.rationale)
+          ? row.rationale.slice(0, 3)
+          : [],
+      tags: Array.isArray(row.tags) ? row.tags : []
+    };
+  }
+
   const out = {
     ideaId: String(row.ideaId || row.idea_id || ''),
     symbol: row.symbol || null,
@@ -68,23 +65,23 @@ const normalizeItem = (row = {}) => {
 };
 
 const splitSections = (items = [], isCrisis = false) => {
-  const normalized = items.map(normalizeItem).filter((item) => item.ideaId || item.symbol);
+  const normalized = items.map(normalizeItem).filter((item) => item.category === 'risk' || item.ideaId || item.symbol);
   const strategic = normalized.filter((item) => item.category === 'strategic');
   const opportunistic = normalized.filter((item) => item.category === 'opportunistic');
   const riskAlerts = normalized.filter((item) => item.category === 'risk');
 
   if (isCrisis) {
     return {
-      strategic: strategic.slice(0, 3),
+      strategic: strategic.slice(0, 2),
       opportunistic: opportunistic.slice(0, 1),
-      riskAlerts: riskAlerts.slice(0, 4)
+      risk_alerts: riskAlerts.slice(0, 4)
     };
   }
 
   return {
     strategic: strategic.slice(0, 4),
     opportunistic: opportunistic.slice(0, 3),
-    riskAlerts: riskAlerts.slice(0, 4)
+    risk_alerts: riskAlerts.slice(0, 4)
   };
 };
 
@@ -122,14 +119,31 @@ const handler = async (req, res, next, date) => {
       )
     ]);
 
-    const crisis = toCrisis(crisisOut.rows[0] || {});
-    const sections = splitSections(items, crisis.isActive);
+    if (!items.length) {
+      return res.json({
+        date,
+        pending: true,
+        message: "Today's recommendations will be available after market close."
+      });
+    }
+
+    const crisisActive = Boolean(crisisOut.rows?.[0]?.is_active);
+    const sections = splitSections(items, crisisActive);
+    const regime = toRegime(regimeOut.rows[0] || {});
 
     return res.json({
       date,
-      crisis,
-      regime: toRegime(regimeOut.rows[0] || {}),
-      sections
+      regime: regime.regime,
+      regime_label: regime.regime_label,
+      volatility_regime: regime.volatilityRegime,
+      volatility_label: regime.volatility_label,
+      confidence: regime.confidence,
+      confidence_label: regime.confidence_label,
+      leadership: regime.leadership,
+      crisis_active: crisisActive,
+      strategic: sections.strategic,
+      opportunistic: sections.opportunistic,
+      risk_alerts: sections.risk_alerts
     });
   } catch (error) {
     return next(error);

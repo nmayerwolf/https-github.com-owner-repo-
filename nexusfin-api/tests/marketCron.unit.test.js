@@ -21,11 +21,15 @@ describe('market cron scaffold', () => {
     });
 
     expect(tasks.map((t) => t.name)).toEqual([
+      'news-fetch-daily',
       'market-snapshot-daily',
       'market-snapshot-crypto-fx',
       'metrics-daily',
       'regime-daily',
       'crisis-check',
+      'recommendations-daily',
+      'news-digest-daily',
+      'fundamentals-weekly',
       'macro-daily',
       'portfolio-daily'
     ]);

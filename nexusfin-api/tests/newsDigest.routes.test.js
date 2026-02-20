@@ -27,7 +27,16 @@ describe('news digest routes', () => {
 
   it('returns contract payload for date', async () => {
     query
-      .mockResolvedValueOnce({ rows: [{ bullets: ['a', 'b'], themes: ['mega_cap_tech'], risk_flags: ['vol_up'] }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            bullets: ['a', 'b'],
+            themes: ['mega_cap_tech'],
+            risk_flags: ['vol_up'],
+            raw_structured: { key_risks: ['vol_up'], macro_drivers: ['soft landing'] }
+          }
+        ]
+      })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -47,12 +56,13 @@ describe('news digest routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.date).toBe('2026-02-20');
     expect(Array.isArray(res.body.bullets)).toBe(true);
-    expect(res.body.regime.regime).toBe('risk_on');
+    expect(res.body.regime).toBe('risk_on');
+    expect(res.body.regime_label).toBe('Supportive');
   });
 
-  it('injects mandatory regime/leadership/risk bullets when missing', async () => {
+  it('returns pending when digest is missing', async () => {
     query
-      .mockResolvedValueOnce({ rows: [{ bullets: ['Macro: CPI below expectations.'], themes: ['mega_cap_tech'], risk_flags: ['vol_up'] }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -70,9 +80,6 @@ describe('news digest routes', () => {
     const res = await request(makeApp()).get('/api/news/digest/2026-02-20');
 
     expect(res.status).toBe(200);
-    expect(res.body.bullets[0]).toContain('Regime Today:');
-    expect(res.body.bullets.some((x) => x.startsWith('Leadership/themes:'))).toBe(true);
-    expect(res.body.bullets.some((x) => x.startsWith('Key risks:'))).toBe(true);
-    expect(res.body.bullets.length).toBeLessThanOrEqual(10);
+    expect(res.body.pending).toBe(true);
   });
 });

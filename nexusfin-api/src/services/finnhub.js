@@ -99,6 +99,7 @@ const createFinnhubService = (options = {}) => {
     forexCandles: (from, to, resolution, tsFrom, tsTo) =>
       fetchFinnhub('/forex/candle', { symbol: `OANDA:${from}_${to}`, resolution, from: tsFrom, to: tsTo }),
     profile: (symbol) => fetchFinnhub('/stock/profile2', { symbol }),
+    basicFinancials: (symbol) => fetchFinnhub('/stock/metric', { symbol, metric: 'all' }),
     symbolSearch: (q) => fetchFinnhub('/search', { q }),
     companyNews: (symbol, from, to) => fetchFinnhub('/company-news', { symbol, from, to }),
     generalNews: (category = 'general', minId = 0) => fetchFinnhub('/news', { category, minId })
