@@ -7,7 +7,7 @@ const { env } = require('./config/env');
 const { query } = require('./config/db');
 const { authRequired, requireCsrf } = require('./middleware/auth');
 const { errorHandler } = require('./middleware/errorHandler');
-const { authLimiter, marketLimiter } = require('./middleware/rateLimiter');
+const { authLimiter, marketLimiter, adminJobsLimiter } = require('./middleware/rateLimiter');
 const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
@@ -245,7 +245,7 @@ app.use('/api/news/digest', authRequired, requireCsrf, newsDigestRoutes);
 app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
 app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
 app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
-app.use('/api/admin/jobs', authRequired, requireCsrf, adminJobsRoutes);
+app.use('/api/admin/jobs', authRequired, requireCsrf, adminJobsLimiter, adminJobsRoutes);
 
 app.use(errorHandler);
 
