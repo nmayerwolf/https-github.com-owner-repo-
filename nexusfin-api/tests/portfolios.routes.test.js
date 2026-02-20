@@ -48,4 +48,60 @@ describe('portfolios v2 routes', () => {
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('HOLDING_LIMIT_REACHED');
   });
+
+  it('returns portfolio contract with holdings + snapshot + alignment + exposures + ai notes', async () => {
+    query
+      .mockResolvedValueOnce({
+        rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', role: 'owner', name: 'Core', currency: 'USD' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [{ symbol: 'AAPL', qty: '2', avg_cost: '100', category: 'equity', name: 'Apple', source: 'manual' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            snapshot_date: '2026-02-20',
+            total_value: '2500.50',
+            pnl_day: '50.25',
+            pnl_total: '300.75',
+            benchmark_ret: '0.0125',
+            alignment_score: '78',
+            sector_exposure: { technology: 80, healthcare: 20 },
+            concentration: { topHoldings: [{ symbol: 'AAPL', weight: 80 }], herfindahl: 0.52 },
+            ai_notes: 'Portfolio bien alineado al régimen risk_on.'
+          }
+        ]
+      });
+
+    const res = await request(makeApp()).get('/api/portfolios/11111111-1111-4111-8111-111111111111');
+
+    expect(res.status).toBe(200);
+    expect(res.body.holdings).toHaveLength(1);
+    expect(res.body.latestSnapshot.date).toBe('2026-02-20');
+    expect(res.body.latestSnapshot.totalValue).toBeCloseTo(2500.5, 5);
+    expect(res.body.benchmarkCompare.symbol).toBe('SPY');
+    expect(res.body.alignmentScore).toBe(78);
+    expect(res.body.exposures.technology).toBe(80);
+    expect(res.body.aiNotes).toContain('alineado');
+  });
+
+  it('returns null snapshot fields when no daily snapshot exists yet', async () => {
+    query
+      .mockResolvedValueOnce({
+        rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', role: 'owner', name: 'Core', currency: 'USD' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [{ symbol: 'MSFT', qty: '1', avg_cost: '250', category: 'equity', name: 'Microsoft', source: 'reco' }]
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp()).get('/api/portfolios/11111111-1111-4111-8111-111111111111');
+
+    expect(res.status).toBe(200);
+    expect(res.body.latestSnapshot).toBeNull();
+    expect(res.body.benchmarkCompare).toBeNull();
+    expect(res.body.alignmentScore).toBeNull();
+    expect(res.body.exposures).toEqual({});
+    expect(res.body.aiNotes).toBeNull();
+  });
 });

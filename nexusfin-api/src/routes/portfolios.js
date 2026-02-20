@@ -48,7 +48,7 @@ const getAccess = async (portfolioId, userId) => {
 
 const latestSnapshotFor = async (portfolioId) => {
   const out = await query(
-    `SELECT s.total_value, s.pnl_day, s.pnl_total, s.benchmark_ret,
+    `SELECT s.date AS snapshot_date, s.total_value, s.pnl_day, s.pnl_total, s.benchmark_ret,
             m.alignment_score, m.sector_exposure, m.concentration, m.ai_notes
      FROM portfolio_snapshots s
      LEFT JOIN portfolio_metrics m
@@ -153,10 +153,17 @@ router.get('/:id', async (req, res, next) => {
       holdings,
       latestSnapshot: latest
         ? {
+            date: latest.snapshot_date,
             totalValue: Number(latest.total_value || 0),
             pnlDay: Number(latest.pnl_day || 0),
             pnlTotal: Number(latest.pnl_total || 0),
             benchmarkRet: Number(latest.benchmark_ret || 0)
+          }
+        : null,
+      benchmarkCompare: latest
+        ? {
+            symbol: 'SPY',
+            return: Number(latest.benchmark_ret || 0)
           }
         : null,
       alignmentScore: latest?.alignment_score == null ? null : Number(latest.alignment_score),
