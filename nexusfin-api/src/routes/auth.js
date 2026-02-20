@@ -19,11 +19,8 @@ const {
   makeOAuthState,
   verifyOAuthState,
   isGoogleConfigured,
-  isAppleConfigured,
   buildGoogleAuthUrl,
-  exchangeGoogleCode,
-  buildAppleAuthUrl,
-  exchangeAppleCode
+  exchangeGoogleCode
 } = require('../services/oauth');
 const { badRequest, conflict, forbidden, serviceUnavailable, tooManyRequests, unauthorized } = require('../utils/errors');
 const { validateEmail, validatePassword } = require('../utils/validate');
@@ -135,7 +132,7 @@ const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarU
       return merged.rows[0];
     }
   } else {
-    throw unauthorized('Apple no entregó email para vincular cuenta', 'OAUTH_EMAIL_REQUIRED');
+    throw unauthorized('El proveedor OAuth no entregó email para vincular cuenta', 'OAUTH_EMAIL_REQUIRED');
   }
 
   const created = await query(
@@ -150,7 +147,7 @@ const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarU
 router.get('/oauth/providers', (_req, res) => {
   return res.json({
     google: isGoogleConfigured(),
-    apple: isAppleConfigured()
+    apple: false
   });
 });
 
@@ -218,57 +215,19 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
-router.get('/apple', (_req, res, next) => {
+router.get('/apple', (_req, _res, next) => {
   try {
-    setOAuthMobileContext(_req, res);
-    if (!isAppleConfigured()) {
-      throw serviceUnavailable('Apple OAuth no configurado', 'OAUTH_PROVIDER_DISABLED');
-    }
-
-    const state = makeOAuthState();
-    res.cookie(OAUTH_STATE_COOKIE, state, buildCookieOptions());
-    return res.redirect(302, buildAppleAuthUrl(state));
+    throw serviceUnavailable('Apple OAuth deshabilitado. Usá Continuar con Google.', 'OAUTH_PROVIDER_DISABLED');
   } catch (error) {
     return next(error);
   }
 });
 
 const handleAppleCallback = async (req, res) => {
-  const state = String(req.query.state || req.body?.state || '');
-  const code = String(req.query.code || req.body?.code || '');
-  const cookieState = String(req.cookies?.[OAUTH_STATE_COOKIE] || '');
   const mobileRedirectUri = getMobileRedirectCookieValue(req);
-  res.clearCookie(OAUTH_STATE_COOKIE, buildCookieOptions());
   res.clearCookie(OAUTH_MOBILE_REDIRECT_COOKIE, buildCookieOptions());
-
-  if (!isAppleConfigured()) {
-    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'provider_disabled' }));
-    return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
-  }
-
-  if (!state || !code || !cookieState || state !== cookieState || !verifyOAuthState(state)) {
-    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'invalid_oauth_state' }));
-    return res.redirect(302, oauthRedirect({ oauth_error: 'invalid_oauth_state' }));
-  }
-
-  try {
-    const profile = await exchangeAppleCode(code);
-    const user = await resolveOAuthUser(profile);
-
-    const token = issueToken(user);
-    await storeSession(user.id, token);
-    setAuthCookies(res, token);
-
-    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth: 'success', provider: 'apple' }, token));
-    return res.redirect(302, oauthRedirect({ oauth: 'success' }));
-  } catch (error) {
-    if (error?.code === 'OAUTH_EMAIL_REQUIRED') {
-      if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'oauth_email_required' }));
-      return res.redirect(302, oauthRedirect({ oauth_error: 'oauth_email_required' }));
-    }
-    if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'apple_callback_failed' }));
-    return res.redirect(302, oauthRedirect({ oauth_error: 'apple_callback_failed' }));
-  }
+  if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'provider_disabled' }));
+  return res.redirect(302, oauthRedirect({ oauth_error: 'provider_disabled' }));
 };
 
 router.get('/apple/callback', handleAppleCallback);
