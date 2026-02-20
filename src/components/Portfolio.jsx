@@ -54,6 +54,19 @@ const normalizePercentInput = (value) => {
 };
 
 const hasReliableAssetPrice = (asset) => Number.isFinite(Number(asset?.price)) && !Boolean(asset?.marketMeta?.stale);
+const toNum = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+const pct = (value) => `${toNum(value, 0).toFixed(2)}%`;
+const suggestionLevelLabel = (level) => (Number(level) === 3 ? 'Level 3' : Number(level) === 2 ? 'Level 2' : 'Level 1');
+const confidenceLabel = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 'Limited';
+  if (n >= 0.75) return 'High';
+  if (n >= 0.55) return 'Moderate';
+  return 'Limited';
+};
 
 const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, onOpenRiskTargets, riskPulse = null }) {
   const slPct = Number(position.stopLossPct);
@@ -116,11 +129,11 @@ const Portfolio = () => {
   const [exportFilter, setExportFilter] = useState('all');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
-  const [advisorLoading, setAdvisorLoading] = useState(false);
-  const [advisorRefreshing, setAdvisorRefreshing] = useState(false);
-  const [advisorError, setAdvisorError] = useState('');
-  const [advisorData, setAdvisorData] = useState(null);
-  const [advisorSkipped, setAdvisorSkipped] = useState(null);
+  const [horsaiLoading, setHorsaiLoading] = useState(false);
+  const [horsaiError, setHorsaiError] = useState('');
+  const [horsaiSummary, setHorsaiSummary] = useState(null);
+  const [horsaiReview, setHorsaiReview] = useState(null);
+  const [horsaiActionBusy, setHorsaiActionBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [portfolioActionById, setPortfolioActionById] = useState({});
   const [inviteEmailByPortfolio, setInviteEmailByPortfolio] = useState({});
@@ -490,48 +503,6 @@ const Portfolio = () => {
     };
   }, [assetQuery]);
 
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      setAdvisorLoading(true);
-      setAdvisorError('');
-      try {
-        const out = await api.getPortfolioAdvice();
-        if (!active) return;
-        setAdvisorData(out?.advice || null);
-        setAdvisorSkipped(out?.skipped ? out : null);
-      } catch {
-        if (!active) return;
-        setAdvisorError('No se pudo cargar Portfolio Advisor.');
-      } finally {
-        if (active) setAdvisorLoading(false);
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const refreshAdvisor = async () => {
-    setAdvisorRefreshing(true);
-    setAdvisorError('');
-    try {
-      const out = await api.refreshPortfolioAdvice();
-      if (out?.skipped) {
-        setAdvisorData(null);
-        setAdvisorSkipped(out);
-      } else {
-        setAdvisorData(out?.advice || null);
-        setAdvisorSkipped(null);
-      }
-    } catch {
-      setAdvisorError('No se pudo recalcular Portfolio Advisor.');
-    } finally {
-      setAdvisorRefreshing(false);
-    }
-  };
-
   const handleOpenSell = useCallback(
     (position) =>
       setSellModal({
@@ -618,6 +589,56 @@ const Portfolio = () => {
     loadReceivedInvites();
   }, [loadReceivedInvites]);
 
+  useEffect(() => {
+    if (!activePortfolioId || typeof api.getHorsaiPortfolioSummary !== 'function') {
+      setHorsaiSummary(null);
+      setHorsaiReview(null);
+      return;
+    }
+
+    let active = true;
+    const loadHorsai = async () => {
+      setHorsaiLoading(true);
+      setHorsaiError('');
+      try {
+        const [summaryOut, reviewOut] = await Promise.all([
+          api.getHorsaiPortfolioSummary(activePortfolioId),
+          typeof api.getHorsaiSignalReview === 'function'
+            ? api.getHorsaiSignalReview(activePortfolioId, 90).catch(() => null)
+            : Promise.resolve(null)
+        ]);
+        if (!active) return;
+        setHorsaiSummary(summaryOut || null);
+        setHorsaiReview(reviewOut || null);
+      } catch {
+        if (!active) return;
+        setHorsaiError('No se pudo cargar contexto HORSAI.');
+      } finally {
+        if (active) setHorsaiLoading(false);
+      }
+    };
+
+    loadHorsai();
+    return () => {
+      active = false;
+    };
+  }, [activePortfolioId]);
+
+  const actOnSuggestion = async (action) => {
+    const signalId = horsaiSummary?.suggestion?.id;
+    if (!signalId || typeof api.actOnHorsaiSignal !== 'function') return;
+    setHorsaiActionBusy(true);
+    try {
+      await api.actOnHorsaiSignal(signalId, action);
+      const refreshed = await api.getHorsaiPortfolioSummary(activePortfolioId);
+      setHorsaiSummary(refreshed || null);
+    } catch {
+      setHorsaiError('No se pudo actualizar la acción de la sugerencia.');
+    } finally {
+      setHorsaiActionBusy(false);
+    }
+  };
+
   const handleSendInvite = async (portfolioId) => {
     const portfolio = portfolios.find((p) => p.id === portfolioId);
     if (!portfolio?.isOwner) return;
@@ -674,6 +695,21 @@ const Portfolio = () => {
     }
     setPortfolioActionById((prev) => ({ ...prev, [portfolio.id]: action }));
   };
+
+  const horsaiScores = horsaiSummary?.scores || {};
+  const marketAlignment = toNum(horsaiScores.marketAlignment, 50);
+  const personalConsistency = toNum(horsaiScores.personalConsistency, 50);
+  const totalScore = toNum(horsaiScores.total, (marketAlignment + personalConsistency) / 2);
+  const bothLow = marketAlignment < 45 && personalConsistency < 45;
+  const suggestion = horsaiSummary?.suggestion || null;
+  const suggestionConfidence = toNum(suggestion?.confidence, 0);
+  const hasSignalReview = toNum(horsaiReview?.metrics?.signalsAffectingPortfolio, 0) > 0;
+  const marketEnvironment = horsaiSummary?.marketEnvironment || null;
+  const canShowSpecificAssets =
+    suggestionConfidence >= 0.75 &&
+    Array.isArray(suggestion?.specificAssets) &&
+    suggestion.specificAssets.length > 0;
+  const canActOnSuggestion = suggestion && !horsaiActionBusy && !suggestion?.action;
 
   return (
     <div className="grid portfolio-page">
@@ -863,42 +899,109 @@ const Portfolio = () => {
       </section>
 
       <section className="card">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="section-title">Portfolio Advisor</h3>
-          <button type="button" onClick={refreshAdvisor} disabled={advisorRefreshing}>
-            {advisorRefreshing ? 'Analizando...' : 'Pedir análisis AI'}
-          </button>
+        <div className="section-header-inline">
+          <h3 className="section-title">Portfolio Metrics</h3>
         </div>
-        {advisorLoading ? <div className="muted" style={{ marginTop: 8 }}>Cargando análisis...</div> : null}
-        {advisorError ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{advisorError}</div> : null}
-        {advisorSkipped ? (
-          <div className="muted" style={{ marginTop: 8 }}>
-            Necesitás al menos {advisorSkipped.minimumPositions || 2} posiciones activas para recibir recomendaciones.
+        {marketEnvironment ? (
+          <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+            <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+              Market Environment: {marketEnvironment?.labels?.market || 'Mixed'}
+            </span>
+            <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
+              Confidence: {confidenceLabel(marketEnvironment.confidence)}
+            </span>
+            <span className="badge" style={{ background: '#A78BFA22', color: '#A78BFA' }}>
+              Volatility: {marketEnvironment?.labels?.volatility || 'Calm'}
+            </span>
           </div>
         ) : null}
-        {advisorData ? (
-          <div className="grid" style={{ marginTop: 8 }}>
-            <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
-              <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
-                Health {Number(advisorData.healthScore || 0)}/10
-              </span>
-              <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
-                Riesgo {advisorData.concentrationRisk || 'medium'}
-              </span>
-            </div>
-            <div className="muted">{advisorData.healthSummary}</div>
-            {(advisorData.recommendations || []).slice(0, 3).map((rec, idx) => (
-              <article key={`${rec.asset || 'asset'}-${idx}`} className="card">
-                <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <strong>{rec.asset}</strong>
-                  <span className="muted">{rec.priority || 'medium'}</span>
-                </div>
-                <div className="muted" style={{ marginTop: 6 }}>{rec.detail}</div>
-              </article>
-            ))}
+        <div className="ind-grid" style={{ marginTop: 8 }}>
+          <div className="ind-cell">
+            <div className="ind-label">Market Alignment</div>
+            <div className="ind-val mono">{marketAlignment.toFixed(1)}</div>
           </div>
-        ) : null}
+          <div className="ind-cell">
+            <div className="ind-label">Personal Consistency</div>
+            <div className="ind-val mono">{personalConsistency.toFixed(1)}</div>
+          </div>
+          <div className="ind-cell">
+            <div className="ind-label">Score</div>
+            <div className="ind-val mono">{totalScore.toFixed(1)}</div>
+          </div>
+          </div>
       </section>
+
+      {bothLow ? (
+        <section className="card">
+          <div className="section-header-inline">
+            <h3 className="section-title">Suggested Adjustments</h3>
+          </div>
+          {horsaiLoading ? <div className="muted">Cargando sugerencias...</div> : null}
+          {horsaiError ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{horsaiError}</div> : null}
+          {suggestion ? (
+            <div className="grid" style={{ marginTop: 8 }}>
+              <div className="row" style={{ justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+                  {suggestionLevelLabel(suggestion.level)}
+                </span>
+                <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
+                  Confidence: {confidenceLabel(suggestionConfidence)}
+                </span>
+                <span className="badge" style={{ background: '#A78BFA22', color: '#A78BFA' }}>
+                  Score: {toNum(suggestion.score, totalScore).toFixed(1)}
+                </span>
+              </div>
+              <article className="card">
+                <div className="muted"><strong>Diagnosis:</strong> {suggestion.diagnosis || 'Sin diagnóstico.'}</div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  <strong>Risk/impact:</strong> {suggestion.riskImpact || 'Sin detalle de impacto.'}
+                </div>
+                <div className="muted" style={{ marginTop: 6 }}>
+                  <strong>Concrete adjustment:</strong> {suggestion.adjustment?.text || suggestion.adjustment?.summary || 'Sin ajuste concreto.'}
+                </div>
+                {canShowSpecificAssets ? (
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    <strong>Specific assets:</strong> {suggestion.specificAssets.join(', ')}
+                  </div>
+                ) : null}
+              </article>
+              {suggestion?.action ? (
+                <div className="muted">Acción registrada: {suggestion.action === 'dismissed' ? 'Dismiss' : 'Acknowledge'}.</div>
+              ) : (
+                <div className="row" style={{ justifyContent: 'flex-start' }}>
+                  <button type="button" onClick={() => actOnSuggestion('acknowledge')} disabled={!canActOnSuggestion}>
+                    {horsaiActionBusy ? 'Guardando...' : 'Acknowledge'}
+                  </button>
+                  <button type="button" onClick={() => actOnSuggestion('dismiss')} disabled={!canActOnSuggestion}>
+                    {horsaiActionBusy ? 'Guardando...' : 'Dismiss'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="muted" style={{ marginTop: 8 }}>
+              No hay sugerencia activa para este portfolio.
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {hasSignalReview ? (
+        <section className="card">
+          <div className="section-header-inline">
+            <h3 className="section-title">{horsaiReview?.title || 'Signal Review - Last 90 Days'}</h3>
+          </div>
+          <div className="grid" style={{ marginTop: 8, gap: 6 }}>
+            <div className="muted">Signals affecting your portfolio: {toNum(horsaiReview?.metrics?.signalsAffectingPortfolio, 0)}</div>
+            <div className="muted">Risk reduction achieved in: {toNum(horsaiReview?.metrics?.riskReductionCases, 0)} cases</div>
+            <div className="muted">Avg volatility reduction: {pct(horsaiReview?.metrics?.avgVolatilityReductionPct)}</div>
+            <div className="muted">
+              Performance improvement observed in: {toNum(horsaiReview?.metrics?.performanceImprovementCases, 0)} cases
+            </div>
+            <div className="muted">Avg relative impact: {pct(horsaiReview?.metrics?.avgRelativeImpactPct)}</div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="card">
         <h2>Nueva posición</h2>

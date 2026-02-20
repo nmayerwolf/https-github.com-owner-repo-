@@ -133,6 +133,8 @@ const createHorsaiEngine = ({ query }) => {
     portfolioId,
     evaluatedAt = toDate(),
     evalWindowDays = 7,
+    portfolioSnapshot = {},
+    simulatedAdjustment = {},
     deltaReturn = 0,
     deltaVolatility = 0,
     deltaDrawdown = 0,
@@ -140,18 +142,32 @@ const createHorsaiEngine = ({ query }) => {
   }) => {
     const out = await query(
       `INSERT INTO horsai_signal_outcomes
-       (signal_id, user_id, portfolio_id, evaluated_at, eval_window_days, delta_return, delta_volatility, delta_drawdown, rai)
+       (signal_id, user_id, portfolio_id, evaluated_at, eval_window_days, portfolio_snapshot, simulated_adjustment, delta_return, delta_volatility, delta_drawdown, rai)
        VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11)
        ON CONFLICT (signal_id, evaluated_at)
        DO UPDATE SET
          eval_window_days = EXCLUDED.eval_window_days,
+         portfolio_snapshot = EXCLUDED.portfolio_snapshot,
+         simulated_adjustment = EXCLUDED.simulated_adjustment,
          delta_return = EXCLUDED.delta_return,
          delta_volatility = EXCLUDED.delta_volatility,
          delta_drawdown = EXCLUDED.delta_drawdown,
          rai = EXCLUDED.rai
        RETURNING *`,
-      [signalId, userId, portfolioId, evaluatedAt, evalWindowDays, deltaReturn, deltaVolatility, deltaDrawdown, rai]
+      [
+        signalId,
+        userId,
+        portfolioId,
+        evaluatedAt,
+        evalWindowDays,
+        JSON.stringify(portfolioSnapshot || {}),
+        JSON.stringify(simulatedAdjustment || {}),
+        deltaReturn,
+        deltaVolatility,
+        deltaDrawdown,
+        rai
+      ]
     );
 
     return out.rows[0] || null;

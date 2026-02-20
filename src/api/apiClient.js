@@ -91,6 +91,14 @@ export const api = {
   resetPassword: (currentPassword, newPassword) =>
     request('/auth/reset-password/authenticated', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   health: () => request('/health'),
+  getNewsDigestToday: () => request('/news/digest/today'),
+  getRecoToday: () => request('/reco/today'),
+  getCrisisToday: () => request('/crisis/today'),
+  getHorsaiPortfolioSummary: (portfolioId) => request(`/horsai/portfolio/${encodeURIComponent(portfolioId)}/summary`),
+  getHorsaiSignalReview: (portfolioId, days = 90) =>
+    request(`/horsai/portfolio/${encodeURIComponent(portfolioId)}/signal-review?days=${encodeURIComponent(String(days))}`),
+  actOnHorsaiSignal: (signalId, action) =>
+    request(`/horsai/signals/${encodeURIComponent(signalId)}/action`, { method: 'POST', body: JSON.stringify({ action }) }),
 
   getPortfolio: () => request('/portfolio'),
   getPortfolios: () => request('/portfolio/portfolios'),

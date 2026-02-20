@@ -233,6 +233,72 @@ app.get('/api/health/cron', (_req, res) => {
   );
 });
 
+app.get('/api/health/engines', async (_req, res, next) => {
+  try {
+    const [latestBars, latestMetrics, latestRegime, latestCrisis, runStats] = await Promise.all([
+      query(
+        `SELECT COALESCE(MAX(bar_date), MAX(date))::text AS date,
+                COUNT(*)::int AS symbols_ok
+         FROM market_daily_bars
+         WHERE COALESCE(bar_date, date) = (SELECT MAX(COALESCE(bar_date, date)) FROM market_daily_bars)`
+      ),
+      query(
+        `SELECT COALESCE(MAX(metric_date), MAX(date))::text AS date,
+                COUNT(*)::int AS symbols_computed
+         FROM market_metrics_daily
+         WHERE COALESCE(metric_date, date) = (SELECT MAX(COALESCE(metric_date, date)) FROM market_metrics_daily)`
+      ),
+      query(
+        `SELECT COALESCE(state_date, date)::text AS run_date, regime, confidence
+         FROM regime_state
+         ORDER BY COALESCE(state_date, date) DESC
+         LIMIT 1`
+      ),
+      query(
+        `SELECT COALESCE(state_date, date)::text AS run_date, is_active
+         FROM crisis_state
+         ORDER BY COALESCE(state_date, date) DESC
+         LIMIT 1`
+      ),
+      query(
+        `SELECT job_name, run_date::text AS run_date
+         FROM job_runs
+         WHERE status = 'success'
+           AND job_name = ANY($1::text[])`,
+        [['market_snapshot_daily', 'metrics_daily', 'regime_daily', 'crisis_check']]
+      )
+    ]);
+
+    const runByJob = new Map((runStats.rows || []).map((row) => [String(row.job_name), row.run_date]));
+    const universe = await query('SELECT COUNT(*)::int AS total FROM universe_symbols WHERE COALESCE(active, is_active, true) = true');
+    const total = Number(universe.rows?.[0]?.total || 0);
+    const symbolsOk = Number(latestBars.rows?.[0]?.symbols_ok || 0);
+
+    return res.json({
+      market_snapshot: {
+        last_run: runByJob.get('market_snapshot_daily') || null,
+        symbols_ok: symbolsOk,
+        symbols_fail: Math.max(0, total - symbolsOk)
+      },
+      metrics: {
+        last_run: runByJob.get('metrics_daily') || null,
+        symbols_computed: Number(latestMetrics.rows?.[0]?.symbols_computed || 0)
+      },
+      regime: {
+        last_run: runByJob.get('regime_daily') || null,
+        regime: latestRegime.rows?.[0]?.regime || null,
+        confidence: latestRegime.rows?.[0]?.confidence != null ? Number(latestRegime.rows?.[0]?.confidence) : null
+      },
+      crisis: {
+        last_run: runByJob.get('crisis_check') || null,
+        is_active: Boolean(latestCrisis.rows?.[0]?.is_active)
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/market', authRequired, marketLimiter, marketRoutes);
 app.use('/api/portfolio', authRequired, requireCsrf, portfolioRoutes);
@@ -472,6 +538,41 @@ const startHttpServer = ({ port = env.port } = {}) => {
   app.locals.horsaiDaily = horsaiDaily;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
+  const runPortfolioBatch = async () => {
+    const [snapshotsOut, advisorOut, horsaiOut] = await Promise.all([
+      portfolioSnapshots.runDaily(),
+      portfolioAdvisor.runGlobalDaily(),
+      horsaiDaily.runGlobalDaily()
+    ]);
+    return {
+      generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0) + Number(horsaiOut?.generated || 0),
+      snapshots: snapshotsOut,
+      advisor: advisorOut,
+      horsai: horsaiOut
+    };
+  };
+  const shouldTriggerExtraPortfolioRun = async () => {
+    const out = await query(
+      `SELECT date::text AS date, regime, volatility_regime
+       FROM regime_state
+       ORDER BY date DESC
+       LIMIT 2`
+    );
+    const latest = out.rows?.[0];
+    const previous = out.rows?.[1];
+    if (!latest || !previous) {
+      return { trigger: false, regimeShift: false, crisisActivated: false, latest, previous };
+    }
+    const regimeShift = String(latest.regime || '') !== String(previous.regime || '');
+    const crisisActivated = String(previous.volatility_regime || '') !== 'crisis' && String(latest.volatility_regime || '') === 'crisis';
+    return {
+      trigger: regimeShift || crisisActivated,
+      regimeShift,
+      crisisActivated,
+      latest,
+      previous
+    };
+  };
   const runMarketCycleWithOutcome = async (options) => {
     const cycle = await alertEngine.runGlobalCycle({
       ...options,
@@ -499,6 +600,19 @@ const startHttpServer = ({ port = env.port } = {}) => {
       const newsIngestOut = await marketIngestion.runNewsIngestDaily();
       const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
       const notifyOut = await notificationPolicy.runDaily({ date: mvpOut?.date });
+      let extraPortfolioRun = null;
+      try {
+        const trigger = await shouldTriggerExtraPortfolioRun();
+        if (trigger.trigger) {
+          const extraOut = await runPortfolioBatch();
+          extraPortfolioRun = {
+            ...trigger,
+            ...extraOut
+          };
+        }
+      } catch (error) {
+        console.warn('[macro-daily] extra portfolio run skipped', error?.message || error);
+      }
       return {
         generated:
           Number(marketSnapshotOut?.generated || 0) +
@@ -506,27 +620,17 @@ const startHttpServer = ({ port = env.port } = {}) => {
           Number(newsIngestOut?.generated || 0) +
           Number(macroOut?.generated || 0) +
           Number(mvpOut?.generated || 0) +
-          Number(notifyOut?.sent || 0),
+          Number(notifyOut?.sent || 0) +
+          Number(extraPortfolioRun?.generated || 0),
         marketSnapshot: marketSnapshotOut,
         fundamentals: fundamentalsOut,
         newsIngest: newsIngestOut,
         mvp: mvpOut,
-        notifications: notifyOut
+        notifications: notifyOut,
+        extraPortfolioRun
       };
     },
-    portfolioDaily: async () => {
-      const [snapshotsOut, advisorOut, horsaiOut] = await Promise.all([
-        portfolioSnapshots.runDaily(),
-        portfolioAdvisor.runGlobalDaily(),
-        horsaiDaily.runGlobalDaily()
-      ]);
-      return {
-        generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0) + Number(horsaiOut?.generated || 0),
-        snapshots: snapshotsOut,
-        advisor: advisorOut,
-        horsai: horsaiOut
-      };
-    }
+    portfolioDaily: runPortfolioBatch
   });
   const logCronRun = async ({
     event,

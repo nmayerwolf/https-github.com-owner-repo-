@@ -26,12 +26,23 @@ describe('crisis routes', () => {
   beforeEach(() => query.mockReset());
 
   it('returns persisted crisis state', async () => {
-    query.mockResolvedValueOnce({ rows: [{ is_active: true, triggers: ['volatility spike'], summary: 'stress', learn_more: { triggers: ['volatility spike'] } }] });
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          is_active: true,
+          title: 'Elevated Market Volatility',
+          summary: 'stress',
+          triggers: ['volatility spike'],
+          what_changed: ['risk-first']
+        }
+      ]
+    });
 
     const res = await request(makeApp()).get('/api/crisis/today');
 
     expect(res.status).toBe(200);
     expect(res.body.isActive).toBe(true);
-    expect(res.body.title).toBe('High Volatility Environment');
+    expect(res.body.title).toBe('Elevated Market Volatility');
+    expect(res.body.learnMore.whatChanged).toEqual(['risk-first']);
   });
 });

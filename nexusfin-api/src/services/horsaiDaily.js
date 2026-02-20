@@ -3,7 +3,8 @@ const { createHorsaiEngine } = require('./horsaiEngine');
 const {
   resolveSuggestionLevel,
   canSuggestSpecificAssets,
-  shouldReactivateSignal
+  shouldReactivateSignal,
+  computeRai
 } = require('./horsaiPolicy');
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -22,6 +23,36 @@ const toDatePlusDays = (date, days) => {
   const d = new Date(`${date}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + Number(days || 0));
   return d.toISOString().slice(0, 10);
+};
+
+const daysBetween = (fromDate, toDate) => {
+  const from = new Date(`${fromDate}T00:00:00.000Z`);
+  const to = new Date(`${toDate}T00:00:00.000Z`);
+  const ms = to.getTime() - from.getTime();
+  return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
+};
+
+const clamp01 = (value) => clamp(value, 0, 1);
+
+const stdDev = (values = []) => {
+  const nums = (Array.isArray(values) ? values : []).map((v) => Number(v)).filter(Number.isFinite);
+  if (nums.length < 2) return 0;
+  const mean = nums.reduce((acc, v) => acc + v, 0) / nums.length;
+  const variance = nums.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (nums.length - 1);
+  return Math.sqrt(Math.max(variance, 0));
+};
+
+const maxDrawdown = (values = []) => {
+  const nums = (Array.isArray(values) ? values : []).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0);
+  if (!nums.length) return 0;
+  let peak = nums[0];
+  let maxDd = 0;
+  for (const v of nums) {
+    if (v > peak) peak = v;
+    const dd = peak > 0 ? (peak - v) / peak : 0;
+    if (dd > maxDd) maxDd = dd;
+  }
+  return maxDd;
 };
 
 const normalizeConfidenceBand = (confidence) => {
@@ -183,6 +214,164 @@ const createHorsaiDailyService = ({ query, logger = console }) => {
     );
   };
 
+  const listSignalsPendingOutcome = async (runDate) => {
+    const out = await query(
+      `SELECT s.id,
+              s.user_id,
+              s.portfolio_id,
+              s.regime,
+              s.volatility_regime,
+              s.confidence,
+              s.adjustment,
+              s.shown_at::date AS shown_date
+       FROM horsai_signals s
+       WHERE s.shown_at::date <= ($1::date - INTERVAL '7 day')::date
+         AND NOT EXISTS (
+           SELECT 1
+           FROM horsai_signal_outcomes o
+           WHERE o.signal_id = s.id
+         )
+       ORDER BY s.shown_at ASC
+       LIMIT 400`,
+      [runDate]
+    );
+    return out.rows || [];
+  };
+
+  const loadSnapshotSeries = async ({ portfolioId, fromDate, toDate }) => {
+    const out = await query(
+      `SELECT date::text AS date, total_value
+       FROM portfolio_snapshots
+       WHERE portfolio_id = $1
+         AND date >= $2::date
+         AND date <= $3::date
+       ORDER BY date ASC`,
+      [portfolioId, fromDate, toDate]
+    );
+    return out.rows || [];
+  };
+
+  const loadUserRiskLevel = async (userId) => {
+    const out = await query(
+      `SELECT risk_level
+       FROM user_agent_profile
+       WHERE user_id = $1
+       LIMIT 1`,
+      [userId]
+    );
+    return clamp(toNum(out.rows?.[0]?.risk_level, 0.5), 0, 1);
+  };
+
+  const evaluateSignalOutcome = async ({ signal, runDate }) => {
+    const windowDays = clamp(daysBetween(signal.shown_date, runDate), 7, 14);
+    const snapshotRows = await loadSnapshotSeries({
+      portfolioId: signal.portfolio_id,
+      fromDate: signal.shown_date,
+      toDate: runDate
+    });
+    if (snapshotRows.length < 2) return null;
+
+    const totals = snapshotRows.map((row) => toNum(row.total_value, 0)).filter((v) => v > 0);
+    if (totals.length < 2) return null;
+
+    const first = totals[0];
+    const last = totals[totals.length - 1];
+    const dailyReturns = [];
+    for (let i = 1; i < totals.length; i += 1) {
+      const prev = totals[i - 1];
+      const curr = totals[i];
+      if (prev > 0) dailyReturns.push((curr - prev) / prev);
+    }
+
+    const actualReturn = first > 0 ? (last - first) / first : 0;
+    const actualVolatility = stdDev(dailyReturns);
+    const actualDrawdown = maxDrawdown(totals);
+
+    const normalizedActual = {
+      ret: clamp(actualReturn / 0.25, -1, 1),
+      vol: clamp01(actualVolatility / 0.1),
+      dd: clamp01(actualDrawdown / 0.2)
+    };
+
+    const regime = String(signal.regime || 'transition');
+    const volatilityRegime = String(signal.volatility_regime || 'normal');
+    const focus = String(signal.adjustment?.focus || '').toLowerCase();
+
+    const volImprovement =
+      volatilityRegime === 'crisis'
+        ? 0.2
+        : regime === 'risk_off'
+          ? 0.16
+          : regime === 'risk_on'
+            ? 0.1
+            : 0.12;
+    const ddImprovement =
+      volatilityRegime === 'crisis'
+        ? 0.22
+        : regime === 'risk_off'
+          ? 0.18
+          : regime === 'risk_on'
+            ? 0.1
+            : 0.14;
+    const returnShiftBase = regime === 'risk_on' ? 0.06 : regime === 'risk_off' ? -0.01 : 0.02;
+    const returnShift = focus.includes('risk') ? returnShiftBase - 0.01 : returnShiftBase;
+
+    const normalizedAdjusted = {
+      ret: clamp(normalizedActual.ret + returnShift, -1, 1),
+      vol: clamp01(normalizedActual.vol * (1 - volImprovement)),
+      dd: clamp01(normalizedActual.dd * (1 - ddImprovement))
+    };
+
+    const deltaReturn = Number((normalizedAdjusted.ret - normalizedActual.ret).toFixed(6));
+    const deltaVolatility = Number((normalizedActual.vol - normalizedAdjusted.vol).toFixed(6));
+    const deltaDrawdown = Number((normalizedActual.dd - normalizedAdjusted.dd).toFixed(6));
+
+    const riskLevel = await loadUserRiskLevel(signal.user_id);
+    const raiOut = computeRai({
+      deltaReturn,
+      deltaVolatility,
+      deltaDrawdown,
+      profile: {
+        riskLevel,
+        regime,
+        volatilityRegime,
+        confidence: toNum(signal.confidence, 0.5)
+      }
+    });
+
+    return {
+      windowDays,
+      deltaReturn,
+      deltaVolatility,
+      deltaDrawdown,
+      rai: raiOut.rai,
+      portfolioSnapshot: {
+        fromDate: signal.shown_date,
+        toDate: runDate,
+        points: snapshotRows.length,
+        firstValue: Number(first.toFixed(4)),
+        lastValue: Number(last.toFixed(4)),
+        actual: {
+          return: Number(actualReturn.toFixed(6)),
+          volatility: Number(actualVolatility.toFixed(6)),
+          drawdown: Number(actualDrawdown.toFixed(6))
+        }
+      },
+      simulatedAdjustment: {
+        assumptions: {
+          regime,
+          volatilityRegime,
+          focus,
+          volImprovement,
+          ddImprovement,
+          returnShift
+        },
+        adjustedNormalized: normalizedAdjusted,
+        weights: raiOut.weights
+      }
+    };
+  };
+
   const runGlobalDaily = async ({ date = null } = {}) =>
     withTrackedJobRun({
       query,
@@ -192,10 +381,12 @@ const createHorsaiDailyService = ({ query, logger = console }) => {
         const runDate = toDate(runDateInput);
         const regime = await loadLatestRegime();
         const portfolios = await listPortfolios();
+        const usersForConvictionRefresh = new Set();
 
         let scored = 0;
         let generated = 0;
         let skippedByCooldown = 0;
+        let outcomesEvaluated = 0;
 
         for (const portfolio of portfolios) {
           try {
@@ -310,6 +501,46 @@ const createHorsaiDailyService = ({ query, logger = console }) => {
           }
         }
 
+        try {
+          const pendingOutcomes = await listSignalsPendingOutcome(runDate);
+          for (const signal of pendingOutcomes) {
+            try {
+              const evaluated = await evaluateSignalOutcome({ signal, runDate });
+              if (!evaluated) continue;
+
+              await horsaiEngine.recordSignalOutcome({
+                signalId: signal.id,
+                userId: signal.user_id,
+                portfolioId: signal.portfolio_id,
+                evaluatedAt: runDate,
+                evalWindowDays: evaluated.windowDays,
+                portfolioSnapshot: evaluated.portfolioSnapshot,
+                simulatedAdjustment: evaluated.simulatedAdjustment,
+                deltaReturn: evaluated.deltaReturn,
+                deltaVolatility: evaluated.deltaVolatility,
+                deltaDrawdown: evaluated.deltaDrawdown,
+                rai: evaluated.rai
+              });
+              usersForConvictionRefresh.add(signal.user_id);
+              outcomesEvaluated += 1;
+            } catch (error) {
+              logger.warn?.(`[horsaiDaily] failed outcome ${signal.id}`, error?.message || error);
+            }
+          }
+        } catch (error) {
+          logger.warn?.('[horsaiDaily] outcome evaluation stage failed', error?.message || error);
+        }
+
+        let convictionUpdated = 0;
+        for (const userId of usersForConvictionRefresh) {
+          try {
+            await horsaiEngine.refreshConvictionPolicy({ userId });
+            convictionUpdated += 1;
+          } catch (error) {
+            logger.warn?.(`[horsaiDaily] conviction refresh failed ${userId}`, error?.message || error);
+          }
+        }
+
         return {
           date: runDate,
           regime: regime.regime,
@@ -317,7 +548,9 @@ const createHorsaiDailyService = ({ query, logger = console }) => {
           portfoliosScanned: portfolios.length,
           scored,
           generated,
-          skippedByCooldown
+          skippedByCooldown,
+          outcomesEvaluated,
+          convictionUpdated
         };
       }
     });

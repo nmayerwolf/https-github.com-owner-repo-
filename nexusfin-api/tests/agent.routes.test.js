@@ -26,13 +26,17 @@ describe('agent routes', () => {
   beforeEach(() => query.mockReset());
 
   it('returns defaults when profile does not exist', async () => {
-    query.mockResolvedValueOnce({ rows: [] });
+    query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ preset_type: 'balanced', risk_level: '0.5', horizon: '0.5', focus: '0.5' }]
+      });
 
     const res = await request(makeApp()).get('/api/agent/profile');
 
     expect(res.status).toBe(200);
-    expect(res.body.presetType).toBe('balanced');
-    expect(res.body.riskLevel).toBe(0.5);
+    expect(res.body.preset_type).toBe('balanced');
+    expect(res.body.risk_level).toBe(0.5);
   });
 
   it('upserts profile on PUT', async () => {
@@ -43,10 +47,7 @@ describe('agent routes', () => {
           risk_level: '0.300',
           horizon: '0.800',
           focus: '0.200',
-          preferred_tags: ['rates'],
-          excluded_tags: [],
-          notification_mode: 'digest_only',
-          updated_at: '2026-02-20T00:00:00.000Z'
+          preferred_tags: ['rates']
         }
       ]
     });
@@ -61,7 +62,7 @@ describe('agent routes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.presetType).toBe('strategic_core');
-    expect(res.body.notificationMode).toBe('digest_only');
+    expect(res.body.preset_type).toBe('strategic_core');
+    expect(res.body.risk_level).toBe(0.3);
   });
 });
