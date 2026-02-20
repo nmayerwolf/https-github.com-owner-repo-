@@ -1,6 +1,6 @@
 const express = require('express');
 const { query } = require('../config/db');
-const { badRequest, forbidden, notFound } = require('../utils/errors');
+const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
 const { normalizeEmail } = require('../utils/validate');
 
 const router = express.Router();
@@ -18,7 +18,7 @@ const toPortfolioId = (value) => {
 
 const toRole = (value) => {
   const role = String(value || 'viewer').trim().toLowerCase();
-  if (!ROLE_VALUES.has(role)) throw badRequest('role inválido', 'VALIDATION_ERROR');
+  if (!ROLE_VALUES.has(role)) throw badRequest('role inválido', 'INVALID_ENUM');
   if (role === 'owner') throw badRequest('owner solo puede ser el creador del portfolio', 'VALIDATION_ERROR');
   return role;
 };
@@ -89,7 +89,13 @@ router.post('/', async (req, res, next) => {
     );
 
     if (Number(count.rows[0]?.total || 0) >= MAX_PORTFOLIOS) {
-      return res.status(422).json({ error: { code: 'PORTFOLIO_LIMIT_REACHED', message: `Máximo ${MAX_PORTFOLIOS} portfolios por usuario` } });
+      return res.status(422).json({
+        error: {
+          code: 'PORTFOLIO_LIMIT_REACHED',
+          message: `Máximo ${MAX_PORTFOLIOS} portfolios por usuario`,
+          details: { limit: MAX_PORTFOLIOS, attempted: Number(count.rows[0]?.total || 0) + 1 }
+        }
+      });
     }
 
     const out = await query(
@@ -185,7 +191,23 @@ router.put('/:id/holdings', async (req, res, next) => {
     const holdings = Array.isArray(req.body?.holdings) ? req.body.holdings : null;
     if (!holdings) throw badRequest('holdings debe ser un array', 'VALIDATION_ERROR');
     if (holdings.length > MAX_HOLDINGS) {
-      return res.status(422).json({ error: { code: 'HOLDING_LIMIT_REACHED', message: `Máximo ${MAX_HOLDINGS} holdings por portfolio` } });
+      return res.status(422).json({
+        error: {
+          code: 'HOLDING_LIMIT_REACHED',
+          message: `Máximo ${MAX_HOLDINGS} holdings por portfolio`,
+          details: { limit: MAX_HOLDINGS, attempted: holdings.length }
+        }
+      });
+    }
+
+    const seen = new Set();
+    for (const item of holdings) {
+      const symbol = String(item?.symbol || '').trim().toUpperCase();
+      if (!symbol) continue;
+      if (seen.has(symbol)) {
+        throw conflict(`Holding duplicado para ${symbol}`, 'DUPLICATE_HOLDING', { symbol });
+      }
+      seen.add(symbol);
     }
 
     await query('UPDATE positions SET deleted_at = NOW() WHERE portfolio_id = $1 AND sell_date IS NULL AND deleted_at IS NULL', [portfolioId]);
@@ -257,13 +279,19 @@ router.post('/:id/accept', async (req, res, next) => {
     const inviteOut = await query(
       `SELECT id, portfolio_id, invited_user_id, invited_email, role, status
        FROM portfolio_invitations
-       WHERE id = $1 AND portfolio_id = $2 AND status = 'pending'
+       WHERE id = $1 AND portfolio_id = $2
        LIMIT 1`,
       [inviteId, portfolioId]
     );
 
-    if (!inviteOut.rows.length) throw notFound('Invitación no encontrada');
+    if (!inviteOut.rows.length) throw notFound('Invitación no encontrada', 'INVITE_NOT_FOUND');
     const invite = inviteOut.rows[0];
+    if (String(invite.status) === 'accepted') {
+      throw conflict('Invitación ya aceptada', 'INVITE_ALREADY_ACCEPTED');
+    }
+    if (String(invite.status) !== 'pending') {
+      throw conflict('Invitación no está pendiente', 'INVITE_INVALID_STATUS', { status: invite.status });
+    }
 
     if (invite.invited_user_id && invite.invited_user_id !== req.user.id) {
       throw forbidden('Invitación pertenece a otro usuario', 'FORBIDDEN_INVITATION');
