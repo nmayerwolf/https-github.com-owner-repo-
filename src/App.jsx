@@ -570,7 +570,7 @@ const App = () => {
       <Navigation />
       <main className="container">
         <Routes>
-          <Route path="/" element={<Navigate to="/alerts" replace />} />
+          <Route path="/" element={<Navigate to="/news" replace />} />
           <Route
             path="/markets"
             element={
@@ -579,7 +579,7 @@ const App = () => {
                   <Markets />
                 </RouteBoundary>
               ) : (
-                <Navigate to="/alerts" replace />
+                <Navigate to="/news" replace />
               )
             }
           />
@@ -591,22 +591,23 @@ const App = () => {
                   <AssetDetail />
                 </RouteBoundary>
               ) : (
-                <Navigate to="/alerts" replace />
+                <Navigate to="/news" replace />
               )
             }
           />
           <Route
-            path="/alerts"
+            path="/ideas"
             element={
-              <RouteBoundary moduleName="Agente IA">
+              <RouteBoundary moduleName="Ideas">
                 <Alerts />
               </RouteBoundary>
             }
           />
+          <Route path="/alerts" element={<Navigate to="/ideas" replace />} />
           <Route
             path="/portfolio"
             element={
-              <RouteBoundary moduleName="Cartera">
+              <RouteBoundary moduleName="Portfolio">
                 <Portfolio />
               </RouteBoundary>
             }
@@ -614,7 +615,7 @@ const App = () => {
           <Route
             path="/news"
             element={
-              <RouteBoundary moduleName="Noticias">
+              <RouteBoundary moduleName="News">
                 <News />
               </RouteBoundary>
             }
@@ -638,12 +639,12 @@ const App = () => {
           <Route
             path="/settings"
             element={
-              <RouteBoundary moduleName="Configuración">
+              <RouteBoundary moduleName="Your AI Agent">
                 <Settings />
               </RouteBoundary>
             }
           />
-          <Route path="*" element={<Navigate to="/alerts" replace />} />
+          <Route path="*" element={<Navigate to="/news" replace />} />
         </Routes>
       </main>
     </div>

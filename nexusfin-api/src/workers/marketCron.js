@@ -51,43 +51,19 @@ const toMetric = (out, key) => {
 };
 
 const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
-  const inUsHours = () => isUsMarketHoursEt(clock());
-  const inWeekday = () => isWeekdayEt(clock());
+  const runIfRequestedDate = () => true;
+  void clock;
   return [
-    {
-      name: 'market-us',
-      schedule: `*/${Math.max(1, config.cronMarketIntervalMinutes)} * * * *`,
-      shouldRun: inUsHours,
-      run: runners.us || (async () => ({ scanned: 0, generated: 0, market: 'us' }))
-    },
-    {
-      name: 'market-crypto',
-      schedule: `*/${Math.max(1, config.cronCryptoIntervalMinutes)} * * * *`,
-      shouldRun: () => true,
-      run: runners.crypto || (async () => ({ scanned: 0, generated: 0, market: 'crypto' }))
-    },
-    {
-      name: 'market-forex',
-      schedule: `*/${Math.max(1, config.cronForexIntervalMinutes)} * * * *`,
-      shouldRun: inWeekday,
-      run: runners.forex || (async () => ({ scanned: 0, generated: 0, market: 'forex' }))
-    },
-    {
-      name: 'market-commodity',
-      schedule: `*/${Math.max(1, config.cronCommodityIntervalMinutes)} * * * *`,
-      shouldRun: inUsHours,
-      run: runners.commodity || (async () => ({ scanned: 0, generated: 0, market: 'commodity' }))
-    },
     {
       name: 'macro-daily',
       schedule: String(config.cronMacroDailySchedule || '0 8 * * *'),
-      shouldRun: () => true,
+      shouldRun: runIfRequestedDate,
       run: runners.macroDaily || (async () => ({ generated: 0 }))
     },
     {
       name: 'portfolio-daily',
       schedule: String(config.cronPortfolioDailySchedule || '15 8 * * *'),
-      shouldRun: () => true,
+      shouldRun: runIfRequestedDate,
       run: runners.portfolioDaily || (async () => ({ generated: 0 }))
     }
   ];

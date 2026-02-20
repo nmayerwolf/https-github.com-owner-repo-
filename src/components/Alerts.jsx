@@ -567,7 +567,7 @@ const Alerts = () => {
   const renderLive = () => (
     <>
       <section className="card">
-        <h2 style={{ marginBottom: 8 }}>Agente IA</h2>
+        <h2 style={{ marginBottom: 8 }}>Ideas</h2>
         <div className="muted" style={{ marginBottom: 8 }}>Consultá el panorama de mercado y definí tu estrategia.</div>
         <div className="chat-area">
           {!chatMessages.length ? (

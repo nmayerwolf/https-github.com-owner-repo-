@@ -10,7 +10,7 @@ describe('market cron scaffold', () => {
     jest.clearAllMocks();
   });
 
-  test('buildTasks uses configured intervals', () => {
+  test('buildTasks uses daily batch schedules only', () => {
     const tasks = buildTasks({
       cronMarketIntervalMinutes: 7,
       cronCryptoIntervalMinutes: 11,
@@ -20,7 +20,8 @@ describe('market cron scaffold', () => {
       cronPortfolioDailySchedule: '15 8 * * *'
     });
 
-    expect(tasks.map((t) => t.schedule)).toEqual(['*/7 * * * *', '*/11 * * * *', '*/13 * * * *', '*/17 * * * *', '0 8 * * *', '15 8 * * *']);
+    expect(tasks.map((t) => t.schedule)).toEqual(['0 8 * * *', '15 8 * * *']);
+    expect(tasks.map((t) => t.name)).toEqual(['macro-daily', 'portfolio-daily']);
   });
 
   test('market hour helpers evaluate ET windows', () => {

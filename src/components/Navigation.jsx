@@ -1,48 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { MARKET_VISIBLE } from '../config/features';
 
 const links = [
   {
-    to: '/alerts',
-    label: 'Agente IA',
-    special: true,
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
-        <path d="M12 3v18" />
-      </svg>
-    )
-  },
-  ...(MARKET_VISIBLE
-    ? [
-        {
-          to: '/markets',
-          label: 'Mercados',
-          icon: (
-            <svg viewBox="0 0 24 24">
-              <path d="M4 18V6" />
-              <path d="M10 18v-8" />
-              <path d="M16 18V9" />
-              <path d="M22 18v-5" />
-            </svg>
-          )
-        }
-      ]
-    : []),
-  {
-    to: '/portfolio',
-    label: 'Cartera',
-    icon: (
-      <svg viewBox="0 0 24 24">
-        <rect x="3" y="4" width="18" height="14" rx="2" />
-        <path d="M8 20h8" />
-      </svg>
-    )
-  },
-  {
     to: '/news',
-    label: 'Noticias',
+    label: 'News',
     icon: (
       <svg viewBox="0 0 24 24">
         <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -53,8 +15,29 @@ const links = [
     )
   },
   {
+    to: '/ideas',
+    label: 'Ideas',
+    special: true,
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+        <path d="M12 3v18" />
+      </svg>
+    )
+  },
+  {
+    to: '/portfolio',
+    label: 'Portfolio',
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="14" rx="2" />
+        <path d="M8 20h8" />
+      </svg>
+    )
+  },
+  {
     to: '/settings',
-    label: 'Ajustes',
+    label: 'Your AI Agent',
     icon: (
       <svg viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="3" />
