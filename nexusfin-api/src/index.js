@@ -20,6 +20,7 @@ const { createMacroRadar } = require('./services/macroRadar');
 const { createPortfolioAdvisor } = require('./services/portfolioAdvisor');
 const { createMvpDailyPipeline } = require('./services/mvpDailyPipeline');
 const { createPortfolioSnapshotsService } = require('./services/portfolioSnapshots');
+const { createNotificationPolicyService } = require('./services/notificationPolicy');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -453,10 +454,12 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
   const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
   const portfolioSnapshots = createPortfolioSnapshotsService({ query, logger: console });
+  const notificationPolicy = createNotificationPolicyService({ query, pushNotifier, logger: console });
   app.locals.macroRadar = macroRadar;
   app.locals.portfolioAdvisor = portfolioAdvisor;
   app.locals.mvpDailyPipeline = mvpDailyPipeline;
   app.locals.portfolioSnapshots = portfolioSnapshots;
+  app.locals.notificationPolicy = notificationPolicy;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
@@ -482,9 +485,11 @@ const startHttpServer = ({ port = env.port } = {}) => {
     commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false }),
     macroDaily: async () => {
       const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
+      const notifyOut = await notificationPolicy.runDaily({ date: mvpOut?.date });
       return {
-        generated: Number(macroOut?.generated || 0) + Number(mvpOut?.generated || 0),
-        mvp: mvpOut
+        generated: Number(macroOut?.generated || 0) + Number(mvpOut?.generated || 0) + Number(notifyOut?.sent || 0),
+        mvp: mvpOut,
+        notifications: notifyOut
       };
     },
     portfolioDaily: async () => {
