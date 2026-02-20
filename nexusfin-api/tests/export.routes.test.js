@@ -30,20 +30,20 @@ describe('export routes', () => {
     query.mockReset();
   });
 
-  it('returns 422 for unsupported csv format', async () => {
+  it('returns 400 for unsupported csv format', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/export/portfolio?format=pdf');
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('returns 422 for invalid csv filter', async () => {
+  it('returns 400 for invalid csv filter', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/export/portfolio?format=csv&filter=bad');
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('exports csv with BOM and escaped fields', async () => {
@@ -75,12 +75,12 @@ describe('export routes', () => {
     expect(query).toHaveBeenCalledWith(expect.stringContaining('AND sell_date IS NOT NULL'), ['u1']);
   });
 
-  it('returns 422 for unsupported pdf format', async () => {
+  it('returns 400 for unsupported pdf format', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/export/alert/a1?format=txt');
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns 404 when alert does not exist', async () => {
@@ -90,7 +90,7 @@ describe('export routes', () => {
     const res = await request(app).get('/api/export/alert/a1?format=pdf');
 
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('ALERT_NOT_FOUND');
+    expect(res.body.error.code).toBe('ALERT_NOT_FOUND');
   });
 
   it('exports alert report as PDF', async () => {

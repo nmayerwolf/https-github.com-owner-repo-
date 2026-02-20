@@ -27,6 +27,7 @@ const env = {
   csrfSecret: process.env.CSRF_SECRET || process.env.JWT_SECRET,
   finnhubKey: process.env.FINNHUB_KEY || '',
   alphaVantageKey: process.env.ALPHA_VANTAGE_KEY || '',
+  twelveDataKey: process.env.TWELVE_DATA_KEY || '',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   nodeEnv: process.env.NODE_ENV || 'development',
   cookieDomain: process.env.COOKIE_DOMAIN || '',
@@ -56,6 +57,8 @@ const env = {
   aiAgentRejectionCooldownHours: asPositiveInt(process.env.AI_AGENT_REJECTION_COOLDOWN_HOURS, 24),
   aiAgentTimeoutMs: asPositiveInt(process.env.AI_AGENT_TIMEOUT_MS, 10000),
   wsPriceIntervalSeconds: asPositiveInt(process.env.WS_PRICE_INTERVAL, 20),
+  realtimeEnabled: asBool(process.env.REALTIME_ENABLED, true),
+  marketStrictRealtime: asBool(process.env.MARKET_STRICT_REALTIME, String(process.env.NODE_ENV || '').toLowerCase() === 'production'),
 
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || '',

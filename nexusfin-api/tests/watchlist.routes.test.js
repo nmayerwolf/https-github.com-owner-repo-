@@ -29,8 +29,8 @@ describe('watchlist routes', () => {
     query.mockReset();
   });
 
-  it('rejects add symbol when user reached 50 symbols', async () => {
-    query.mockResolvedValueOnce({ rows: [{ total: 50 }] });
+  it('rejects add symbol when user reached 15 symbols', async () => {
+    query.mockResolvedValueOnce({ rows: [{ total: 15 }] });
 
     const app = makeApp();
     const res = await request(app).post('/api/watchlist').send({
@@ -41,7 +41,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('LIMIT_REACHED');
+    expect(res.body.error.code).toBe('LIMIT_REACHED');
   });
 
   it('normalizes symbol to uppercase before insert', async () => {
@@ -65,6 +65,44 @@ describe('watchlist routes', () => {
     );
   });
 
+  it('accepts symbols with underscore and caret for broad market coverage', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ symbol: 'XAU_USD', name: 'Gold Spot', type: 'forex', category: 'metal', added_at: '2026-02-19' }] });
+
+    const app = makeApp();
+    const xau = await request(app).post('/api/watchlist').send({
+      symbol: 'xau_usd',
+      name: 'Gold Spot',
+      type: 'forex',
+      category: 'metal'
+    });
+    expect(xau.status).toBe(201);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('INSERT INTO watchlist_items'),
+      ['u1', 'XAU_USD', 'Gold Spot', 'forex', 'metal']
+    );
+
+    query.mockReset();
+    query
+      .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ symbol: '^MERV', name: 'S&P Merval', type: 'stock', category: 'equity', added_at: '2026-02-19' }] });
+
+    const merv = await request(app).post('/api/watchlist').send({
+      symbol: '^merv',
+      name: 'S&P Merval',
+      type: 'stock',
+      category: 'equity'
+    });
+    expect(merv.status).toBe(201);
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('INSERT INTO watchlist_items'),
+      ['u1', '^MERV', 'S&P Merval', 'stock', 'equity']
+    );
+  });
+
   it('rejects invalid symbol format', async () => {
     const app = makeApp();
     const res = await request(app).post('/api/watchlist').send({
@@ -74,8 +112,8 @@ describe('watchlist routes', () => {
       category: 'equity'
     });
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -93,7 +131,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('ALREADY_EXISTS');
+    expect(res.body.error.code).toBe('ALREADY_EXISTS');
   });
 
   it('normalizes symbol to uppercase on delete', async () => {

@@ -14,8 +14,10 @@ import LoadingScreen from './components/common/LoadingScreen';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import AssetDetail from './components/AssetDetail';
 import AuthScreen from './components/AuthScreen';
+import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
+import { MARKET_VISIBLE } from './config/features';
 
 const MIGRATION_DISMISSED_KEY = 'horsai_migration_prompt_dismissed_v1';
 const LEGACY_KEYS = {
@@ -107,15 +109,6 @@ const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushErr
     </section>
   </div>
 );
-
-const WS_STATUS_LABEL = {
-  connected: 'tiempo real activo',
-  connecting: 'conectando tiempo real',
-  reconnecting: 'reconectando tiempo real',
-  disconnected: 'tiempo real desconectado',
-  error: 'error de tiempo real',
-  auth_error: 'sesión WS expirada'
-};
 
 const App = () => {
   const navigate = useNavigate();
@@ -429,15 +422,6 @@ const App = () => {
   const lastUpdatedLabel = state.lastUpdated
     ? new Date(state.lastUpdated).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
     : 'sin datos';
-  const wsLabel = WS_STATUS_LABEL[state.wsStatus] || state.wsStatus;
-  const wsTone =
-    state.wsStatus === 'connected'
-      ? { background: '#00E08E22', color: '#00E08E' }
-      : state.wsStatus === 'connecting' || state.wsStatus === 'reconnecting'
-        ? { background: '#8CC8FF22', color: '#8CC8FF' }
-        : state.wsStatus === 'auth_error'
-          ? { background: '#FF475722', color: '#FF4757' }
-          : { background: '#FBBF2422', color: '#FBBF24' };
   const backendLastOkLabel = backendLastOkAt
     ? new Date(backendLastOkAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : null;
@@ -461,7 +445,10 @@ const App = () => {
 
       <header className="header">
         <div className="top-header card">
-          <div>
+          <div className="brand-lockup" aria-label="Horsai">
+            <div className="brand-mark-wrap">
+              <HorsaiHorseIcon className="brand-mark" />
+            </div>
             <h1 className="brand-title">Horsai</h1>
           </div>
           <div className="header-actions">
@@ -555,9 +542,6 @@ const App = () => {
         </div>
 
         <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-          <span className="badge ws-badge" style={wsTone}>
-            {wsLabel}
-          </span>
           <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
             Actualizado: {lastUpdatedLabel}
           </span>
@@ -590,17 +574,25 @@ const App = () => {
           <Route
             path="/markets"
             element={
-              <RouteBoundary moduleName="Mercados">
-                <Markets />
-              </RouteBoundary>
+              MARKET_VISIBLE ? (
+                <RouteBoundary moduleName="Mercados">
+                  <Markets />
+                </RouteBoundary>
+              ) : (
+                <Navigate to="/alerts" replace />
+              )
             }
           />
           <Route
             path="/markets/:symbol"
             element={
-              <RouteBoundary moduleName="Detalle de activo">
-                <AssetDetail />
-              </RouteBoundary>
+              MARKET_VISIBLE ? (
+                <RouteBoundary moduleName="Detalle de activo">
+                  <AssetDetail />
+                </RouteBoundary>
+              ) : (
+                <Navigate to="/alerts" replace />
+              )
             }
           />
           <Route

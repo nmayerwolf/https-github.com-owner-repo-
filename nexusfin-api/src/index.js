@@ -12,6 +12,7 @@ const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const av = require('./services/alphavantage');
+const { resolveMarketQuote } = require('./services/marketDataProvider');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
 const { createPushNotifier } = require('./services/push');
@@ -28,6 +29,11 @@ const migrateRoutes = require('./routes/migrate');
 const alertsRoutes = require('./routes/alerts');
 const notificationsRoutes = require('./routes/notifications');
 const exportRoutes = require('./routes/export');
+const agentRoutes = require('./routes/agent');
+const newsDigestRoutes = require('./routes/newsDigest');
+const recoRoutes = require('./routes/reco');
+const crisisRoutes = require('./routes/crisis');
+const portfoliosRoutes = require('./routes/portfolios');
 const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
   'AV:GOLD': { fn: 'GOLD' },
@@ -80,7 +86,7 @@ app.locals.getCronStatus = () => ({
 app.locals.getMobileHealthStatus = () => ({
   ok: true,
   ws: {
-    enabled: true,
+    enabled: Boolean(env.realtimeEnabled),
     intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000)
   },
   push: {
@@ -88,7 +94,8 @@ app.locals.getMobileHealthStatus = () => ({
     expo: Boolean(env.expoAccessToken)
   },
   auth: {
-    appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+    googleConfigured: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
+    appleConfigured: false
   },
   ts: new Date().toISOString()
 });
@@ -96,7 +103,18 @@ app.locals.getMobileHealthStatus = () => ({
 app.get('/api/health', async (_req, res) => {
   try {
     await query('SELECT 1');
-    return res.json({ ok: true, db: 'up', ts: new Date().toISOString() });
+    const revision = String(
+      process.env.RAILWAY_GIT_COMMIT_SHA ||
+      process.env.SOURCE_VERSION ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      ''
+    ).trim();
+    return res.json({
+      ok: true,
+      db: 'up',
+      revision: revision || null,
+      ts: new Date().toISOString()
+    });
   } catch {
     return res.status(500).json({ ok: false, db: 'down' });
   }
@@ -112,10 +130,11 @@ app.get('/api/health/mobile', (_req, res) => {
   return res.json(
     status || {
       ok: true,
-      ws: { enabled: true, intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000) },
+      ws: { enabled: Boolean(env.realtimeEnabled), intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000) },
       push: { web: false, expo: Boolean(env.expoAccessToken) },
       auth: {
-        appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+        googleConfigured: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
+        appleConfigured: false
       },
       ts: new Date().toISOString()
     }
@@ -125,9 +144,9 @@ app.get('/api/health/mobile', (_req, res) => {
 app.get('/api/health/phase3', (_req, res) => {
   const wsIntervalMs = Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000);
   const check = {
-    mobileOAuth: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey),
+    mobileOAuth: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
     expoPush: Boolean(env.expoAccessToken),
-    realtimeWs: wsIntervalMs >= 5000,
+    realtimeWs: Boolean(env.realtimeEnabled) && wsIntervalMs >= 5000,
     marketUniverse: Array.isArray(MARKET_UNIVERSE) && MARKET_UNIVERSE.length >= 30,
     exportPdf: true,
     groupsSocial: true
@@ -140,6 +159,45 @@ app.get('/api/health/phase3', (_req, res) => {
     score,
     total,
     check,
+    ts: new Date().toISOString()
+  });
+});
+
+app.get('/api/health/market-data', async (_req, res) => {
+  const symbols = new Set((MARKET_UNIVERSE || []).map((item) => String(item?.symbol || '').toUpperCase()));
+  const probes = {};
+  for (const probeSymbol of ['AAPL', 'EUR_USD']) {
+    try {
+      const startedAt = Date.now();
+      const out = await resolveMarketQuote(probeSymbol);
+      probes[probeSymbol] = {
+        ok: true,
+        price: Number(out?.quote?.c) || null,
+        duration_ms: Date.now() - startedAt
+      };
+    } catch (error) {
+      probes[probeSymbol] = {
+        ok: false,
+        code: error?.code || 'UNKNOWN',
+        message: error?.message || 'failed',
+        details: error?.details || null
+      };
+    }
+  }
+
+  return res.json({
+    ok: true,
+    providerMode: 'finnhub-polling',
+    keyPresent: Boolean(String(env.finnhubKey || '').trim()),
+    keyLength: String(env.finnhubKey || '').trim().length,
+    universe: {
+      count: symbols.size,
+      hasMerval: symbols.has('^MERV'),
+      hasGoldSpot: symbols.has('XAU_USD')
+    },
+    ws: { chainResolverEnabled: true },
+    strictRealtime: Boolean(env.marketStrictRealtime),
+    probes,
     ts: new Date().toISOString()
   });
 });
@@ -178,6 +236,11 @@ app.use('/api/alerts', authRequired, requireCsrf, alertsRoutes);
 app.use('/api/notifications', authRequired, requireCsrf, notificationsRoutes);
 app.use('/api/export', authRequired, requireCsrf, exportRoutes);
 app.use('/api/migrate', authRequired, requireCsrf, migrateRoutes);
+app.use('/api/agent', authRequired, requireCsrf, agentRoutes);
+app.use('/api/news/digest', authRequired, requireCsrf, newsDigestRoutes);
+app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
+app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
+app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
 
 app.use(errorHandler);
 
@@ -197,36 +260,15 @@ const providerForRealtimeSymbol = (symbol) =>
     ? 'alphavantage'
     : 'finnhub';
 
-const isFinnhubUnavailableError = (error) =>
-  error?.code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
-  error?.code === 'FINNHUB_RATE_LIMIT' ||
-  error?.status === 403 ||
-  error?.status === 429;
-
-const fallbackPriceFromSymbol = (symbol) => {
-  const normalized = String(symbol || '').toUpperCase();
-  if (!normalized) return 100;
-
-  if (normalized.endsWith('USDT')) {
-    if (normalized.startsWith('BTC')) return 60000;
-    if (normalized.startsWith('ETH')) return 3000;
-    if (normalized.startsWith('SOL')) return 150;
-    return 100;
-  }
-
-  if (normalized.includes('_')) {
-    if (normalized === 'USD_JPY') return 150;
-    if (normalized === 'USD_CHF') return 0.9;
-    if (normalized === 'USD_CAD') return 1.35;
-    return 1.1;
-  }
-
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
-  return 40 + (hash % 460);
+const canonicalSymbolFromRealtime = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.startsWith('BINANCE:')) return upper.slice('BINANCE:'.length);
+  if (upper.startsWith('OANDA:')) return upper.slice('OANDA:'.length);
+  return upper;
 };
 
-const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
+const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc, quoteResolver = null }) => {
   const upper = String(symbol || '').trim().toUpperCase();
   if (!upper) return null;
 
@@ -238,29 +280,39 @@ const resolveRealtimeQuote = async (symbol, { finnhubSvc, alphaSvc }) => {
     return { symbol: upper, price, change: null, provider: 'alphavantage' };
   }
 
-  try {
-    const quote = await finnhubSvc.quote(upper);
-    const price = Number(quote?.c);
+  if (typeof quoteResolver === 'function') {
+    const canonical = canonicalSymbolFromRealtime(upper);
+    if (!canonical) return null;
+    const resolved = await quoteResolver(canonical);
+    const price = Number(resolved?.quote?.c);
     if (!Number.isFinite(price) || price <= 0) return null;
     return {
       symbol: upper,
       price,
-      change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
-      provider: 'finnhub'
-    };
-  } catch (error) {
-    if (!isFinnhubUnavailableError(error)) throw error;
-    return {
-      symbol: upper,
-      price: Number(fallbackPriceFromSymbol(upper).toFixed(6)),
-      change: 0,
-      provider: 'fallback',
-      fallback: true
+      change: Number.isFinite(Number(resolved?.quote?.dp)) ? Number(resolved.quote.dp) : null,
+      provider: String(resolved?.meta?.source || 'market-chain')
     };
   }
+
+  const quote = await finnhubSvc.quote(upper);
+  const price = Number(quote?.c);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  return {
+    symbol: upper,
+    price,
+    change: Number.isFinite(Number(quote?.dp)) ? Number(quote.dp) : null,
+    provider: 'finnhub'
+  };
 };
 
-const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = console, intervalSeconds = env.wsPriceIntervalSeconds }) => {
+const startWsPriceRuntime = ({
+  wsHub,
+  finnhubSvc,
+  alphaSvc = av,
+  quoteResolver = null,
+  logger = console,
+  intervalSeconds = env.wsPriceIntervalSeconds
+}) => {
   const intervalMs = Math.max(5000, Number(intervalSeconds || 20) * 1000);
   const avMinPollMs = 65 * 1000;
   const errorCooldownMs = 30 * 1000;
@@ -316,7 +368,7 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
         }
 
         try {
-          const out = await resolveRealtimeQuote(upper, { finnhubSvc, alphaSvc });
+          const out = await resolveRealtimeQuote(upper, { finnhubSvc, alphaSvc, quoteResolver });
           if (!out) continue;
           metrics.quotesResolved += 1;
 
@@ -383,9 +435,16 @@ const startWsPriceRuntime = ({ wsHub, finnhubSvc, alphaSvc = av, logger = consol
   };
 };
 
+const createNoopWsHub = () => ({
+  getSubscribedSymbols: () => [],
+  broadcastPrice: () => {},
+  broadcastAlert: () => {},
+  close: async () => {}
+});
+
 const startHttpServer = ({ port = env.port } = {}) => {
   const server = http.createServer(app);
-  const wsHub = startWSHub(server);
+  const wsHub = env.realtimeEnabled ? startWSHub(server) : createNoopWsHub();
   const pushNotifier = createPushNotifier({ query, logger: console });
   const aiAgent = createAiAgent();
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
@@ -488,12 +547,25 @@ const startHttpServer = ({ port = env.port } = {}) => {
   };
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console, logRun: logCronRun });
   app.locals.getCronStatus = cronRuntime.getStatus;
-  const wsPriceRuntime = startWsPriceRuntime({ wsHub, finnhubSvc: finnhub, logger: console });
+  const wsPriceRuntime = env.realtimeEnabled
+    ? startWsPriceRuntime({
+        wsHub,
+        finnhubSvc: finnhub,
+        alphaSvc: av,
+        quoteResolver: (symbol) => resolveMarketQuote(symbol, { strictRealtime: env.marketStrictRealtime }),
+        logger: console
+      })
+    : {
+        enabled: false,
+        intervalMs: 0,
+        stop: () => {},
+        getStatus: () => ({ enabled: false, intervalMs: 0, activeSymbols: [], metrics: {} })
+      };
   app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;
   app.locals.getMobileHealthStatus = () => ({
     ok: true,
     ws: {
-      enabled: true,
+      enabled: Boolean(env.realtimeEnabled),
       intervalMs: wsPriceRuntime.intervalMs,
       activeSymbols: wsHub.getSubscribedSymbols?.() || []
     },
@@ -502,15 +574,20 @@ const startHttpServer = ({ port = env.port } = {}) => {
       expo: Boolean(env.expoAccessToken)
     },
     auth: {
-      appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+      googleConfigured: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
+      appleConfigured: false
     },
     ts: new Date().toISOString()
   });
 
   server.listen(port, () => {
     console.log(`nexusfin-api listening on :${port}`);
-    console.log(`ws hub ready on :${port}/ws`);
-    console.log(`ws prices enabled (${wsPriceRuntime.intervalMs}ms)`);
+    if (env.realtimeEnabled) {
+      console.log(`ws hub ready on :${port}/ws`);
+      console.log(`ws prices enabled (${wsPriceRuntime.intervalMs}ms)`);
+    } else {
+      console.log('ws realtime disabled (REALTIME_ENABLED=false)');
+    }
     console.log(`cron ${cronRuntime.enabled ? 'enabled' : 'disabled'}`);
     console.log(`push ${pushNotifier.hasVapidConfig ? 'enabled' : 'disabled'}`);
   });

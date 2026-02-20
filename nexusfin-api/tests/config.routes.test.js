@@ -44,16 +44,16 @@ describe('config routes', () => {
     const app = makeApp();
     const res = await request(app).put('/api/config').send({ riskProfile: 'invalid' });
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('rejects invalid sectors payload on PUT', async () => {
     const app = makeApp();
     const res = await request(app).put('/api/config').send({ sectors: ['tech', 'unknown'] });
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('merges partial update on PUT', async () => {

@@ -48,7 +48,7 @@ describe('migrate routes', () => {
     const res = await request(app).post('/api/migrate').send({ positions: [], watchlist: [], config: { riskProfile: 'moderado' } });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('ALREADY_MIGRATED');
+    expect(res.body.error.code).toBe('ALREADY_MIGRATED');
     expect(client.query).toHaveBeenNthCalledWith(3, 'ROLLBACK');
   });
 

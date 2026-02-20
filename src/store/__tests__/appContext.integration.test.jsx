@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider, useApp } from '../AppContext';
+import { REALTIME_ENABLED } from '../../config/features';
 
 const makeCandles = (base = 100) => {
   const c = Array.from({ length: 90 }, (_, i) => base + i * 0.2);
@@ -169,12 +170,16 @@ describe('AppContext integration', () => {
     });
 
     await waitFor(() => {
-      expect(getLatest().state.wsStatus).toBe('auth_error');
-      expect(getLatest().state.uiErrors.some((e) => e.module === 'WebSocket')).toBe(true);
+      if (REALTIME_ENABLED) {
+        expect(getLatest().state.wsStatus).toBe('auth_error');
+        expect(getLatest().state.uiErrors.some((e) => e.module === 'WebSocket')).toBe(true);
+      } else {
+        expect(getLatest().state.wsStatus).toBe('disabled');
+      }
     });
   });
 
-  it('loads cached assets when realtime fetch fails for all symbols', async () => {
+  it('keeps watchlist assets visible as placeholders when realtime fetch fails for all symbols', async () => {
     const cachedAssets = [
       {
         symbol: 'CACHED',
@@ -202,8 +207,9 @@ describe('AppContext integration', () => {
     });
 
     await waitFor(() => {
-      expect(getLatest().state.assets.some((a) => a.symbol === 'CACHED')).toBe(true);
-      expect(getLatest().state.uiErrors.some((e) => e.module === 'Offline')).toBe(true);
+      expect(getLatest().state.assets.length).toBeGreaterThan(0);
+      expect(getLatest().state.assets.every((a) => a.marketMeta?.source === 'pending_live')).toBe(true);
+      expect(getLatest().state.uiErrors.some((e) => e.module === 'Mercados')).toBe(true);
     });
   });
 });

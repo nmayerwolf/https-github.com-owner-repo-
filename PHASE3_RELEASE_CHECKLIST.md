@@ -45,6 +45,7 @@ JWT_SECRET=<secret-64-chars-min>
 CSRF_SECRET=<csrf-secret>
 FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
+TWELVE_DATA_KEY=<key>
 FRONTEND_URL=https://<frontend-domain>
 NODE_ENV=production
 COOKIE_DOMAIN=

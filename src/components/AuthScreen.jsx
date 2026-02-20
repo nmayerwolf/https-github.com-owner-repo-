@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../store/AuthContext';
 import { getApiBaseUrl } from '../api/env';
+import HorsaiHorseIcon from './common/HorsaiHorseIcon';
 
 const API_BASE = getApiBaseUrl();
 
@@ -59,60 +60,84 @@ const AuthScreen = () => {
     }
   }, [completeOAuthWithToken]);
 
+  const tickerRows = [
+    { symbol: 'AAPL', price: '263.04', move: '-2.27%', tone: 'dn' },
+    { symbol: 'NVDA', price: '457.00', move: '+3.41%', tone: 'up' },
+    { symbol: 'BTC', price: '97,234', move: '+1.82%', tone: 'up' },
+    { symbol: 'ETH', price: '2,721', move: '-0.54%', tone: 'dn' },
+    { symbol: 'GOLD', price: '2,918', move: '+0.32%', tone: 'up' },
+    { symbol: 'S&P', price: '6,025', move: '+0.18%', tone: 'up' },
+    { symbol: 'EUR', price: '1.047', move: '-0.11%', tone: 'dn' }
+  ];
+
+  const openGoogle = () => {
+    setError('');
+    clearSessionNotice();
+    window.location.href = `${API_BASE}/auth/google`;
+  };
+
   return (
-    <div className="center-screen" style={{ padding: 12 }}>
-      <section className="card auth-card" style={{ width: 'min(420px, 100%)' }}>
+    <div className="auth-landing">
+      <div className="auth-glow-1" />
+      <div className="auth-glow-2" />
+      <div className="auth-grid-pattern" />
+
+      <section className="auth-container">
+        <div className="auth-horse-container">
+          <div className="auth-horse-glow" />
+          <HorsaiHorseIcon className="auth-horse-svg" />
+        </div>
+
         <div className="auth-brand">
-          <div className="auth-logo" aria-hidden="true">
-            H
-          </div>
-          <h1>Horsai</h1>
+          <h1 className="auth-logo-wordmark">Horsai</h1>
+          <p className="auth-tagline">
+            Tu inteligencia de mercado <span className="tagline-highlight">en tiempo real</span>
+          </p>
         </div>
-        <h2 style={{ marginTop: 8 }}>Iniciar sesión con Google</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Accedé con tu cuenta de Google para continuar.
-        </p>
 
-        {sessionNotice && <div className="card" style={{ marginTop: 10, borderColor: '#FBBF24AA' }}>{sessionNotice}</div>}
-
-        <div className="grid" style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            className="google-btn"
-            onClick={() => {
-              setError('');
-              clearSessionNotice();
-              window.location.href = `${API_BASE}/auth/google`;
-            }}
-            disabled={loading}
-          >
+        <div className="auth-login-card">
+          <button type="button" className="google-btn" onClick={openGoogle} disabled={loading}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.3-2 3.1l3.2 2.5c1.9-1.7 2.9-4.3 2.9-7.4 0-.7-.1-1.4-.2-2H12z" />
-              <path fill="#34A853" d="M12 22c2.7 0 4.9-.9 6.6-2.4l-3.2-2.5c-.9.6-2 .9-3.4.9-2.6 0-4.8-1.7-5.6-4.1l-3.3 2.6C4.8 19.8 8.1 22 12 22z" />
-              <path fill="#4A90E2" d="M6.4 13.9c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9L3.1 7.5A10 10 0 0 0 2 12c0 1.6.4 3.2 1.1 4.5l3.3-2.6z" />
-              <path fill="#FBBC05" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8C16.9 3 14.7 2 12 2 8.1 2 4.8 4.2 3.1 7.5l3.3 2.6c.8-2.4 3-4.2 5.6-4.2z" />
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
             </svg>
-            {loading ? 'Conectando...' : 'Iniciar sesión con Google'}
+            {loading ? 'Conectando...' : 'Continuar con Google'}
           </button>
-        </div>
 
-        {error && <div className="card" style={{ marginTop: 10, borderColor: '#FF4757AA' }}>{error}</div>}
-        {error && (
-          <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start' }}>
+          <div className="card-note">Usamos tu cuenta de Google para crear tu perfil de forma segura y rápida</div>
+          {sessionNotice ? <div className="auth-alert auth-alert-warn">{sessionNotice}</div> : null}
+          {error ? <div className="auth-alert auth-alert-error">{error}</div> : null}
+          {error ? (
             <button
               type="button"
-              onClick={() => {
-                setError('');
-                clearSessionNotice();
-                window.location.href = `${API_BASE}/auth/google`;
-              }}
+              className="auth-retry-btn"
+              onClick={openGoogle}
               disabled={loading}
             >
               Reintentar con Google
             </button>
-          </div>
-        )}
+          ) : null}
+        </div>
+
+        <footer className="auth-footer">
+          Al continuar, aceptás los <a href="#" onClick={(event) => event.preventDefault()}>Términos de servicio</a> y la{' '}
+          <a href="#" onClick={(event) => event.preventDefault()}>Política de privacidad</a>
+        </footer>
       </section>
+
+      <div className="auth-ticker">
+        <div className="auth-ticker-inner">
+          {[...tickerRows, ...tickerRows].map((item, idx) => (
+            <div key={`${item.symbol}-${idx}`} className="tk">
+              <span className="tk-s">{item.symbol}</span>
+              <span className="tk-p">{item.price}</span>
+              <span className={item.tone === 'up' ? 'tk-up' : 'tk-dn'}>{item.move}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };

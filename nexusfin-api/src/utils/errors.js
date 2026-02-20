@@ -7,7 +7,7 @@ class AppError extends Error {
   }
 }
 
-const badRequest = (message, code = 'VALIDATION_ERROR', details = null) => new AppError(422, code, message, details);
+const badRequest = (message, code = 'VALIDATION_ERROR', details = null) => new AppError(400, code, message, details);
 const unauthorized = (message = 'No autorizado', code = 'UNAUTHORIZED') => new AppError(401, code, message);
 const forbidden = (message = 'Operación no permitida', code = 'FORBIDDEN') => new AppError(403, code, message);
 const notFound = (message = 'No encontrado', code = 'NOT_FOUND') => new AppError(404, code, message);

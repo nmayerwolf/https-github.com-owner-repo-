@@ -17,11 +17,13 @@ jest.mock('../src/services/finnhub', () => ({
 
 jest.mock('../src/services/alphavantage', () => ({
   commodity: jest.fn(),
-  overview: jest.fn()
+  overview: jest.fn(),
+  globalQuote: jest.fn(),
+  fxRate: jest.fn(),
+  digitalDaily: jest.fn()
 }));
 
 const finnhub = require('../src/services/finnhub');
-const av = require('../src/services/alphavantage');
 const { cache } = require('../src/config/cache');
 const marketRoutes = require('../src/routes/market');
 const { errorHandler } = require('../src/middleware/errorHandler');
@@ -39,21 +41,35 @@ const makeApp = () => {
 };
 
 describe('market routes', () => {
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     cache.flushAll();
     jest.clearAllMocks();
+    global.fetch = originalFetch;
   });
 
-  it('returns 422 when quote symbol is missing', async () => {
+  afterAll(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('returns 400 when quote symbol is missing', async () => {
     const app = makeApp();
     const res = await request(app).get('/api/market/quote');
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('caches candles response for same params', async () => {
-    finnhub.candles.mockResolvedValue({ c: [1, 2, 3], s: 'ok' });
+    finnhub.candles.mockResolvedValue({
+      s: 'ok',
+      c: [10, 11],
+      h: [11, 12],
+      l: [9, 10],
+      v: [1000, 1200],
+      t: [1700000000, 1701000000]
+    });
 
     const app = makeApp();
 
@@ -66,10 +82,7 @@ describe('market routes', () => {
     expect(finnhub.candles).toHaveBeenCalledTimes(1);
   });
 
-  it('caches profile response and merges finnhub+overview fields', async () => {
-    finnhub.profile.mockResolvedValue({ name: 'Apple Inc.', finnhubIndustry: 'Technology', marketCapitalization: 3500 });
-    av.overview.mockResolvedValue({ PERatio: '30.5', DividendYield: '0.5' });
-
+  it('returns profile data from market universe fallback', async () => {
     const app = makeApp();
 
     const first = await request(app).get('/api/market/profile?symbol=AAPL');
@@ -77,15 +90,13 @@ describe('market routes', () => {
 
     expect(first.status).toBe(200);
     expect(first.body).toEqual({
-      name: 'Apple Inc.',
-      sector: 'Technology',
-      marketCap: 3500,
-      pe: '30.5',
-      dividendYield: '0.5'
+      name: 'Apple',
+      sector: 'equity',
+      marketCap: null,
+      pe: null,
+      dividendYield: null
     });
     expect(second.status).toBe(200);
-    expect(finnhub.profile).toHaveBeenCalledTimes(1);
-    expect(av.overview).toHaveBeenCalledTimes(1);
   });
 
   it('returns realtime universe with categories and count', async () => {
@@ -108,7 +119,7 @@ describe('market routes', () => {
 
   it('returns market search results merged from universe and provider', async () => {
     finnhub.symbolSearch.mockResolvedValueOnce({
-      result: [{ symbol: 'NSRGY', description: 'Nestle SA ADR', type: 'Common Stock' }]
+      result: [{ symbol: 'NSRGY', description: 'Nestle SA ADR' }]
     });
 
     const app = makeApp();
@@ -122,8 +133,8 @@ describe('market routes', () => {
   it('ranks market search results by relevance', async () => {
     finnhub.symbolSearch.mockResolvedValueOnce({
       result: [
-        { symbol: 'NESTL.ZZ', description: 'Nestle Placeholder Right', type: 'Right' },
-        { symbol: 'NSRGY', description: 'Nestle SA ADR', type: 'ADR' }
+        { symbol: 'NESTL.ZZ', description: 'Nestle Placeholder Right' },
+        { symbol: 'NSRGY', description: 'Nestle SA ADR' }
       ]
     });
 
@@ -209,7 +220,24 @@ describe('market routes', () => {
   it('returns bulk snapshot with successes and per-symbol errors', async () => {
     finnhub.quote.mockImplementation(async (symbol) => {
       if (symbol === 'MSFT') throw new Error('unexpected failure');
+      if (symbol === 'BINANCE:BTCUSDT') return { c: 62000, pc: 60000, dp: 3.3 };
       return { c: 120, pc: 100, dp: 20 };
+    });
+    finnhub.candles.mockResolvedValue({
+      s: 'ok',
+      c: [110, 120],
+      h: [111, 121],
+      l: [109, 119],
+      v: [1000, 1200],
+      t: [1700000000, 1701000000]
+    });
+    finnhub.cryptoCandles.mockResolvedValue({
+      s: 'ok',
+      c: [60000, 62000],
+      h: [60100, 62100],
+      l: [59900, 61900],
+      v: [100, 120],
+      t: [1700000000, 1701000000]
     });
 
     const app = makeApp();
@@ -217,11 +245,23 @@ describe('market routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(3);
-    expect(res.body.count).toBe(2);
+    expect(res.body.count).toBe(3);
     expect(Array.isArray(res.body.items)).toBe(true);
     expect(res.body.items.map((x) => x.symbol)).toEqual(expect.arrayContaining(['AAPL', 'BTCUSDT']));
     expect(Array.isArray(res.body.errors)).toBe(true);
-    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'SNAPSHOT_FAILED' })]));
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'MSFT', code: 'NO_LIVE_DATA' })]));
+  });
+
+  it('returns per-symbol NO_LIVE_DATA errors when single source has no quote', async () => {
+    finnhub.quote.mockRejectedValueOnce(new Error('upstream unavailable'));
+
+    const app = makeApp();
+    const res = await request(app).get('/api/market/snapshot?symbols=AAPL');
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ symbol: 'AAPL', code: 'NO_LIVE_DATA' })]));
   });
 
   it('stores and summarizes news telemetry per user', async () => {

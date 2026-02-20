@@ -1,0 +1,246 @@
+const finnhub = require('./finnhub');
+
+const ErrorCodes = {
+  KEY_MISSING: 'KEY_MISSING',
+  PROVIDER_AUTH_FAILED: 'PROVIDER_AUTH_FAILED',
+  SYMBOL_UNSUPPORTED: 'SYMBOL_UNSUPPORTED',
+  RATE_LIMITED: 'RATE_LIMITED',
+  NO_LIVE_DATA: 'NO_LIVE_DATA',
+  PROVIDER_ERROR: 'PROVIDER_ERROR'
+};
+
+class MarketProviderError extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = 'MarketProviderError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+const toFinite = (value) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : null;
+};
+
+const mapInternalToFinnhub = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.startsWith('BINANCE:') || upper.startsWith('OANDA:')) return upper;
+  if (upper.endsWith('USDT')) return `BINANCE:${upper}`;
+  if (upper.includes('_')) return `OANDA:${upper}`;
+  return upper;
+};
+
+const mapFinnhubToInternal = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.startsWith('BINANCE:')) return upper.slice('BINANCE:'.length);
+  if (upper.startsWith('OANDA:')) return upper.slice('OANDA:'.length);
+  return upper;
+};
+
+const normalizeProviderError = (symbol, error) => {
+  if (error instanceof MarketProviderError) return error;
+
+  const upper = String(symbol || '').toUpperCase();
+  const code = String(error?.code || '').toUpperCase();
+  const status = Number(error?.status || 0);
+
+  if (code === 'FINNHUB_RATE_LIMIT' || status === 429) {
+    return new MarketProviderError(ErrorCodes.RATE_LIMITED, `Finnhub rate limit reached for ${upper}`, {
+      symbol: upper,
+      retryAfterMs: Number(error?.retryAfterMs || 0) || null
+    });
+  }
+
+  if (code === 'FINNHUB_ENDPOINT_FORBIDDEN' || status === 403) {
+    return new MarketProviderError(ErrorCodes.PROVIDER_AUTH_FAILED, `Finnhub auth/plan restriction for ${upper}`, {
+      symbol: upper,
+      retryAfterMs: Number(error?.retryAfterMs || 0) || null
+    });
+  }
+
+  if (status === 401) {
+    return new MarketProviderError(ErrorCodes.PROVIDER_AUTH_FAILED, `Finnhub auth failed for ${upper}`, {
+      symbol: upper
+    });
+  }
+
+  return new MarketProviderError(ErrorCodes.NO_LIVE_DATA, `No live quote available for ${upper}`, {
+    symbol: upper,
+    reason: code || 'LIVE_SOURCE_UNAVAILABLE'
+  });
+};
+
+const normalizeSearchCategory = (symbol = '', description = '') => {
+  const normalizedSymbol = String(symbol || '').toUpperCase();
+  const normalizedDescription = String(description || '').toLowerCase();
+  if (normalizedSymbol.endsWith('USDT') || normalizedSymbol.startsWith('BINANCE:')) return 'crypto';
+  if (normalizedSymbol.includes('_') || normalizedSymbol.startsWith('OANDA:')) return 'fx';
+  if (normalizedDescription.includes('etf')) return 'equity';
+  if (normalizedDescription.includes('bond') || normalizedDescription.includes('treasury')) return 'bond';
+  if (normalizedDescription.includes('future') || normalizedDescription.includes('commodity')) return 'commodity';
+  return 'equity';
+};
+
+const scoreSearchResult = (query, item) => {
+  const needle = String(query || '').trim().toLowerCase();
+  const symbol = String(item?.symbol || '').trim().toLowerCase();
+  const name = String(item?.name || '').trim().toLowerCase();
+
+  let score = 0;
+  if (symbol === needle) score += 140;
+  else if (symbol.startsWith(needle)) score += 95;
+  else if (symbol.includes(needle)) score += 60;
+
+  if (name === needle) score += 100;
+  else if (name.startsWith(needle)) score += 75;
+  else if (name.includes(needle)) score += 45;
+
+  if (symbol.includes('.')) score -= 2;
+  if (symbol.includes(':')) score -= 5;
+  return score;
+};
+
+const resolveMarketQuote = async (symbol) => {
+  const internal = mapFinnhubToInternal(symbol);
+  if (!internal) {
+    throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, 'Empty symbol', { reason: 'SYMBOL_REQUIRED' });
+  }
+
+  const quoteSymbol = mapInternalToFinnhub(internal);
+  if (!quoteSymbol) {
+    throw new MarketProviderError(ErrorCodes.SYMBOL_UNSUPPORTED, `Cannot map symbol: ${internal}`, { symbol: internal });
+  }
+
+  let out;
+  try {
+    out = await finnhub.quote(quoteSymbol);
+  } catch (error) {
+    throw normalizeProviderError(internal, error);
+  }
+
+  const price = toFinite(out?.c);
+  const previousClose = toFinite(out?.pc);
+  const percentChange = toFinite(out?.dp);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, `No live quote available for ${internal}`, {
+      symbol: internal,
+      reason: 'INVALID_PRICE'
+    });
+  }
+
+  return {
+    quote: {
+      c: price,
+      pc: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price,
+      dp: Number.isFinite(percentChange) ? percentChange : null,
+      h: toFinite(out?.h),
+      l: toFinite(out?.l),
+      o: toFinite(out?.o),
+      t: toFinite(out?.t)
+    },
+    meta: {
+      source: 'finnhub',
+      asOf: new Date().toISOString(),
+      symbol: internal,
+      stale: false,
+      fallbackLevel: 0
+    }
+  };
+};
+
+const toCandleResolution = (resolution = 'D') => {
+  const raw = String(resolution || 'D').toUpperCase();
+  if (['1', '5', '15', '30', '60', 'D', 'W', 'M'].includes(raw)) return raw;
+  const num = Number(raw);
+  if (Number.isFinite(num) && num > 0) {
+    if (num >= 60 && num % 60 === 0) return String(Math.min(60, num));
+    return String(Math.min(30, num));
+  }
+  return 'D';
+};
+
+const normalizeCandles = (payload) => {
+  const c = Array.isArray(payload?.c) ? payload.c : [];
+  const h = Array.isArray(payload?.h) ? payload.h : [];
+  const l = Array.isArray(payload?.l) ? payload.l : [];
+  const v = Array.isArray(payload?.v) ? payload.v : [];
+  const t = Array.isArray(payload?.t) ? payload.t : [];
+  return {
+    s: String(payload?.s || (c.length ? 'ok' : 'no_data')),
+    c: c.map((x) => toFinite(x)).filter((x) => Number.isFinite(x)),
+    h: h.map((x) => toFinite(x)).filter((x) => Number.isFinite(x)),
+    l: l.map((x) => toFinite(x)).filter((x) => Number.isFinite(x)),
+    v: v.map((x) => toFinite(x) ?? 0),
+    t: t.map((x) => toFinite(x)).filter((x) => Number.isFinite(x))
+  };
+};
+
+const resolveMarketCandles = async ({ symbol, resolution = 'D', from, to, outputsize = 90 }) => {
+  const internal = mapFinnhubToInternal(symbol);
+  if (!internal) throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, 'Empty symbol', { reason: 'SYMBOL_REQUIRED' });
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const toTs = Number.isFinite(Number(to)) ? Number(to) : nowSec;
+  const fallbackRangeSec = Math.max(1, Number(outputsize || 90)) * 24 * 60 * 60;
+  const fromTs = Number.isFinite(Number(from)) ? Number(from) : Math.max(0, toTs - fallbackRangeSec);
+
+  const candleResolution = toCandleResolution(resolution);
+  try {
+    if (internal.endsWith('USDT')) {
+      return normalizeCandles(await finnhub.cryptoCandles(internal, candleResolution, fromTs, toTs));
+    }
+    if (internal.includes('_')) {
+      const [base, quote] = internal.split('_');
+      return normalizeCandles(await finnhub.forexCandles(base, quote, candleResolution, fromTs, toTs));
+    }
+    return normalizeCandles(await finnhub.candles(internal, candleResolution, fromTs, toTs));
+  } catch (error) {
+    throw normalizeProviderError(internal, error);
+  }
+};
+
+const resolveMarketSearch = async (query) => {
+  const q = String(query || '').trim();
+  if (!q) return [];
+
+  let out;
+  try {
+    out = await finnhub.symbolSearch(q);
+  } catch {
+    return [];
+  }
+
+  const rows = Array.isArray(out?.result) ? out.result : [];
+
+  return rows
+    .map((item) => {
+      const providerSymbol = String(item?.symbol || '').trim().toUpperCase();
+      const internalSymbol = mapFinnhubToInternal(providerSymbol);
+      const name = String(item?.description || item?.displaySymbol || '').trim();
+      if (!internalSymbol || !name) return null;
+      return {
+        symbol: internalSymbol,
+        name,
+        category: normalizeSearchCategory(providerSymbol, name),
+        source: 'finnhub',
+        providerSymbol
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
+    .slice(0, 20);
+};
+
+module.exports = {
+  resolveMarketQuote,
+  resolveMarketSearch,
+  resolveMarketCandles,
+  mapInternalToFinnhub,
+  mapFinnhubToInternal,
+  ErrorCodes,
+  MarketProviderError
+};

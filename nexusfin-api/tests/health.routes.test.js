@@ -8,6 +8,7 @@ jest.mock('../src/config/db', () => ({
 }));
 
 const { query } = require('../src/config/db');
+const { env } = require('../src/config/env');
 const { app } = require('../src/index');
 
 describe('health routes', () => {
@@ -31,11 +32,13 @@ describe('health routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.ws.enabled).toBe(true);
+    expect(res.body.ws.enabled).toBe(Boolean(env.realtimeEnabled));
     expect(typeof res.body.ws.intervalMs).toBe('number');
     expect(typeof res.body.push.expo).toBe('boolean');
     expect(typeof res.body.push.web).toBe('boolean');
+    expect(typeof res.body.auth.googleConfigured).toBe('boolean');
     expect(typeof res.body.auth.appleConfigured).toBe('boolean');
+    expect(res.body.auth.appleConfigured).toBe(false);
     expect(typeof res.body.ts).toBe('string');
   });
 

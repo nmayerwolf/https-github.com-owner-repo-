@@ -12,6 +12,7 @@ const sampleCandles = (base = 180) => {
 
 test('login and add position in portfolio', async ({ page }) => {
   let loggedIn = true;
+  const portfolios = [{ id: 'pf-1', name: 'Core', isOwner: true, collaboratorCount: 0, completedAt: null }];
   const positions = [];
 
   await page.addInitScript(() => {
@@ -103,11 +104,26 @@ test('login and add position in portfolio', async ({ page }) => {
       return json(200, { symbols: [{ symbol: 'AAPL', name: 'Apple', category: 'equity' }] });
     }
 
-    if (isPath('/api/portfolio') && method === 'GET') return json(200, { positions });
+    if (isPath('/api/portfolio') && method === 'GET') return json(200, { positions, portfolios, activePortfolioId: portfolios[0]?.id || '' });
+    if (isPath('/api/portfolio/portfolios') && method === 'GET') return json(200, { portfolios });
+    if (isPath('/api/portfolio/invitations/received') && method === 'GET') return json(200, { invitations: [] });
+    if (isPath('/api/portfolio/portfolios') && method === 'POST') {
+      const body = req.postDataJSON();
+      const createdPortfolio = {
+        id: `pf-${portfolios.length + 1}`,
+        name: String(body?.name || `Portfolio ${portfolios.length + 1}`),
+        isOwner: true,
+        collaboratorCount: 0,
+        completedAt: null
+      };
+      portfolios.push(createdPortfolio);
+      return json(201, createdPortfolio);
+    }
     if (isPath('/api/portfolio') && method === 'POST') {
       const body = req.postDataJSON();
       const created = {
         id: `p-${positions.length + 1}`,
+        portfolioId: body.portfolioId || portfolios[0].id,
         symbol: String(body.symbol || '').toUpperCase(),
         name: body.name,
         category: body.category,
@@ -180,13 +196,21 @@ test('login and add position in portfolio', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Horsai' })).toBeVisible({ timeout: 45_000 });
   const navItems = page.locator('nav.bottom-nav a.nav-item');
-  await expect(navItems).toHaveCount(5);
+  await expect(navItems).toHaveCount(4);
   await expect(page.locator('nav.bottom-nav')).toContainText('Agente IA');
-  await expect(page.locator('nav.bottom-nav')).toContainText('Mercados');
+  await expect(page.locator('nav.bottom-nav')).not.toContainText('Mercados');
   await expect(page.locator('nav.bottom-nav')).toContainText('Cartera');
   await expect(page.locator('nav.bottom-nav')).toContainText('Noticias');
   await expect(page.locator('nav.bottom-nav')).toContainText('Ajustes');
   await expect(page.locator('a.nav-item.active[href="/alerts"]')).toBeVisible();
+
+  await page.goto('/markets');
+  await expect(page).toHaveURL(/\/alerts$/);
+  await expect(page.getByRole('heading', { name: 'Agente IA', exact: true })).toBeVisible();
+
+  await page.goto('/markets/AAPL');
+  await expect(page).toHaveURL(/\/alerts$/);
+  await expect(page.getByRole('heading', { name: 'Agente IA', exact: true })).toBeVisible();
 
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
@@ -194,18 +218,24 @@ test('login and add position in portfolio', async ({ page }) => {
     await expect(migrationHeading).toBeHidden();
   }
   await page.locator('a.nav-item[href="/news"]').click();
-  await expect(page.getByRole('heading', { name: 'Noticias' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Noticias', exact: true })).toBeVisible();
   await expect(page.getByText('AAPL announces product launch')).toBeVisible();
 
   await page.locator('a.nav-item[href="/portfolio"]').click();
+  const addPortfolioBtn = page.getByRole('button', { name: /\+ Agregar portfolio/i });
+  if (await addPortfolioBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    page.once('dialog', async (dialog) => {
+      await dialog.accept('Core');
+    });
+    await addPortfolioBtn.click();
+  }
   await expect(page.getByRole('heading', { name: 'Nueva posición' })).toBeVisible();
 
-  await page.getByLabel('Símbolo').fill('AAPL');
-  await page.getByLabel('Nombre').fill('Apple Inc.');
+  await page.getByLabel('Activo').fill('AAPL');
   await page.getByLabel('Fecha compra').fill('2026-02-15');
   await page.getByLabel('Precio compra').fill('190');
-  await page.getByLabel('Cantidad').fill('2');
-  await page.getByRole('button', { name: 'Agregar' }).click();
+  await page.getByLabel('Monto total (USD)').fill('380');
+  await page.getByRole('button', { name: 'Agregar', exact: true }).click();
 
   await expect(page.locator('.pos-sym', { hasText: 'AAPL' }).first()).toBeVisible();
 });

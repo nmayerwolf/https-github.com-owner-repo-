@@ -21,6 +21,7 @@ Fecha: 2026-02-18
 - `GOOGLE_CALLBACK_URL=https://https-githubcom-owner-repo-production.up.railway.app/api/auth/google/callback`
 - `FINNHUB_KEY`
 - `ALPHA_VANTAGE_KEY`
+- `TWELVE_DATA_KEY`
 
 ### Vercel (frontend, Production)
 - `VITE_API_URL=https://https-githubcom-owner-repo-production.up.railway.app/api`

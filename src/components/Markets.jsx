@@ -69,7 +69,7 @@ const Markets = () => {
         symbol,
         name: String(item?.name || ''),
         category: String(item?.category || 'equity'),
-        source: String(item?.source || (symbol.endsWith('USDT') ? 'finnhub_crypto' : symbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+        source: String(item?.source || 'finnhub')
       });
     });
     return [...map.values()].slice(0, 8);
@@ -139,11 +139,7 @@ const Markets = () => {
             symbol: String(item?.symbol || '').toUpperCase(),
             name: String(item?.name || ''),
             category: String(item?.category || 'equity').toLowerCase() === 'etf' ? 'equity' : String(item?.category || 'equity').toLowerCase(),
-            source: String(item?.symbol || '').toUpperCase().endsWith('USDT')
-              ? 'finnhub_crypto'
-              : String(item?.symbol || '').toUpperCase().includes('_')
-                ? 'finnhub_fx'
-                : 'finnhub_stock'
+            source: 'finnhub'
           }))
         );
       } catch {
@@ -177,7 +173,7 @@ const Markets = () => {
             symbol: String(item?.symbol || '').toUpperCase(),
             name: String(item?.name || ''),
             category: String(item?.category || 'equity').toLowerCase(),
-            source: String(item?.source || (String(item?.symbol || '').toUpperCase().includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+            source: String(item?.source || 'finnhub')
           }))
         );
       } catch {

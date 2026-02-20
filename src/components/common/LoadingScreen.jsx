@@ -1,15 +1,10 @@
 import React from 'react';
+import HorsaiHorseIcon from './HorsaiHorseIcon';
 
-const LoadingScreen = ({ loaded, total }) => (
+const LoadingScreen = () => (
   <div className="center-screen">
-    <div className="card" style={{ width: 320 }}>
-      <h2>Cargando mercado...</h2>
-      <p className="muted">
-        Activos cargados: {loaded}/{total}
-      </p>
-      <div className="bar">
-        <div className="bar-fill" style={{ width: `${(loaded / (total || 1)) * 100}%` }} />
-      </div>
+    <div className="loading-screen-shell" aria-label="Cargando Horsai">
+      <HorsaiHorseIcon className="loading-logo-spin" />
     </div>
   </div>
 );

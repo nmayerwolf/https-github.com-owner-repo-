@@ -8,6 +8,7 @@ import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
 import { calculateConfluence } from '../engine/confluence';
 import { DEFAULT_WATCHLIST, WATCHLIST_CATALOG } from '../utils/constants';
+import { REALTIME_ENABLED } from '../config/features';
 import { useAuth } from './AuthContext';
 import { loadActivePortfolioId, loadPortfolio, loadPortfolios, saveActivePortfolioId, savePortfolio, savePortfolios } from './portfolioStore';
 import { loadConfig, saveConfig } from './configStore';
@@ -134,9 +135,6 @@ const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
 
 const toWsMarketSymbol = (asset) => {
   if (!asset?.symbol) return null;
-  if (asset.source === 'finnhub_stock') return String(asset.symbol).toUpperCase();
-  if (asset.source === 'finnhub_crypto') return `BINANCE:${String(asset.symbol).toUpperCase()}`;
-  if (asset.source === 'finnhub_fx') return `OANDA:${String(asset.symbol).toUpperCase()}`;
   if (asset.source === 'alphavantage_macro') {
     const key = String(asset.symbol).toUpperCase();
     if (key === 'XAU') return 'AV:GOLD';
@@ -151,7 +149,10 @@ const toWsMarketSymbol = (asset) => {
     if (key === 'US10Y') return 'AV:TREASURY_YIELD:10YEAR';
     if (key === 'US30Y') return 'AV:TREASURY_YIELD:30YEAR';
   }
-  return null;
+  const symbol = String(asset.symbol).toUpperCase();
+  if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
+  if (symbol.includes('_')) return `OANDA:${symbol}`;
+  return symbol;
 };
 
 export const buildRealtimeSymbolMap = (assets = []) =>
@@ -170,6 +171,25 @@ const withIndicators = (asset) => {
     volumes: asset.candles.v
   });
   return { ...asset, indicators, signal: null };
+};
+
+const resolveMarketMeta = (data = {}, fallbackSource = 'local') => {
+  const source = String(data?.marketMeta?.source || data?.quote?.source || fallbackSource || 'local');
+  const asOf = data?.marketMeta?.asOf || data?.quote?.asOf || null;
+  const stale = Boolean(data?.marketMeta?.stale ?? data?.quote?.stale ?? false);
+  const unavailable = Boolean(data?.marketMeta?.unavailable ?? false);
+  const fallbackLevel = Number.isFinite(Number(data?.marketMeta?.fallbackLevel))
+    ? Number(data.marketMeta.fallbackLevel)
+    : stale
+      ? 3
+      : source === 'finnhub'
+        ? 0
+        : source === 'alphavantage'
+          ? 1
+          : source === 'yahoo'
+            ? 2
+            : 0;
+  return { source, asOf, stale, unavailable, fallbackLevel };
 };
 
 export const mapServerAlertToLive = (alert) => {
@@ -207,14 +227,28 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
       if (bySymbol[normalized]) return bySymbol[normalized];
       if (!normalized) return null;
       if (normalized.endsWith('USDT')) {
-        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'finnhub_crypto' };
+        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'finnhub' };
       }
       if (normalized.includes('_')) {
-        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'finnhub_fx' };
+        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'finnhub' };
       }
-      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'finnhub_stock' };
+      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'finnhub' };
     })
     .filter(Boolean);
+};
+
+const resolveMarketSymbols = (watchlistSymbols = [], positions = []) => {
+  const out = new Set();
+  for (const symbol of watchlistSymbols || []) {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (normalized) out.add(normalized);
+  }
+  for (const position of positions || []) {
+    if (position?.sellDate) continue;
+    const normalized = String(position?.symbol || '').trim().toUpperCase();
+    if (normalized) out.add(normalized);
+  }
+  return Array.from(out);
 };
 
 const STOP_LOSS_PCT_TOKEN = /\[SLP:([0-9]+(?:\.[0-9]+)?)\]/i;
@@ -394,6 +428,7 @@ export const AppProvider = ({ children }) => {
   const assetsRef = useRef([]);
   const macroLoadedRef = useRef(false);
   const realtimeMapRef = useRef({});
+  const refreshInFlightRef = useRef(false);
   const auth = useAuth();
   const isAuthenticated = !!auth?.isAuthenticated;
 
@@ -426,6 +461,11 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
+    if (!REALTIME_ENABLED) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disabled' });
+      dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
+      return;
+    }
     if (!isAuthenticated) {
       dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
       dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
@@ -521,8 +561,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const loadAssets = async (watchlistSymbols = state.watchlistSymbols) => {
-    const watchlist = resolveWatchlistAssets(watchlistSymbols);
+  const loadAssets = async (watchlistSymbols = state.watchlistSymbols, positions = state.positions) => {
+    const marketSymbols = resolveMarketSymbols(watchlistSymbols, positions);
+    const watchlist = resolveWatchlistAssets(marketSymbols);
     if (!watchlist.length) {
       clearAssetCache();
       dispatch({ type: 'SET_ASSETS', payload: [] });
@@ -531,7 +572,9 @@ export const AppProvider = ({ children }) => {
       return;
     }
     const cached = readAssetCache();
-    const hasWarmCache = Boolean(cached?.assets?.length);
+    // For authenticated sessions, prefer fresh backend snapshots over warm cache
+    // to avoid showing stale badges during startup.
+    const hasWarmCache = !isAuthenticated && Boolean(cached?.assets?.length);
 
     if (hasWarmCache) {
       dispatch({ type: 'SET_ASSETS', payload: cached.assets });
@@ -561,7 +604,26 @@ export const AppProvider = ({ children }) => {
           price: data.quote.c,
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
-          candles: data.candles
+          candles: data.candles,
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
+        })
+      );
+    };
+    const pushPlaceholderAsset = (meta) => {
+      loaded.push(
+        withIndicators({
+          ...meta,
+          price: null,
+          prevClose: null,
+          changePercent: null,
+          candles: { c: [], h: [], l: [], v: [] },
+          marketMeta: {
+            source: 'pending_live',
+            asOf: new Date().toISOString(),
+            stale: false,
+            unavailable: true,
+            fallbackLevel: 9
+          }
         })
       );
     };
@@ -571,6 +633,7 @@ export const AppProvider = ({ children }) => {
       if (data?.quote && data?.candles?.c?.length) {
         pushAsset(meta, data);
       } else {
+        pushPlaceholderAsset(meta);
         if (failedLoads < 3) {
           pushMarketError('No se pudieron cargar algunos activos del mercado.', 'markets-initial-load');
         }
@@ -598,6 +661,7 @@ export const AppProvider = ({ children }) => {
         if (data?.quote && data?.candles?.c?.length) {
           pushAsset(meta, data);
         } else {
+          pushPlaceholderAsset(meta);
           if (failedLoads < 3) {
             pushMarketError('No se pudieron cargar algunos activos del mercado.', 'markets-initial-load');
           }
@@ -653,16 +717,87 @@ export const AppProvider = ({ children }) => {
     })();
   };
 
+  const refreshAssetPrices = async (watchlistSymbols = state.watchlistSymbols, positions = state.positions) => {
+    if (refreshInFlightRef.current) return;
+    const current = assetsRef.current;
+    if (!Array.isArray(current) || !current.length) return;
+    const marketSymbols = resolveMarketSymbols(watchlistSymbols, positions);
+    const metas = resolveWatchlistAssets(marketSymbols);
+    if (!metas.length) return;
+
+    refreshInFlightRef.current = true;
+    try {
+      const updates = new Map();
+      if (isAuthenticated) {
+        for (let i = 0; i < metas.length; i += BULK_SNAPSHOT_BATCH_SIZE) {
+          const batch = metas.slice(i, i + BULK_SNAPSHOT_BATCH_SIZE);
+          const { okBySymbol } = await fetchSnapshotBatchViaProxy(batch);
+          for (const meta of batch) {
+            const symbol = String(meta.symbol || '').toUpperCase();
+            const data = okBySymbol[symbol];
+            if (data?.quote && data?.candles?.c?.length) updates.set(symbol, { meta, data });
+          }
+        }
+      } else {
+        for (const meta of metas) {
+          const data = await fetchAssetSnapshot(meta);
+          if (data?.quote && data?.candles?.c?.length) updates.set(String(meta.symbol || '').toUpperCase(), { meta, data });
+        }
+      }
+      if (!updates.size) return;
+
+      const next = current.map((asset) => {
+        const update = updates.get(String(asset.symbol || '').toUpperCase());
+        if (!update) return asset;
+        const { data } = update;
+        return withIndicators({
+          ...asset,
+          price: data.quote.c,
+          prevClose: data.quote.pc,
+          changePercent: data.quote.dp,
+          candles: data.candles,
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
+        });
+      });
+      dispatch({ type: 'SET_ASSETS', payload: next });
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
+      let syncedPositions = state.positions;
+      let syncedWatchlist = state.watchlistSymbols;
       if (isAuthenticated) {
         await syncRemoteUserData();
+        syncedPositions = state.positions;
+        syncedWatchlist = state.watchlistSymbols;
       }
-      await loadAssets(state.watchlistSymbols);
+      await loadAssets(syncedWatchlist, syncedPositions);
     };
 
     run();
   }, [isAuthenticated]);
+
+  const marketUniverseKey = useMemo(
+    () => resolveMarketSymbols(state.watchlistSymbols, state.positions).sort().join(','),
+    [state.watchlistSymbols, state.positions]
+  );
+
+  useEffect(() => {
+    if (state.loading) return;
+    if (!marketUniverseKey) return;
+    loadAssets(state.watchlistSymbols, state.positions);
+  }, [marketUniverseKey]);
+
+  useEffect(() => {
+    if (state.loading || !state.assets.length) return undefined;
+    const id = setInterval(() => {
+      refreshAssetPrices(state.watchlistSymbols, state.positions);
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, [state.loading, state.assets.length, state.watchlistSymbols, state.positions, isAuthenticated]);
 
   useEffect(() => {
     if (state.loading || !state.assets.length || macroLoadedRef.current) return;
@@ -699,7 +834,12 @@ export const AppProvider = ({ children }) => {
   }, [realtimeSymbolMap]);
 
   useEffect(() => {
+    if (!REALTIME_ENABLED) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disabled' });
+      return undefined;
+    }
     if (state.loading || !state.assets.length) return undefined;
+    if (state.progress.total > 0 && state.progress.loaded < state.progress.total) return undefined;
     const wsSymbols = wsSymbolKey
       ? wsSymbolKey
           .split(',')
@@ -769,7 +909,7 @@ export const AppProvider = ({ children }) => {
     });
 
     return () => socket.close();
-  }, [state.loading, isAuthenticated, wsSymbolKey, state.assets.length]);
+  }, [state.loading, state.progress.loaded, state.progress.total, isAuthenticated, wsSymbolKey, state.assets.length]);
 
   useEffect(() => {
     const enriched = state.assets.map((asset) => ({ ...asset, signal: calculateConfluence(asset, state.config) }));
@@ -1151,10 +1291,10 @@ export const AppProvider = ({ children }) => {
                 category: String(entry.category || fallbackMeta?.category || 'equity').toLowerCase(),
                 sector: String(entry.sector || fallbackMeta?.sector || 'general').toLowerCase(),
                 source: String(entry.source || fallbackMeta?.source || (normalizedSymbol.endsWith('USDT')
-                  ? 'finnhub_crypto'
+                  ? 'finnhub'
                   : normalizedSymbol.includes('_')
-                    ? 'finnhub_fx'
-                    : 'finnhub_stock'))
+                    ? 'finnhub'
+                    : 'finnhub'))
               }
             : null;
         const meta = providedMeta || fallbackMeta;
@@ -1164,22 +1304,44 @@ export const AppProvider = ({ children }) => {
         }
 
         const nextWatchlist = [...state.watchlistSymbols, normalizedSymbol];
+        saveWatchlistSymbols(nextWatchlist);
+        dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
 
         if (isAuthenticated) {
           try {
             const type = meta.category === 'crypto' ? 'crypto' : meta.category === 'fx' ? 'forex' : 'stock';
             await api.addToWatchlist({ symbol: meta.symbol, name: meta.name, type, category: meta.category });
-          } catch {
-            dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol} en backend.`) });
-            return;
+          } catch (error) {
+            const backendConflict = Number(error?.status) === 409 || String(error?.error || '').toUpperCase() === 'ALREADY_EXISTS';
+            if (!backendConflict) {
+              dispatch({
+                type: 'PUSH_UI_ERROR',
+                payload: makeUiError('Watchlist', `${normalizedSymbol} se agregó localmente; backend pendiente de sincronización.`)
+              });
+            }
           }
         }
-        saveWatchlistSymbols(nextWatchlist);
-
-        dispatch({ type: 'SET_WATCHLIST', payload: nextWatchlist });
 
         const data = isAuthenticated ? await fetchSnapshotViaProxy(meta) : await fetchAssetSnapshot(meta);
         if (!(data?.quote && data?.candles?.c?.length)) {
+          const placeholder = withIndicators({
+            ...meta,
+            price: null,
+            prevClose: null,
+            changePercent: null,
+            candles: { c: [], h: [], l: [], v: [] },
+            marketMeta: {
+              source: 'pending_live',
+              asOf: new Date().toISOString(),
+              stale: false,
+              unavailable: true,
+              fallbackLevel: 9
+            }
+          });
+          const current = assetsRef.current;
+          if (!current.some((x) => x.symbol === placeholder.symbol)) {
+            dispatch({ type: 'SET_ASSETS', payload: [...current, placeholder] });
+          }
           dispatch({ type: 'PUSH_UI_ERROR', payload: makeUiError('Watchlist', `No se pudo agregar ${normalizedSymbol}.`) });
           return;
         }
@@ -1189,7 +1351,8 @@ export const AppProvider = ({ children }) => {
           price: data.quote.c,
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
-          candles: data.candles
+          candles: data.candles,
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         });
 
         const current = assetsRef.current;
