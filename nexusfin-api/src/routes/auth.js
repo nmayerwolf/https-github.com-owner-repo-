@@ -25,6 +25,7 @@ const { validateEmail } = require('../utils/validate');
 
 const router = express.Router();
 const OAUTH_MOBILE_REDIRECT_COOKIE = 'nxf_oauth_mobile_redirect';
+const GMAIL_DOMAIN_RE = /@(gmail\.com|googlemail\.com)$/i;
 const isMobileClient = (req) => String(req.headers['x-client-platform'] || '').toLowerCase() === 'mobile';
 
 const oauthRedirect = (status) => {
@@ -66,8 +67,14 @@ const setOAuthMobileContext = (req, res) => {
 };
 
 const googleOnlyError = () => forbidden('Login por email/password deshabilitado. Usá Continuar con Google.', 'GOOGLE_OAUTH_ONLY');
+const gmailOnlyError = () => forbidden('Solo se permiten cuentas Gmail para iniciar sesión.', 'GMAIL_ONLY');
+const isGmailEmail = (email) => GMAIL_DOMAIN_RE.test(String(email || '').trim().toLowerCase());
 
 const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarUrl }) => {
+  if (!isGmailEmail(email)) {
+    throw gmailOnlyError();
+  }
+
   const byOauth = await query('SELECT id, email FROM users WHERE auth_provider = $1 AND oauth_id = $2', [provider, oauthId]);
   if (byOauth.rows.length) {
     const updated = await query(
@@ -114,7 +121,8 @@ const resolveOAuthUser = async ({ provider, oauthId, email, displayName, avatarU
 router.get('/oauth/providers', (_req, res) => {
   return res.json({
     google: isGoogleConfigured(),
-    apple: false
+    apple: false,
+    gmailOnly: true
   });
 });
 
