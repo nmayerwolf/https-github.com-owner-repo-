@@ -96,13 +96,13 @@ const createMvpNarrativeService = (options = {}) => {
     }
   };
 
-  const polishDigestBullets = async ({ profile, regimeState, crisisState, bullets = [] }) => {
+  const polishDigestBullets = async ({ profile, regimeState, crisisState, bullets = [], marketContext = {}, userContext = {} }) => {
     const fallbackBullets = normalizeDigestBullets(bullets, 10);
     const fallback = { bullets: fallbackBullets, meta: { mode: 'fallback', reason: 'disabled_or_not_configured', model: null } };
     if (!enabled || !apiKey) return fallback;
 
     const systemPrompt =
-      'You are a financial editor. Rewrite short digest bullets in Spanish. Use ONLY supplied facts. Do not invent symbols, prices, numbers, events, or dates. Return strict JSON.';
+      'You are Horsai\'s personalized market editor. Rewrite digest bullets in Spanish using ONLY supplied facts and numbers. Never invent prices, percentages, symbols, dates, or holdings. Return strict JSON.';
 
     const userPrompt = JSON.stringify({
       task: 'rewrite_digest',
@@ -119,9 +119,22 @@ const createMvpNarrativeService = (options = {}) => {
         riskFlags: Array.isArray(regimeState?.riskFlags) ? regimeState.riskFlags : [],
         confidence: clamp01(regimeState?.confidence ?? 0.5)
       },
+      marketContext,
+      userContext,
       crisis: {
         isActive: Boolean(crisisState?.isActive),
         triggers: Array.isArray(crisisState?.triggers) ? crisisState.triggers : []
+      },
+      personalizationRules: [
+        'Si hay portfolio, conecta al menos 2 bullets con holdings o exposición sectorial.',
+        'Si alignment score < 40, mencionar desalineación explícita.',
+        'Si risk_level < 0.3, priorizar riesgos y coberturas.',
+        'Si risk_level > 0.7, priorizar oportunidades.',
+        'Si horizon < 0.3, enfoque táctico semanal. Si horizon > 0.7, enfoque estructural.'
+      ],
+      examples: {
+        bad: 'S&P 500 subió por earnings.',
+        good: 'S&P 500 +0.8% y tech +1.4%. Tu cartera tiene 45% tech: favorece NVDA/AAPL, pero concentración elevada sube riesgo de reversión.'
       },
       sourceBullets: fallbackBullets,
       outputSchema: { bullets: ['string'] }
@@ -137,7 +150,7 @@ const createMvpNarrativeService = (options = {}) => {
     }
   };
 
-  const polishRecommendationItems = async ({ profile, regimeState, crisisState, items = [] }) => {
+  const polishRecommendationItems = async ({ profile, regimeState, crisisState, items = [], marketContext = {} }) => {
     const baseItems = (Array.isArray(items) ? items : []).map((item) => ({
       ...item,
       rationale: normalizeRationaleList(item?.rationale, 3),
@@ -149,7 +162,7 @@ const createMvpNarrativeService = (options = {}) => {
     }
 
     const systemPrompt =
-      'You are a financial copy editor. Polish rationale and risks in Spanish only using provided structured facts. Never add new facts, symbols, prices, or events. Return strict JSON.';
+      'You are Horsai\'s investment strategist editor. Polish rationale and risks in Spanish using ONLY supplied facts. Each idea must keep concrete numbers (RSI/SMA/volatility/price) and a specific invalidation condition. Return strict JSON.';
 
     const userPrompt = JSON.stringify({
       task: 'rewrite_recommendation_cards',
@@ -168,9 +181,25 @@ const createMvpNarrativeService = (options = {}) => {
         riskFlags: Array.isArray(regimeState?.riskFlags) ? regimeState.riskFlags : [],
         confidence: clamp01(regimeState?.confidence ?? 0.5)
       },
+      marketContext,
       crisis: {
         isActive: Boolean(crisisState?.isActive),
         triggers: Array.isArray(crisisState?.triggers) ? crisisState.triggers : []
+      },
+      qualityRules: [
+        'Cada rationale debe mencionar números concretos de los facts provistos.',
+        'Explicar por qué el número respalda la acción, no solo listar métricas.',
+        'Mantener invalidation específica con precio/condición.',
+        'Incluir al menos un riesgo cuantificable.'
+      ],
+      examples: {
+        badRationale: ['Strong trend', 'Good relative strength'],
+        goodRationale: [
+          'RSI 62 con precio 8% sobre SMA200 sugiere tendencia fuerte sin sobrecompra extrema.',
+          'Vol20D 22% permite mejor relación riesgo/retorno frente a pares más volátiles.'
+        ],
+        badInvalidation: 'Si se rompe la tendencia',
+        goodInvalidation: 'Cerrar bajo SMA50 por 2 sesiones consecutivas'
       },
       ideas: baseItems.map((item) => ({
         ideaId: item.ideaId,
@@ -181,7 +210,8 @@ const createMvpNarrativeService = (options = {}) => {
         timeframe: item.timeframe,
         invalidation: cleanText(item.invalidation, 190),
         rationale: normalizeRationaleList(item.rationale, 3),
-        risks: normalizeRiskList(item.risks, 2)
+        risks: normalizeRiskList(item.risks, 2),
+        rawScores: item.rawScores && typeof item.rawScores === 'object' ? item.rawScores : {}
       })),
       outputSchema: {
         ideas: [

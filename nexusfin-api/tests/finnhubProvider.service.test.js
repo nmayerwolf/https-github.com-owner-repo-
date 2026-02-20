@@ -47,7 +47,7 @@ describe('FinnhubProvider', () => {
 
   test('getNews falls back to general feed when no company feed', async () => {
     finnhub.companyNews.mockResolvedValueOnce([]);
-    finnhub.generalNews.mockResolvedValueOnce([{ id: 1, datetime: 1700000000, headline: 'Macro update', summary: 'test' }]);
+    finnhub.generalNews.mockResolvedValue([{ id: 1, datetime: 1700000000, headline: 'Macro update', summary: 'test', url: 'https://example.com/news' }]);
 
     const provider = new FinnhubProvider(finnhub);
     const rows = await provider.getNews('2026-02-18', '2026-02-19', ['SPY']);

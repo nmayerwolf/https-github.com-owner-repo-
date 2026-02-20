@@ -1,6 +1,7 @@
 const { createMvpNarrativeService } = require('./mvpNarrative');
 const { withTrackedJobRun } = require('./jobRunTracker');
 const { toEvent, toBullet, toIdeaState } = require('../constants/decisionContracts');
+const { calculateIndicators } = require('../engine/analysis');
 
 const toNum = (value, fallback = 0) => {
   const out = Number(value);
@@ -49,6 +50,25 @@ const computeVol20dZ = (history = []) => {
   const mu = mean(baseline);
   if (!Number.isFinite(mu)) return null;
   return Number(((last - mu) / sigma).toFixed(4));
+};
+
+const asSignedPct = (value, digits = 1) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'N/D';
+  const sign = num > 0 ? '+' : '';
+  return `${sign}${num.toFixed(digits)}%`;
+};
+
+const asPrice = (value, digits = 2) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'N/D';
+  return num.toFixed(digits);
+};
+
+const toPct = (value, digits = 1) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'N/D';
+  return `${(num * 100).toFixed(digits)}%`;
 };
 
 const slugify = (value) =>
@@ -225,11 +245,19 @@ const buildRegimeFromMetrics = (rows = [], inputs = {}) => {
   };
 };
 
-const buildStrategicIdea = ({ date, symbol, name, sector, tags, metrics, regimeState }) => {
+const buildStrategicIdea = ({ date, symbol, name, sector, tags, metrics, regimeState, marketStats = {}, fundamentals = {} }) => {
   const ret1w = toNum(metrics.ret_1w);
   const ret1m = toNum(metrics.ret_1m);
   const ret3m = toNum(metrics.ret_3m);
   const vol20d = toNum(metrics.vol_20d);
+  const price = toNum(marketStats.close, null);
+  const changePct = toNum(marketStats.changePct, null);
+  const rsi14 = toNum(marketStats.rsi, null);
+  const sma50 = toNum(marketStats.sma50 ?? metrics.ma50, null);
+  const sma200 = toNum(marketStats.sma200, null);
+  const aboveSma50 = Number.isFinite(price) && Number.isFinite(sma50) ? price >= sma50 : null;
+  const aboveSma200 = Number.isFinite(price) && Number.isFinite(sma200) ? price >= sma200 : null;
+  const pe = toNum(fundamentals.pe, null);
   const score = ret1w * 0.2 + ret1m * 0.45 + ret3m * 0.35 - vol20d * 0.35;
 
   const action = score > 0.01 ? 'BUY' : score < -0.015 ? 'SELL' : 'WATCH';
@@ -246,27 +274,46 @@ const buildStrategicIdea = ({ date, symbol, name, sector, tags, metrics, regimeS
     action,
     confidence: adjustedConfidence,
     timeframe: ret3m >= 0 ? 'months' : 'weeks',
-    invalidation: action === 'BUY' ? 'Cerrar si pierde tendencia de 1M y momentum 1W.' : 'Cerrar si recupera momentum 1M.',
+    invalidation:
+      action === 'BUY'
+        ? Number.isFinite(sma50)
+          ? `Invalidar si cierra por debajo de SMA50 (${asPrice(sma50)}) por 2 ruedas consecutivas.`
+          : 'Invalidar si pierde momentum 1M por debajo de -1.0%.'
+        : action === 'SELL'
+          ? Number.isFinite(sma50)
+            ? `Invalidar si recupera y cierra por encima de SMA50 (${asPrice(sma50)}) por 2 ruedas consecutivas.`
+            : 'Invalidar si recupera momentum 1M por encima de +1.0%.'
+          : Number.isFinite(sma50)
+            ? `Invalidar si se aleja más de 4% de SMA50 (${asPrice(sma50)}) sin confirmación de volumen.`
+            : 'Invalidar si el movimiento pierde confirmación en precio/volatilidad.',
     rationale: [
-      `Retornos 1W/1M/3M: ${(ret1w * 100).toFixed(1)}% / ${(ret1m * 100).toFixed(1)}% / ${(ret3m * 100).toFixed(1)}%.`,
-      `Volatilidad 20D: ${(vol20d * 100).toFixed(1)}%.`,
-      `Alineación con régimen ${regimeState.regime}.`
+      `Precio ${Number.isFinite(price) ? asPrice(price) : 'N/D'} (${Number.isFinite(changePct) ? asSignedPct(changePct, 2) : 'N/D'} hoy), RSI14 ${Number.isFinite(rsi14) ? rsi14.toFixed(1) : 'N/D'} y estructura SMA50/SMA200 ${aboveSma50 == null ? 'N/D' : aboveSma50 ? 'alcista' : 'débil'} / ${aboveSma200 == null ? 'N/D' : aboveSma200 ? 'alcista' : 'débil'}.`,
+      `Retornos 1W/1M/3M: ${asSignedPct(ret1w * 100, 1)} / ${asSignedPct(ret1m * 100, 1)} / ${asSignedPct(ret3m * 100, 1)} con vol20D ${toPct(vol20d, 1)}.`,
+      `Régimen ${regimeState.regime} (${regimeState.volatilityRegime}) ${Number.isFinite(pe) ? `y PE ${pe.toFixed(2)}.` : 'sin PE disponible.'}`
     ],
     risks: [
-      `Riesgo de reversión en ${symbol}.`,
-      regimeState.volatilityRegime === 'crisis' ? 'Contexto de crisis aumenta falsos quiebres.' : 'Cambios macro pueden invalidar la tesis.'
+      `Riesgo de reversión en ${symbol} con vol20D ${toPct(vol20d, 1)}.`,
+      regimeState.volatilityRegime === 'crisis'
+        ? 'Contexto de crisis: probabilidad alta de falsos quiebres por encima de 25% de volatilidad anualizada.'
+        : 'Un giro de momentum de 1M por debajo de -1.0% invalidaría la tesis actual.'
     ],
     tags: Array.from(new Set([...(Array.isArray(tags) ? tags : []), String(sector || '').toLowerCase(), 'strategic'])).filter(Boolean),
-    rawScores: { score, ret1w, ret1m, ret3m, vol20d }
+    rawScores: { score, ret1w, ret1m, ret3m, vol20d, price, changePct, rsi14, sma50, sma200, pe }
   };
 };
 
-const buildOpportunisticIdea = ({ date, symbol, sector, tags, metrics, fundamentals, regimeState }) => {
+const buildOpportunisticIdea = ({ date, symbol, sector, tags, metrics, fundamentals, regimeState, marketStats = {} }) => {
   const pePct = toNum(fundamentals.pe_percentile, 0.5);
   const evPct = toNum(fundamentals.ev_ebitda_percentile, 0.5);
   const fcfPct = toNum(fundamentals.fcf_yield_percentile, 0.5);
   const ret1w = toNum(metrics.ret_1w);
   const ret1m = toNum(metrics.ret_1m);
+  const price = toNum(marketStats.close, null);
+  const changePct = toNum(marketStats.changePct, null);
+  const rsi14 = toNum(marketStats.rsi, null);
+  const sma50 = toNum(marketStats.sma50 ?? metrics.ma50, null);
+  const sma200 = toNum(marketStats.sma200, null);
+  const aboveSma200 = Number.isFinite(price) && Number.isFinite(sma200) ? price >= sma200 : null;
   const valueScore = (1 - pePct) * 0.4 + (1 - evPct) * 0.3 + fcfPct * 0.3;
   const sentimentScore = Math.max(0, (-ret1w * 6 + -ret1m * 3));
   const score = valueScore * 0.7 + sentimentScore * 0.3;
@@ -288,19 +335,21 @@ const buildOpportunisticIdea = ({ date, symbol, sector, tags, metrics, fundament
     action: 'WATCH',
     confidence,
     timeframe: 'weeks',
-    invalidation: 'Descartar si no hay estabilización de precio en 5-10 ruedas.',
+    invalidation: Number.isFinite(sma200)
+      ? `Descartar si cierra por debajo de SMA200 (${asPrice(sma200)}) o no estabiliza en 10 ruedas.`
+      : 'Descartar si no hay estabilización de precio en 5-10 ruedas.',
     rationale: [
-      `Percentiles fundamentales atractivos: PE ${(pePct * 100).toFixed(0)}p / EV ${(evPct * 100).toFixed(0)}p / FCF ${(fcfPct * 100).toFixed(0)}p.`,
-      `Shock de precio reciente: 1W ${(ret1w * 100).toFixed(1)}%, 1M ${(ret1m * 100).toFixed(1)}%.`,
-      'Setup oportunístico, no tesis estructural base.'
+      `Precio ${Number.isFinite(price) ? asPrice(price) : 'N/D'} (${Number.isFinite(changePct) ? asSignedPct(changePct, 2) : 'N/D'} hoy), RSI14 ${Number.isFinite(rsi14) ? rsi14.toFixed(1) : 'N/D'} y condición SMA200 ${aboveSma200 == null ? 'N/D' : aboveSma200 ? 'por encima' : 'por debajo'}.`,
+      `Dislocación fundamental: PE ${(pePct * 100).toFixed(0)}p / EV ${(evPct * 100).toFixed(0)}p / FCF ${(fcfPct * 100).toFixed(0)}p.`,
+      `Shock reciente 1W/1M ${asSignedPct(ret1w * 100, 1)} / ${asSignedPct(ret1m * 100, 1)} sugiere oportunidad táctica, no tesis estructural.`
     ],
     risks: [
-      'Puede convertirse en trampa de valor.',
-      'Mayor sensibilidad a noticias idiosincráticas.'
+      `Puede convertirse en trampa de valor si RSI cae por debajo de ${Number.isFinite(rsi14) ? Math.max(15, Math.round(rsi14 - 8)) : 30}.`,
+      `Volatilidad del régimen ${regimeState.volatilityRegime}; se recomienda sizing menor al habitual.`
     ],
     tags: Array.from(new Set([...(Array.isArray(tags) ? tags : []), String(sector || '').toLowerCase(), 'opportunistic'])).filter(Boolean),
     opportunisticType,
-    rawScores: { valueScore, sentimentScore, score, pePct, evPct, fcfPct }
+    rawScores: { valueScore, sentimentScore, score, pePct, evPct, fcfPct, price, changePct, rsi14, sma50, sma200 }
   };
 };
 
@@ -417,6 +466,129 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
     return out.rows || [];
   };
 
+  const loadDailyClosesBySymbol = async (date, symbols = []) => {
+    const cleanSymbols = Array.from(new Set((Array.isArray(symbols) ? symbols : []).map((s) => String(s || '').toUpperCase()).filter(Boolean)));
+    if (!cleanSymbols.length) return new Map();
+    const out = await query(
+      `SELECT b.symbol,
+              b.close,
+              CASE WHEN prev.close IS NULL OR prev.close = 0 THEN NULL ELSE ((b.close - prev.close) / prev.close) * 100 END AS change_pct
+       FROM market_daily_bars b
+       LEFT JOIN LATERAL (
+         SELECT close
+         FROM market_daily_bars p
+         WHERE p.symbol = b.symbol
+           AND p.date < b.date
+         ORDER BY p.date DESC
+         LIMIT 1
+       ) prev ON TRUE
+       WHERE b.date = $1
+         AND b.symbol = ANY($2::text[])`,
+      [date, cleanSymbols]
+    );
+    return new Map((out.rows || []).map((row) => [String(row.symbol || '').toUpperCase(), row]));
+  };
+
+  const loadBarsHistory = async (date, symbols = []) => {
+    const cleanSymbols = Array.from(new Set((Array.isArray(symbols) ? symbols : []).map((s) => String(s || '').toUpperCase()).filter(Boolean)));
+    if (!cleanSymbols.length) return [];
+    const out = await query(
+      `SELECT symbol, date::text AS date, high, low, close, volume
+       FROM market_daily_bars
+       WHERE symbol = ANY($2::text[])
+         AND date <= $1
+       ORDER BY symbol ASC, date ASC`,
+      [date, cleanSymbols]
+    );
+    return out.rows || [];
+  };
+
+  const computeTechnicalBySymbol = (rows = []) => {
+    const grouped = new Map();
+    for (const row of rows) {
+      const symbol = String(row.symbol || '').toUpperCase();
+      if (!symbol) continue;
+      if (!grouped.has(symbol)) grouped.set(symbol, { closes: [], highs: [], lows: [], volumes: [] });
+      const bucket = grouped.get(symbol);
+      bucket.closes.push(Number(row.close));
+      bucket.highs.push(Number(row.high));
+      bucket.lows.push(Number(row.low));
+      bucket.volumes.push(Number(row.volume || 0));
+    }
+    const result = new Map();
+    for (const [symbol, series] of grouped.entries()) {
+      const indicators = calculateIndicators(series) || {};
+      result.set(symbol, {
+        rsi: toNum(indicators.rsi, null),
+        sma50: toNum(indicators.sma50, null),
+        sma200: toNum(indicators.sma200, null),
+        atr: toNum(indicators.atr, null),
+        currentPrice: toNum(indicators.currentPrice, null)
+      });
+    }
+    return result;
+  };
+
+  const loadGlobalBriefContext = async (date) => {
+    const benchmarkSymbols = ['SPY', 'QQQ', 'DIA', 'IWM', 'BTCUSDT', 'ETHUSDT', 'GLD', 'USO', 'TLT', 'EUR_USD', 'USD_JPY', 'SMH', 'XLF', 'XLE', 'XLK'];
+    const [benchmarksOut, moversOut, breadthOut] = await Promise.all([
+      query(
+        `SELECT b.symbol,
+                COALESCE(u.name, b.symbol) AS name,
+                b.close,
+                CASE WHEN prev.close IS NULL OR prev.close = 0 THEN NULL ELSE ((b.close - prev.close) / prev.close) * 100 END AS change_pct
+         FROM market_daily_bars b
+         LEFT JOIN universe_symbols u ON u.symbol = b.symbol
+         LEFT JOIN LATERAL (
+           SELECT close
+           FROM market_daily_bars p
+           WHERE p.symbol = b.symbol
+             AND p.date < b.date
+           ORDER BY p.date DESC
+           LIMIT 1
+         ) prev ON TRUE
+         WHERE b.date = $1
+           AND b.symbol = ANY($2::text[])`,
+        [date, benchmarkSymbols]
+      ),
+      query(
+        `SELECT b.symbol,
+                COALESCE(u.name, b.symbol) AS name,
+                b.close,
+                CASE WHEN prev.close IS NULL OR prev.close = 0 THEN NULL ELSE ((b.close - prev.close) / prev.close) * 100 END AS change_pct,
+                COALESCE(u.asset_type, 'unknown') AS category
+         FROM market_daily_bars b
+         LEFT JOIN universe_symbols u ON u.symbol = b.symbol
+         LEFT JOIN LATERAL (
+           SELECT close
+           FROM market_daily_bars p
+           WHERE p.symbol = b.symbol
+             AND p.date < b.date
+           ORDER BY p.date DESC
+           LIMIT 1
+         ) prev ON TRUE
+         WHERE b.date = $1
+         ORDER BY ABS(CASE WHEN prev.close IS NULL OR prev.close = 0 THEN 0 ELSE ((b.close - prev.close) / prev.close) * 100 END) DESC
+         LIMIT 10`,
+        [date]
+      ),
+      query(
+        `SELECT
+           COUNT(*) FILTER (WHERE b.close > m.ma50)::float / NULLIF(COUNT(*), 0) * 100 AS pct_above_ma50
+         FROM market_daily_bars b
+         JOIN market_metrics_daily m ON b.symbol = m.symbol AND b.date = m.date
+         WHERE b.date = $1
+           AND m.ma50 IS NOT NULL`,
+        [date]
+      )
+    ]);
+    return {
+      benchmarks: benchmarksOut.rows || [],
+      movers: moversOut.rows || [],
+      breadthPct: toNum(breadthOut.rows?.[0]?.pct_above_ma50, null)
+    };
+  };
+
   const runRegimeDaily = async (date) => {
     const [metricsRows, spyVolHistory] = await Promise.all([loadMetricsUniverse(date), loadSpyVolHistory(date)]);
     const spyVol20dZ = computeVol20dZ(spyVolHistory);
@@ -513,13 +685,27 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
   };
 
   const runRecommendationsDaily = async (date, regimeState, crisisState, metricsRows) => {
-    const fundamentalsOut = await query(
-      `SELECT symbol, pe_percentile, ev_ebitda_percentile, fcf_yield_percentile, sector
-       FROM fundamentals_derived
-       WHERE asof_date = (SELECT MAX(asof_date) FROM fundamentals_derived)`
-    );
+    const symbols = Array.from(new Set((metricsRows || []).map((row) => String(row.symbol || '').toUpperCase()).filter(Boolean)));
+    const [fundamentalsOut, fundamentalsSnapshotOut, closeBySymbol, barsHistory, briefContext] = await Promise.all([
+      query(
+        `SELECT symbol, pe_percentile, ev_ebitda_percentile, fcf_yield_percentile, sector
+         FROM fundamentals_derived
+         WHERE asof_date = (SELECT MAX(asof_date) FROM fundamentals_derived)`
+      ),
+      query(
+        `SELECT symbol, pe
+         FROM fundamentals_snapshot
+         WHERE asof_date = (SELECT MAX(asof_date) FROM fundamentals_snapshot)`
+      ),
+      loadDailyClosesBySymbol(date, symbols),
+      loadBarsHistory(date, symbols),
+      loadGlobalBriefContext(date)
+    ]);
     const fundamentalsBySymbol = new Map();
     for (const row of fundamentalsOut.rows) fundamentalsBySymbol.set(String(row.symbol || '').toUpperCase(), row);
+    const fundamentalsSnapshotBySymbol = new Map();
+    for (const row of fundamentalsSnapshotOut.rows || []) fundamentalsSnapshotBySymbol.set(String(row.symbol || '').toUpperCase(), row);
+    const technicalBySymbol = computeTechnicalBySymbol(barsHistory);
 
     const strategicIdeas = metricsRows
       .map((row) =>
@@ -530,7 +716,12 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
           sector: row.sector,
           tags: row.tags,
           metrics: row,
-          regimeState
+          regimeState,
+          marketStats: {
+            ...(closeBySymbol.get(String(row.symbol || '').toUpperCase()) || {}),
+            ...(technicalBySymbol.get(String(row.symbol || '').toUpperCase()) || {})
+          },
+          fundamentals: fundamentalsSnapshotBySymbol.get(String(row.symbol || '').toUpperCase()) || {}
         })
       )
       .sort((a, b) => b.confidence - a.confidence)
@@ -545,7 +736,11 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
           tags: row.tags,
           metrics: row,
           fundamentals: fundamentalsBySymbol.get(String(row.symbol || '').toUpperCase()) || {},
-          regimeState
+          regimeState,
+          marketStats: {
+            ...(closeBySymbol.get(String(row.symbol || '').toUpperCase()) || {}),
+            ...(technicalBySymbol.get(String(row.symbol || '').toUpperCase()) || {})
+          }
         })
       )
       .filter(Boolean)
@@ -621,7 +816,12 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
         profile,
         regimeState,
         crisisState,
-        items: selected
+        items: selected,
+        marketContext: {
+          date,
+          breadthPct: briefContext.breadthPct,
+          benchmarks: briefContext.benchmarks
+        }
       });
       const narrativeById = new Map(
         Array.isArray(narrative.items)
@@ -663,6 +863,10 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
   };
 
   const classifyNewsBucket = (item = {}) => {
+    const category = String(item.category || item.raw_category || '').toLowerCase();
+    if (category === 'crypto') return 'crypto';
+    if (category === 'forex') return 'fx';
+    if (category === 'merger') return 'mna';
     const text = `${String(item.headline || '').toLowerCase()} ${String(item.summary || '').toLowerCase()}`;
     if (/fed|ecb|inflation|rate|cpi|gdp|yield|treasury|recession/.test(text)) return 'macro';
     if (/warning|downgrade|risk|volatility|stress|default|credit/.test(text)) return 'risk';
@@ -674,7 +878,10 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
     const seen = new Set();
     const out = [];
     for (const raw of items) {
-      const event = toEvent(raw);
+      const event = {
+        ...toEvent(raw),
+        category: String(raw?.category || raw?.raw_category || '').toLowerCase()
+      };
       const key = `${event.headline.toLowerCase()}|${event.tickers.join(',')}`;
       if (!event.headline || seen.has(key)) continue;
       seen.add(key);
@@ -698,13 +905,28 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
     return score;
   };
 
-  const formatCapitalBriefBullet = ({ event, bucket, regimeState }) => {
+  const formatCapitalBriefBullet = ({ event, bucket, regimeState, briefContext }) => {
     const eventText = event.headline || 'Evento relevante';
+    const benchmarkMap = new Map((briefContext?.benchmarks || []).map((row) => [String(row.symbol || '').toUpperCase(), row]));
+    const spy = benchmarkMap.get('SPY') || null;
+    const btc = benchmarkMap.get('BTCUSDT') || null;
+    const tlt = benchmarkMap.get('TLT') || null;
+    const breadthPct = toNum(briefContext?.breadthPct, null);
+    const crossAsset =
+      `SPY ${Number.isFinite(Number(spy?.change_pct)) ? asSignedPct(Number(spy.change_pct), 2) : 'N/D'}, ` +
+      `BTC ${Number.isFinite(Number(btc?.change_pct)) ? asSignedPct(Number(btc.change_pct), 2) : 'N/D'}, ` +
+      `TLT ${Number.isFinite(Number(tlt?.change_pct)) ? asSignedPct(Number(tlt.change_pct), 2) : 'N/D'}`;
     const impactText =
       bucket === 'risk'
         ? 'sube prima de riesgo y volatilidad'
         : bucket === 'macro'
           ? 'ajusta expectativas de tasas y crecimiento'
+          : bucket === 'crypto'
+            ? 'mueve sentimiento de riesgo en activos beta'
+            : bucket === 'fx'
+              ? 'impacta condiciones financieras vía dólar y carry'
+              : bucket === 'mna'
+                ? 'reprecifica primas sectoriales por actividad corporativa'
           : bucket === 'company'
             ? 'mueve valuaciones del sector ligado'
             : 'rota flujos entre sectores';
@@ -716,16 +938,112 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
           : 'importa para no sobrerreaccionar en transición';
 
     return toBullet({
-      event: eventText,
+      event: `${eventText} (${crossAsset}; breadth ${Number.isFinite(breadthPct) ? `${breadthPct.toFixed(1)}%` : 'N/D'})`,
       marketImpact: impactText,
       whyItMatters: reasonText
     }).line;
   };
 
+  const loadUserPortfolioContext = async ({ userId, date }) => {
+    const portfolioOut = await query(
+      `SELECT id
+       FROM portfolios
+       WHERE user_id = $1
+         AND deleted_at IS NULL
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [userId]
+    );
+    const portfolioId = portfolioOut.rows?.[0]?.id || null;
+    if (!portfolioId) {
+      return {
+        hasPortfolio: false,
+        totalValue: null,
+        pnlPct: null,
+        topHoldings: [],
+        sectorExposure: {},
+        alignment: null
+      };
+    }
+
+    const [snapshotOut, metricsOut, holdingsOut, closeOut] = await Promise.all([
+      query(
+        `SELECT total_value, pnl_total
+         FROM portfolio_snapshots
+         WHERE portfolio_id = $1
+           AND date <= $2
+         ORDER BY date DESC
+         LIMIT 1`,
+        [portfolioId, date]
+      ),
+      query(
+        `SELECT alignment_score, sector_exposure
+         FROM portfolio_metrics
+         WHERE portfolio_id = $1
+           AND date <= $2
+         ORDER BY date DESC
+         LIMIT 1`,
+        [portfolioId, date]
+      ),
+      query(
+        `SELECT symbol, quantity, buy_price
+         FROM positions
+         WHERE user_id = $1
+           AND sell_date IS NULL
+           AND deleted_at IS NULL`,
+        [userId]
+      ),
+      query(
+        `SELECT symbol, close
+         FROM market_daily_bars
+         WHERE date = $1`,
+        [date]
+      )
+    ]);
+
+    const snapshot = snapshotOut.rows?.[0] || {};
+    const metrics = metricsOut.rows?.[0] || {};
+    const closeMap = new Map((closeOut.rows || []).map((row) => [String(row.symbol || '').toUpperCase(), toNum(row.close, 0)]));
+    const holdings = (holdingsOut.rows || [])
+      .map((row) => {
+        const symbol = String(row.symbol || '').toUpperCase();
+        const qty = toNum(row.quantity, 0);
+        const avg = toNum(row.buy_price, 0);
+        const mark = toNum(closeMap.get(symbol), avg);
+        const value = qty * mark;
+        return { symbol, qty, avg, mark, value };
+      })
+      .filter((row) => row.qty > 0 && row.avg > 0);
+
+    const total = holdings.reduce((acc, row) => acc + row.value, 0);
+    const topHoldings = holdings
+      .map((row) => ({ ...row, weightPct: total > 0 ? (row.value / total) * 100 : 0 }))
+      .sort((a, b) => b.weightPct - a.weightPct)
+      .slice(0, 5)
+      .map((row) => ({
+        symbol: row.symbol,
+        weightPct: Number(row.weightPct.toFixed(2))
+      }));
+
+    const pnlPct = Number.isFinite(toNum(snapshot?.total_value, null)) && Number(snapshot.total_value) > 0 && Number.isFinite(toNum(snapshot?.pnl_total, null))
+      ? Number(((Number(snapshot.pnl_total) / Number(snapshot.total_value)) * 100).toFixed(2))
+      : null;
+
+    return {
+      hasPortfolio: true,
+      totalValue: toNum(snapshot?.total_value, null),
+      pnlPct,
+      topHoldings,
+      sectorExposure: metrics?.sector_exposure && typeof metrics.sector_exposure === 'object' ? metrics.sector_exposure : {},
+      alignment: toNum(metrics?.alignment_score, null)
+    };
+  };
+
   const runNewsDigestDaily = async (date, regimeState, crisisState) => {
+    const briefContext = await loadGlobalBriefContext(date);
     const usersOut = await query('SELECT id FROM users ORDER BY created_at ASC');
     const newsOut = await query(
-      `SELECT id, headline, summary, tags, tickers, ts
+      `SELECT id, headline, summary, tags, tickers, ts, source, COALESCE(raw->>'category', 'general') AS category
        FROM news_items
        WHERE ts >= ($1::date - INTERVAL '1 day') AND ts < ($1::date + INTERVAL '1 day')
        ORDER BY ts DESC
@@ -743,6 +1061,7 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
         [user.id]
       );
       const profile = profileOut.rows[0] || { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5, preferred_tags: [], excluded_tags: [] };
+      const portfolio = await loadUserPortfolioContext({ userId: user.id, date });
 
       const preferred = new Set((Array.isArray(profile.preferred_tags) ? profile.preferred_tags : []).map((x) => String(x).toLowerCase()));
       const excluded = new Set((Array.isArray(profile.excluded_tags) ? profile.excluded_tags : []).map((x) => String(x).toLowerCase()));
@@ -764,7 +1083,38 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
         .slice(DAILY_BRIEF_IDEAL_BULLETS)
         .filter((x) => Number(x.score) >= EXTRA_BRIEF_RELEVANCE_THRESHOLD)
         .slice(0, Math.max(0, DAILY_BRIEF_HARD_CAP_BULLETS - DAILY_BRIEF_IDEAL_BULLETS));
-      const finalBullets = [...ideal, ...extras].map((item) => formatCapitalBriefBullet({ event: item.event, bucket: item.bucket, regimeState }));
+      const baseBullets = [...ideal, ...extras].map((item) =>
+        formatCapitalBriefBullet({ event: item.event, bucket: item.bucket, regimeState, briefContext })
+      );
+      const digestNarrative = await narrativeService.polishDigestBullets({
+        profile,
+        regimeState,
+        crisisState,
+        bullets: baseBullets,
+        marketContext: {
+          date,
+          benchmarks: briefContext.benchmarks,
+          movers: briefContext.movers,
+          breadthPct: briefContext.breadthPct,
+          regime: {
+            regime: regimeState.regime,
+            volatilityRegime: regimeState.volatilityRegime,
+            leadership: regimeState.leadership,
+            riskFlags: regimeState.riskFlags,
+            confidence: regimeState.confidence
+          }
+        },
+        userContext: {
+          profile: {
+            preset: profile.preset_type,
+            riskLevel: toNum(profile.risk_level, 0.5),
+            horizon: toNum(profile.horizon, 0.5),
+            focus: toNum(profile.focus, 0.5)
+          },
+          portfolio
+        }
+      });
+      const finalBullets = Array.isArray(digestNarrative?.bullets) && digestNarrative.bullets.length ? digestNarrative.bullets : baseBullets;
 
       await query(
         `INSERT INTO daily_digest (
@@ -787,7 +1137,13 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
           JSON.stringify(toCrisisBanner(crisisState)),
           JSON.stringify(regimeState.leadership || []),
           JSON.stringify(regimeState.riskFlags || []),
-          JSON.stringify({ pipeline: ['ingest', 'dedupe', 'rank', 'select_top_5'], pickedNewsIds: ranked.map((x) => x.event.id), profile })
+          JSON.stringify({
+            pipeline: ['ingest', 'dedupe', 'rank', 'select_top_5', 'narrative_polish'],
+            pickedNewsIds: ranked.map((x) => x.event.id),
+            profile,
+            portfolio,
+            narrative: digestNarrative?.meta || null
+          })
         ]
       );
     }

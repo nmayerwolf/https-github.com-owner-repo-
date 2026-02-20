@@ -2,6 +2,7 @@ const { env } = require('../config/env');
 const { computeRegime } = require('./regime');
 const { deriveFocusFromConfig, computeProfileMix, applyStrategyMixToRecommendations } = require('./profileFocus');
 const { logAiUsage } = require('./aiUsageLogger');
+const { calculateIndicators } = require('../engine/analysis');
 
 const toFinite = (value) => {
   const out = Number(value);
@@ -72,7 +73,8 @@ const summarizePortfolio = (positions = []) => {
     const buyPrice = Number(row?.buy_price || 0);
     if (!Number.isFinite(quantity) || !Number.isFinite(buyPrice) || quantity <= 0 || buyPrice <= 0) continue;
 
-    const value = quantity * buyPrice;
+    const markPrice = toNum(row?.current_price, buyPrice);
+    const value = quantity * (Number.isFinite(markPrice) && markPrice > 0 ? markPrice : buyPrice);
     totalValue += value;
 
     const assetClass = String(row?.category || 'equity').toLowerCase();
@@ -91,6 +93,11 @@ const summarizePortfolio = (positions = []) => {
     allocationByCurrency: toPctMap(totalsByCurrency, totalValue),
     allocationBySector: toPctMap(totalsBySector, totalValue)
   };
+};
+
+const toNum = (value, fallback = null) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : fallback;
 };
 
 const buildAgentHistory = ({ stats = {}, latest = null }) => {
@@ -178,11 +185,31 @@ const fallbackAdvice = ({ summary, macro, riskProfile }) => {
   };
 };
 
-const buildPrompt = ({ positions, summary, config, macro, agentHistory }) => [
+const buildPrompt = ({ positions, summary, config, macro, agentHistory, marketContext = {} }) => [
   'Sos un asesor de portfolio del equipo de Horsai.',
+  'Generá observaciones accionables con números concretos y conexión al régimen actual.',
   '',
-  `PORTFOLIO ACTUAL: ${JSON.stringify(positions)}`,
-  `- Valor total: ${Number(summary.totalValue || 0).toFixed(2)}`,
+  'PORTFOLIO DETAIL:',
+  `- Total value: ${Number(summary.totalValue || 0).toFixed(2)}`,
+  `- Number of holdings: ${Array.isArray(positions) ? positions.length : 0}`,
+  `- Holdings: ${
+    (Array.isArray(positions) ? positions : [])
+      .map((p) => {
+        const parts = [
+          `${p.symbol || 'N/A'}`,
+          `qty=${toNum(p.quantity, 0)}`,
+          `avg=${toNum(p.buy_price, 0)}`,
+          `price=${toNum(p.current_price, null) == null ? 'N/D' : Number(p.current_price).toFixed(2)}`,
+          `pnl_pct=${toNum(p.pnl_pct, null) == null ? 'N/D' : Number(p.pnl_pct).toFixed(2)}%`,
+          `weight=${toNum(p.weight_pct, null) == null ? 'N/D' : Number(p.weight_pct).toFixed(2)}%`,
+          `rsi=${toNum(p.rsi, null) == null ? 'N/D' : Number(p.rsi).toFixed(1)}`,
+          `above_sma50=${p.above_sma50 == null ? 'N/D' : Boolean(p.above_sma50)}`,
+          `vol20d=${toNum(p.volatility_20d, null) == null ? 'N/D' : `${(Number(p.volatility_20d) * 100).toFixed(1)}%`}`
+        ];
+        return parts.join(' | ');
+      })
+      .join(' || ')
+  }`,
   `- Distribucion por clase: ${JSON.stringify(summary.allocationByClass)}`,
   `- Distribucion por moneda: ${JSON.stringify(summary.allocationByCurrency)}`,
   `- Distribucion por sector: ${JSON.stringify(summary.allocationBySector)}`,
@@ -195,11 +222,23 @@ const buildPrompt = ({ positions, summary, config, macro, agentHistory }) => [
   'CONTEXTO MACRO HOY:',
   `- Sentimiento: ${macro?.market_sentiment || 'neutral'}`,
   `- Temas principales: ${pickTop(Object.fromEntries((safeArray(macro?.themes).slice(0, 3).map((x) => [x.theme || 'tema', x.conviction || 0]))), 3) || 'N/A'}`,
+  `- Regime: ${marketContext?.regime || 'transition'} (${marketContext?.volatilityRegime || 'normal'})`,
+  `- Leadership: ${Array.isArray(marketContext?.leadership) && marketContext.leadership.length ? marketContext.leadership.join(', ') : 'N/A'}`,
+  `- Alignment score: ${toNum(marketContext?.alignmentScore, null) == null ? 'N/D' : Number(marketContext.alignmentScore).toFixed(2)}`,
   '',
   'HISTORIAL DEL AGENTE:',
   `- Señales similares anteriores: ${Number(agentHistory?.count || 0)}`,
   `- Win rate en señales similares: ${Number(agentHistory?.hitRatePct || 0).toFixed(2)}%`,
   `- Última señal del agente: ${agentHistory?.lastSignalSummary || 'sin historial'}`,
+  '',
+  'REGLAS DE CALIDAD:',
+  '- Referenciar tickers concretos y números reales del portfolio.',
+  '- Conectar cada observación con el régimen actual.',
+  '- Evitar frases genéricas como "diversificar más".',
+  '- Proponer consideraciones accionables y medibles.',
+  '',
+  'BAD note: "Portfolio concentrado en tech. Diversificar."',
+  'GOOD note: "NVDA pesa 28% y RSI 71; en régimen risk_on puede sostenerse, pero un retroceso de 5% implicaría impacto material en cartera."',
   '',
   'Respondé en JSON estricto con schema:',
   '{"health_score":1,"health_summary":"string","concentration_risk":"low|medium|high","allocation_analysis":{"by_class":{"current":{},"suggested":{},"reasoning":"string"},"by_currency":{"current":{},"suggested":{},"reasoning":"string"}},"recommendations":[{"type":"reduce|increase|add|close|hold","priority":"high|medium|low","asset":"string","detail":"string","amount_pct":0}],"next_review":"1w|2w|1m"}'
@@ -229,6 +268,82 @@ const normalizeAdvice = (raw = {}, fallback = {}) => {
 };
 
 const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => {
+  const loadMarketContext = async (symbols = []) => {
+    const cleanSymbols = Array.from(new Set((Array.isArray(symbols) ? symbols : []).map((s) => String(s || '').toUpperCase()).filter(Boolean)));
+    const [dateOut, regimeOut] = await Promise.all([
+      query('SELECT MAX(date)::text AS date FROM market_daily_bars'),
+      query('SELECT regime, volatility_regime, leadership FROM regime_state ORDER BY date DESC LIMIT 1')
+    ]);
+    const marketDate = String(dateOut.rows?.[0]?.date || '').slice(0, 10);
+    const regime = regimeOut.rows?.[0] || {};
+    if (!marketDate || !cleanSymbols.length) {
+      return {
+        marketDate: marketDate || null,
+        regime: String(regime?.regime || 'transition'),
+        volatilityRegime: String(regime?.volatility_regime || 'normal'),
+        leadership: Array.isArray(regime?.leadership) ? regime.leadership : [],
+        bySymbol: new Map()
+      };
+    }
+
+    const [closesOut, barsOut, volOut] = await Promise.all([
+      query(
+        `SELECT symbol, close
+         FROM market_daily_bars
+         WHERE date = $1
+           AND symbol = ANY($2::text[])`,
+        [marketDate, cleanSymbols]
+      ),
+      query(
+        `SELECT symbol, date::text AS date, high, low, close, volume
+         FROM market_daily_bars
+         WHERE symbol = ANY($1::text[])
+           AND date <= $2
+         ORDER BY symbol ASC, date ASC`,
+        [cleanSymbols, marketDate]
+      ),
+      query(
+        `SELECT symbol, vol_20d
+         FROM market_metrics_daily
+         WHERE date = $1
+           AND symbol = ANY($2::text[])`,
+        [marketDate, cleanSymbols]
+      )
+    ]);
+
+    const closeMap = new Map((closesOut.rows || []).map((row) => [String(row.symbol || '').toUpperCase(), toNum(row.close, null)]));
+    const volMap = new Map((volOut.rows || []).map((row) => [String(row.symbol || '').toUpperCase(), toNum(row.vol_20d, null)]));
+    const grouped = new Map();
+    for (const row of barsOut.rows || []) {
+      const symbol = String(row.symbol || '').toUpperCase();
+      if (!symbol) continue;
+      if (!grouped.has(symbol)) grouped.set(symbol, { closes: [], highs: [], lows: [], volumes: [] });
+      const bucket = grouped.get(symbol);
+      bucket.closes.push(Number(row.close));
+      bucket.highs.push(Number(row.high));
+      bucket.lows.push(Number(row.low));
+      bucket.volumes.push(Number(row.volume || 0));
+    }
+    const bySymbol = new Map();
+    for (const symbol of cleanSymbols) {
+      const indicators = calculateIndicators(grouped.get(symbol) || {}) || {};
+      bySymbol.set(symbol, {
+        close: closeMap.get(symbol),
+        rsi: toNum(indicators.rsi, null),
+        sma50: toNum(indicators.sma50, null),
+        volatility20d: volMap.get(symbol)
+      });
+    }
+
+    return {
+      marketDate,
+      regime: String(regime?.regime || 'transition'),
+      volatilityRegime: String(regime?.volatility_regime || 'normal'),
+      leadership: Array.isArray(regime?.leadership) ? regime.leadership : [],
+      bySymbol
+    };
+  };
+
   const getInputsForUser = async (userId) => {
     const [positionsOut, configOut, macroOut, statsOut, latestOut] = await Promise.all([
       query(
@@ -294,7 +409,34 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
       return { skipped: true, reason: 'MIN_PORTFOLIO_REQUIRED', minimumPositions: 2, currentPositions: positions.length };
     }
 
-    const summary = summarizePortfolio(positions);
+    const marketContext = await loadMarketContext(positions.map((p) => p.symbol));
+    const totalValue = positions.reduce((acc, row) => {
+      const symbol = String(row.symbol || '').toUpperCase();
+      const qty = toNum(row.quantity, 0);
+      const mark = toNum(marketContext.bySymbol.get(symbol)?.close, toNum(row.buy_price, 0));
+      return acc + qty * mark;
+    }, 0);
+    const enrichedPositions = positions.map((row) => {
+      const symbol = String(row.symbol || '').toUpperCase();
+      const qty = toNum(row.quantity, 0);
+      const buy = toNum(row.buy_price, 0);
+      const mark = toNum(marketContext.bySymbol.get(symbol)?.close, buy);
+      const value = qty * mark;
+      const pnlPct = buy > 0 ? ((mark - buy) / buy) * 100 : null;
+      const sma50 = toNum(marketContext.bySymbol.get(symbol)?.sma50, null);
+      return {
+        ...row,
+        symbol,
+        current_price: mark,
+        pnl_pct: pnlPct,
+        weight_pct: totalValue > 0 ? (value / totalValue) * 100 : null,
+        rsi: toNum(marketContext.bySymbol.get(symbol)?.rsi, null),
+        above_sma50: Number.isFinite(mark) && Number.isFinite(sma50) ? mark >= sma50 : null,
+        volatility_20d: toNum(marketContext.bySymbol.get(symbol)?.volatility20d, null)
+      };
+    });
+
+    const summary = summarizePortfolio(enrichedPositions);
     const fallback = fallbackAdvice({ summary, macro, riskProfile: config?.risk_profile || 'moderado' });
 
     let advice = fallback;
@@ -309,7 +451,18 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
           model: env.aiAgentModel,
           timeoutMs: env.aiAgentTimeoutMs,
           systemPrompt: 'Sos un asesor de portfolio institucional. Responde solo JSON.',
-          userPrompt: buildPrompt({ positions, summary, config, macro, agentHistory })
+          userPrompt: buildPrompt({
+            positions: enrichedPositions,
+            summary,
+            config,
+            macro,
+            agentHistory,
+            marketContext: {
+              regime: marketContext.regime,
+              volatilityRegime: marketContext.volatilityRegime,
+              leadership: marketContext.leadership
+            }
+          })
         });
         usage = response?.raw?.usage || null;
         const parsed = extractJsonBlock(response.text);

@@ -103,6 +103,24 @@ const summarizePortfolio = (rows = []) => {
   return summary;
 };
 
+const formatSignedPct = (value, digits = 2) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'n/a';
+  const sign = num > 0 ? '+' : '';
+  return `${sign}${num.toFixed(digits)}%`;
+};
+
+const formatPrice = (value, digits = 2) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'n/a';
+  return num.toFixed(digits);
+};
+
+const formatBreadth = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? `${num.toFixed(1)}%` : 'n/a';
+};
+
 const buildAgentHistory = ({ stats = {}, latest = null }) => {
   const wins = Number(stats.wins || 0);
   const losses = Number(stats.losses || 0);
@@ -114,21 +132,56 @@ const buildAgentHistory = ({ stats = {}, latest = null }) => {
   return { count, hitRatePct, lastSignalSummary };
 };
 
-const buildPrompt = ({ market, headlines, userContext }) => {
-  const topHeadlines = headlines.slice(0, 12).map((item, idx) => `${idx + 1}. ${item?.headline || ''}`).join('\n');
+const pickBenchmark = (rows = [], symbol) => rows.find((row) => String(row?.symbol || '').toUpperCase() === String(symbol || '').toUpperCase()) || null;
+
+const buildPrompt = ({ market, globalContext, headlines, userContext }) => {
+  const benchmarkRows = Array.isArray(globalContext?.benchmarks) ? globalContext.benchmarks : [];
+  const movers = Array.isArray(globalContext?.movers) ? globalContext.movers : [];
+  const breadth = globalContext?.breadth?.pct_above_ma50;
+  const regime = globalContext?.regime || null;
+  const topHeadlines = headlines.slice(0, 30).map((item, idx) => `${idx + 1}. ${item?.headline || ''} [${item?.source || 'N/A'}]`).join('\n');
   const profile = userContext?.config || {};
   const portfolioSummary = userContext?.portfolioSummary || { totalValue: 0, positionsCount: 0 };
   const agentHistory = userContext?.agentHistory || { count: 0, hitRatePct: 0, lastSignalSummary: 'sin historial' };
+  const marketDate = String(globalContext?.date || '').slice(0, 10) || 'n/a';
+
+  const spy = pickBenchmark(benchmarkRows, 'SPY');
+  const qqq = pickBenchmark(benchmarkRows, 'QQQ');
+  const iwm = pickBenchmark(benchmarkRows, 'IWM');
+  const dia = pickBenchmark(benchmarkRows, 'DIA');
+  const btc = pickBenchmark(benchmarkRows, 'BTCUSDT');
+  const eth = pickBenchmark(benchmarkRows, 'ETHUSDT');
+  const gld = pickBenchmark(benchmarkRows, 'GLD');
+  const uso = pickBenchmark(benchmarkRows, 'USO');
+  const tlt = pickBenchmark(benchmarkRows, 'TLT');
+  const eurusd = pickBenchmark(benchmarkRows, 'EUR_USD');
+  const usdjpy = pickBenchmark(benchmarkRows, 'USD_JPY');
+  const spyVol20d = Number(spy?.vol_20d);
+  const spyMa50 = Number(spy?.ma50);
+  const spyClose = Number(spy?.close);
+  const spyRet1m = Number(spy?.ret_1m);
+  const spyAboveMa50 = Number.isFinite(spyClose) && Number.isFinite(spyMa50) ? (spyClose >= spyMa50 ? 'Yes' : 'No') : 'n/a';
+  const moversText = movers
+    .map((m) => `${m.symbol} (${m.name || 'N/A'}): ${formatSignedPct(Number(m.change_pct), 2)}`)
+    .join('\n');
 
   return [
     'Sos un estratega de inversion global del equipo de Horsai.',
+    'Tu trabajo es producir insights accionables y personalizados con datos reales del día, evitando texto genérico.',
     '',
-    'DATOS DE MERCADO HOY:',
-    `- Indices: S&P 500 ${market.indices.sp500.price ?? 'n/a'} (${market.indices.sp500.changePct ?? 0}%), Nasdaq ${market.indices.nasdaq.price ?? 'n/a'} (${market.indices.nasdaq.changePct ?? 0}%), Dow ${market.indices.dow.price ?? 'n/a'} (${market.indices.dow.changePct ?? 0}%)`,
-    `- Commodities: Oro ${market.commodities.gold ?? 'n/a'}, Plata ${market.commodities.silver ?? 'n/a'}, Petroleo ${market.commodities.oil ?? 'n/a'}`,
-    `- Crypto: BTC ${market.crypto.btc ?? 'n/a'}, ETH ${market.crypto.eth ?? 'n/a'}`,
-    `- Forex: EUR/USD ${market.fx.eurusd ?? 'n/a'}, GBP/USD ${market.fx.gbpusd ?? 'n/a'}, USD/JPY ${market.fx.usdjpy ?? 'n/a'}`,
-    `- VIX: ${market.vix ?? 'n/a'}`,
+    `DATOS DE MERCADO (${marketDate}):`,
+    `- SPY: ${formatPrice(spy?.close)} (${formatSignedPct(spy?.change_pct, 2)}) | QQQ: ${formatPrice(qqq?.close)} (${formatSignedPct(qqq?.change_pct, 2)}) | DIA: ${formatPrice(dia?.close)} (${formatSignedPct(dia?.change_pct, 2)}) | IWM: ${formatPrice(iwm?.close)} (${formatSignedPct(iwm?.change_pct, 2)})`,
+    `- BTCUSDT: ${formatPrice(btc?.close)} (${formatSignedPct(btc?.change_pct, 2)}) | ETHUSDT: ${formatPrice(eth?.close)} (${formatSignedPct(eth?.change_pct, 2)})`,
+    `- GLD: ${formatPrice(gld?.close)} (${formatSignedPct(gld?.change_pct, 2)}) | USO: ${formatPrice(uso?.close)} (${formatSignedPct(uso?.change_pct, 2)}) | TLT: ${formatPrice(tlt?.close)} (${formatSignedPct(tlt?.change_pct, 2)})`,
+    `- EUR/USD: ${formatPrice(eurusd?.close, 4)} (${formatSignedPct(eurusd?.change_pct, 2)}) | USD/JPY: ${formatPrice(usdjpy?.close, 4)} (${formatSignedPct(usdjpy?.change_pct, 2)})`,
+    `- SPY technical: above_MA50=${spyAboveMa50} | MA50=${formatPrice(spyMa50)} | ret_1m=${formatSignedPct(Number.isFinite(spyRet1m) ? spyRet1m * 100 : null, 2)} | vol_20d=${Number.isFinite(spyVol20d) ? `${(spyVol20d * 100).toFixed(1)}%` : 'n/a'}`,
+    `- Market breadth: ${formatBreadth(breadth)} de símbolos sobre MA50`,
+    `- Regime: ${regime?.regime || 'transition'} | Volatility: ${regime?.volatility_regime || 'normal'} | Confidence: ${Number.isFinite(Number(regime?.confidence)) ? `${(Number(regime.confidence) * 100).toFixed(0)}%` : 'n/a'}`,
+    `- Leadership: ${Array.isArray(regime?.leadership) && regime.leadership.length ? regime.leadership.join(', ') : 'n/a'}`,
+    `- Risk flags: ${Array.isArray(regime?.risk_flags) && regime.risk_flags.length ? regime.risk_flags.join(', ') : 'none'}`,
+    '',
+    'BIGGEST MOVERS (ABS CHANGE):',
+    moversText || 'Sin movers relevantes',
     '',
     'NOTICIAS MACRO (ultimas 24h):',
     topHeadlines || 'Sin titulares',
@@ -144,7 +197,17 @@ const buildPrompt = ({ market, headlines, userContext }) => {
     `- Win rate en señales similares: ${Number(agentHistory.hitRatePct || 0).toFixed(2)}%`,
     `- Última señal del agente: ${agentHistory.lastSignalSummary}`,
     '',
-    'Responde en JSON estricto con:',
+    'REGLAS DE CALIDAD:',
+    '- Usa solo datos provistos arriba; no inventes valores.',
+    '- Cada theme debe incluir al menos 2 números concretos (precio, % de cambio, breadth, volatilidad o confidence).',
+    '- Cubre al menos 4 clases de activos entre equity, bonos, commodities, crypto y FX.',
+    '- En relevance_to_user, conecta explícitamente con perfil/portfolio del usuario.',
+    '- Evita frases vacías como "mercado mixto".',
+    '',
+    'BAD example: "Mercados mixtos y volatilidad."',
+    'GOOD example: "SPY +0.8% a 542.30 con 63.4% de acciones sobre MA50, mientras BTC +2.1% y TLT -0.9% muestran apetito por riesgo con presión en duration."',
+    '',
+    'Responde en JSON estricto con este schema:',
     '{"market_sentiment":"bullish|neutral|bearish","sentiment_reasoning":"string","themes":[{"theme":"string","direction":"bullish|bearish","conviction":1,"timeframe":"1w|1m|3m|6m|1y","reasoning":"string","catalysts":["string"],"risks":["string"],"suggested_assets":[{"symbol":"string","name":"string","why":"string"}],"relevance_to_user":"string"}],"key_events_ahead":[{"event":"string","date":"YYYY-MM-DD","potential_impact":"string","assets_affected":["string"]}]}'
   ].join('\n');
 };
@@ -234,6 +297,106 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
     };
   };
 
+  const loadGlobalContext = async () => {
+    const maxDateOut = await query('SELECT MAX(date)::text AS date FROM market_daily_bars');
+    const marketDate = String(maxDateOut.rows?.[0]?.date || '').slice(0, 10);
+    if (!marketDate) {
+      return {
+        date: null,
+        benchmarks: [],
+        movers: [],
+        breadth: null,
+        regime: null,
+        news: []
+      };
+    }
+
+    const benchmarkSymbols = ['SPY', 'QQQ', 'DIA', 'IWM', 'BTCUSDT', 'ETHUSDT', 'GLD', 'USO', 'TLT', 'EUR_USD', 'USD_JPY', 'SMH', 'XLF', 'XLE', 'XLK'];
+    const [benchmarksOut, moversOut, breadthOut, regimeOut, newsOut] = await Promise.all([
+      query(
+        `SELECT b.symbol,
+                COALESCE(u.name, b.symbol) AS name,
+                b.close,
+                CASE WHEN prev.close IS NULL OR prev.close = 0 THEN NULL ELSE ((b.close - prev.close) / prev.close) * 100 END AS change_pct,
+                m.ma50,
+                m.vol_20d,
+                m.ret_1m
+         FROM market_daily_bars b
+         LEFT JOIN market_metrics_daily m ON m.symbol = b.symbol AND m.date = b.date
+         LEFT JOIN universe_symbols u ON u.symbol = b.symbol
+         LEFT JOIN LATERAL (
+           SELECT close
+           FROM market_daily_bars p
+           WHERE p.symbol = b.symbol
+             AND p.date < b.date
+           ORDER BY p.date DESC
+           LIMIT 1
+         ) prev ON TRUE
+         WHERE b.date = $1
+           AND b.symbol = ANY($2::text[])`,
+        [marketDate, benchmarkSymbols]
+      ),
+      query(
+        `SELECT b.symbol,
+                COALESCE(u.name, b.symbol) AS name,
+                b.close,
+                CASE WHEN prev.close IS NULL OR prev.close = 0 THEN NULL ELSE ((b.close - prev.close) / prev.close) * 100 END AS change_pct,
+                COALESCE(u.asset_type, 'unknown') AS category
+         FROM market_daily_bars b
+         LEFT JOIN universe_symbols u ON u.symbol = b.symbol
+         LEFT JOIN LATERAL (
+           SELECT close
+           FROM market_daily_bars p
+           WHERE p.symbol = b.symbol
+             AND p.date < b.date
+           ORDER BY p.date DESC
+           LIMIT 1
+         ) prev ON TRUE
+         WHERE b.date = $1
+         ORDER BY ABS(CASE WHEN prev.close IS NULL OR prev.close = 0 THEN 0 ELSE ((b.close - prev.close) / prev.close) * 100 END) DESC
+         LIMIT 10`,
+        [marketDate]
+      ),
+      query(
+        `SELECT
+           COUNT(*) FILTER (WHERE b.close > m.ma50)::float / NULLIF(COUNT(*), 0) * 100 AS pct_above_ma50
+         FROM market_daily_bars b
+         JOIN market_metrics_daily m ON m.symbol = b.symbol AND m.date = b.date
+         WHERE b.date = $1
+           AND m.ma50 IS NOT NULL`,
+        [marketDate]
+      ),
+      query(
+        `SELECT regime, volatility_regime, leadership, risk_flags, confidence
+         FROM regime_state
+         WHERE date = $1
+         LIMIT 1`,
+        [marketDate]
+      ),
+      query(
+        `SELECT headline,
+                source,
+                COALESCE(raw->>'category', 'general') AS category,
+                tickers
+         FROM news_items
+         WHERE ts >= ($1::date - INTERVAL '1 day')
+           AND ts < ($1::date + INTERVAL '1 day')
+         ORDER BY ts DESC
+         LIMIT 30`,
+        [marketDate]
+      )
+    ]);
+
+    return {
+      date: marketDate,
+      benchmarks: benchmarksOut.rows || [],
+      movers: moversOut.rows || [],
+      breadth: breadthOut.rows?.[0] || null,
+      regime: regimeOut.rows?.[0] || null,
+      news: newsOut.rows || []
+    };
+  };
+
   const persistInsight = async ({ userId, insight, model }) => {
     const inserted = await query(
       `INSERT INTO macro_insights (user_id, market_sentiment, sentiment_reasoning, themes, key_events, ai_model)
@@ -252,11 +415,13 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
   };
 
   const generateForUser = async (userId) => {
-    const [market, userContext, news] = await Promise.all([
+    const [market, userContext, news, globalContext] = await Promise.all([
       fetchMarketSnapshot(),
       getUserContext(userId),
-      finnhub.generalNews('general', 0).catch(() => [])
+      finnhub.generalNews('general', 0).catch(() => []),
+      loadGlobalContext().catch(() => ({ date: null, benchmarks: [], movers: [], breadth: null, regime: null, news: [] }))
     ]);
+    const contextualHeadlines = Array.isArray(globalContext?.news) && globalContext.news.length ? globalContext.news : safeArray(news);
 
     let insight = null;
     let model = null;
@@ -271,7 +436,7 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
           model: env.aiAgentModel,
           timeoutMs: env.aiAgentTimeoutMs,
           systemPrompt: 'Sos un estratega macro del equipo de Horsai. Responde solo JSON.',
-          userPrompt: buildPrompt({ market, headlines: safeArray(news), userContext })
+          userPrompt: buildPrompt({ market, globalContext, headlines: contextualHeadlines, userContext })
         });
         usage = response?.raw?.usage || null;
         const parsed = extractJsonBlock(response.text);

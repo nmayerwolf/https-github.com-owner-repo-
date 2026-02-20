@@ -81,6 +81,7 @@ class FinnhubProvider extends MarketDataProvider {
     const toDate = String(to || '');
     const tags = Array.isArray(queryTags) ? queryTags : [];
     const news = [];
+    const categories = ['general', 'forex', 'crypto', 'merger'];
 
     for (const tag of tags) {
       const symbol = String(tag || '').toUpperCase().trim();
@@ -101,24 +102,38 @@ class FinnhubProvider extends MarketDataProvider {
       }
     }
 
-    if (!news.length) {
-      const fallback = await this.client.generalNews('general', 0).catch(() => []);
-      for (const item of fallback || []) {
+    const delayMs = process.env.NODE_ENV === 'test' ? 0 : 1300;
+    for (const category of categories) {
+      const feed = await this.client.generalNews(category, 0).catch(() => []);
+      for (const item of feed || []) {
         news.push({
-          id: String(item.id || `general-${item.datetime || item.headline || Math.random()}`),
+          id: String(item.id || `${category}-${item.datetime || item.headline || Math.random()}`),
           ts: new Date(Number(item.datetime || 0) * 1000 || Date.now()).toISOString(),
           source: item.source || null,
           headline: item.headline || '',
           summary: item.summary || '',
-          tags: [],
+          tags: [category],
           tickers: [],
           url: item.url || null,
-          raw: item
+          raw: {
+            ...item,
+            category
+          }
         });
+      }
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
 
-    return news;
+    const seen = new Set();
+    return news.filter((item) => {
+      const url = String(item?.url || '').trim().toLowerCase();
+      if (!url) return false;
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
   }
 }
 
