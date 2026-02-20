@@ -37,6 +37,7 @@ const newsDigestRoutes = require('./routes/newsDigest');
 const recoRoutes = require('./routes/reco');
 const crisisRoutes = require('./routes/crisis');
 const portfoliosRoutes = require('./routes/portfolios');
+const adminJobsRoutes = require('./routes/adminJobs');
 const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
   'AV:GOLD': { fn: 'GOLD' },
@@ -244,6 +245,7 @@ app.use('/api/news/digest', authRequired, requireCsrf, newsDigestRoutes);
 app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
 app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
 app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
+app.use('/api/admin/jobs', authRequired, requireCsrf, adminJobsRoutes);
 
 app.use(errorHandler);
 
