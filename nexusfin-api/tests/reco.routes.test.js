@@ -48,4 +48,44 @@ describe('reco routes', () => {
     expect(res.body.sections.opportunistic).toHaveLength(1);
     expect(res.body.sections.riskAlerts).toHaveLength(1);
   });
+
+  it('limits risks to 2 and only includes opportunisticType for opportunistic cards', async () => {
+    query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            items: [
+              {
+                ideaId: 's1',
+                category: 'strategic',
+                symbol: 'AAPL',
+                confidence: 0.7,
+                rationale: ['r1', 'r2', 'r3', 'r4'],
+                risks: ['k1', 'k2', 'k3'],
+                opportunisticType: 'overreaction'
+              },
+              {
+                ideaId: 'o1',
+                category: 'opportunistic',
+                symbol: 'TSLA',
+                confidence: 0.6,
+                rationale: ['x'],
+                risks: ['a', 'b', 'c'],
+                opportunisticType: 'overreaction'
+              }
+            ]
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ regime: 'risk_on', volatility_regime: 'normal', leadership: [], macro_drivers: [], risk_flags: [], confidence: 0.8 }] })
+      .mockResolvedValueOnce({ rows: [{ is_active: false, summary: 'ok', triggers: [], learn_more: {} }] });
+
+    const res = await request(makeApp()).get('/api/reco/2026-02-20');
+
+    expect(res.status).toBe(200);
+    expect(res.body.sections.strategic[0].risks).toHaveLength(2);
+    expect(res.body.sections.opportunistic[0].risks).toHaveLength(2);
+    expect(res.body.sections.strategic[0].opportunisticType).toBeUndefined();
+    expect(res.body.sections.opportunistic[0].opportunisticType).toBe('overreaction');
+  });
 });
