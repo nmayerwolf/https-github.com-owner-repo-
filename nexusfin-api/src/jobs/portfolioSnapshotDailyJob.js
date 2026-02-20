@@ -158,7 +158,7 @@ const runCore = async (runDate) => {
            ORDER BY COALESCE(bar_date, date) DESC
            LIMIT 20`
         ),
-        query('SELECT risk_level, horizon, focus FROM user_agent_profile WHERE user_id = $1 LIMIT 1', [portfolio.user_id])
+        query('SELECT risk_level, horizon, focus, language FROM user_agent_profile WHERE user_id = $1 LIMIT 1', [portfolio.user_id])
       ]);
 
       const benchmark = portfolioMetricsEngine.calculateBenchmarkComparison(prevSnapshots.rows || [], benchBars.rows || []);
@@ -167,7 +167,7 @@ const runCore = async (runDate) => {
       const concentration = portfolioMetricsEngine.calculateConcentration(snapshot.holdings_detail || []);
       const volatility20d = portfolioMetricsEngine.calculateVolatility20d(prevSnapshots.rows || []);
 
-      const profile = profileOut.rows?.[0] || { risk_level: 0.5, horizon: 0.5, focus: 0.5 };
+      const profile = profileOut.rows?.[0] || { risk_level: 0.5, horizon: 0.5, focus: 0.5, language: 'es' };
       const notesOut = await generatePortfolioNotes(
         snapshot,
         {

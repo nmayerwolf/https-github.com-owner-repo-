@@ -8,10 +8,12 @@ const DEFAULT_PROFILE = {
   preset_type: 'balanced',
   risk_level: 0.5,
   horizon: 0.5,
-  focus: 0.5
+  focus: 0.5,
+  language: 'es'
 };
 
 const PRESET_VALUES = new Set(['strategic_core', 'balanced', 'opportunistic']);
+const LANGUAGE_VALUES = new Set(['es', 'en']);
 
 const toRange01 = (value, field) => {
   const n = Number(value);
@@ -34,13 +36,14 @@ const serialize = (row = {}) => ({
   preset_type: String(row.preset_type || DEFAULT_PROFILE.preset_type),
   risk_level: Number(row.risk_level ?? DEFAULT_PROFILE.risk_level),
   horizon: Number(row.horizon ?? DEFAULT_PROFILE.horizon),
-  focus: Number(row.focus ?? DEFAULT_PROFILE.focus)
+  focus: Number(row.focus ?? DEFAULT_PROFILE.focus),
+  language: LANGUAGE_VALUES.has(String(row.language || '').toLowerCase()) ? String(row.language).toLowerCase() : DEFAULT_PROFILE.language
 });
 
 router.get('/profile', async (req, res, next) => {
   try {
     const out = await query(
-      `SELECT preset_type, risk_level, horizon, focus
+      `SELECT preset_type, risk_level, horizon, focus, language
        FROM user_agent_profile
        WHERE user_id = $1`,
       [req.user.id]
@@ -48,16 +51,17 @@ router.get('/profile', async (req, res, next) => {
 
     if (!out.rows.length) {
       const inserted = await query(
-        `INSERT INTO user_agent_profile (user_id, preset_type, risk_level, horizon, focus, updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW())
+        `INSERT INTO user_agent_profile (user_id, preset_type, risk_level, horizon, focus, language, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,NOW())
          ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
-         RETURNING preset_type, risk_level, horizon, focus`,
+         RETURNING preset_type, risk_level, horizon, focus, language`,
         [
           req.user.id,
           DEFAULT_PROFILE.preset_type,
           DEFAULT_PROFILE.risk_level,
           DEFAULT_PROFILE.horizon,
-          DEFAULT_PROFILE.focus
+          DEFAULT_PROFILE.focus,
+          DEFAULT_PROFILE.language
         ]
       );
       return res.json(serialize(inserted.rows[0]));
@@ -81,27 +85,33 @@ router.put('/profile', async (req, res, next) => {
       presetType: String(presetType),
       riskLevel: toRange01(req.body?.risk_level ?? req.body?.riskLevel ?? DEFAULT_PROFILE.risk_level, 'risk_level'),
       horizon: toRange01(req.body?.horizon ?? DEFAULT_PROFILE.horizon, 'horizon'),
-      focus: toRange01(req.body?.focus ?? DEFAULT_PROFILE.focus, 'focus')
+      focus: toRange01(req.body?.focus ?? DEFAULT_PROFILE.focus, 'focus'),
+      language: String(req.body?.language ?? DEFAULT_PROFILE.language).toLowerCase()
     };
+    if (!LANGUAGE_VALUES.has(payload.language)) {
+      throw badRequest('language inválido', 'VALIDATION_ERROR');
+    }
 
     const out = await query(
       `INSERT INTO user_agent_profile (
-        user_id, preset_type, risk_level, horizon, focus, preferred_tags, excluded_tags, notification_mode, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,COALESCE($6::jsonb,'[]'::jsonb),COALESCE($7::jsonb,'[]'::jsonb),COALESCE($8,'normal'),NOW())
+        user_id, preset_type, risk_level, horizon, focus, language, preferred_tags, excluded_tags, notification_mode, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7::jsonb,'[]'::jsonb),COALESCE($8::jsonb,'[]'::jsonb),COALESCE($9,'normal'),NOW())
       ON CONFLICT (user_id)
       DO UPDATE SET
         preset_type = EXCLUDED.preset_type,
         risk_level = EXCLUDED.risk_level,
         horizon = EXCLUDED.horizon,
         focus = EXCLUDED.focus,
+        language = EXCLUDED.language,
         updated_at = NOW()
-      RETURNING preset_type, risk_level, horizon, focus`,
+      RETURNING preset_type, risk_level, horizon, focus, language`,
       [
         req.user.id,
         payload.presetType,
         payload.riskLevel,
         payload.horizon,
         payload.focus,
+        payload.language,
         JSON.stringify(toTags(req.body?.preferred_tags ?? req.body?.preferredTags, 'preferred_tags')),
         JSON.stringify(toTags(req.body?.excluded_tags ?? req.body?.excludedTags, 'excluded_tags')),
         req.body?.notification_mode ?? req.body?.notificationMode ?? 'normal'

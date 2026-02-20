@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
@@ -18,6 +18,7 @@ import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
 import { MARKET_VISIBLE } from './config/features';
+import { LanguageContext } from './i18n/LanguageContext';
 
 const MIGRATION_DISMISSED_KEY = 'horsai_migration_prompt_dismissed_v1';
 const LEGACY_KEYS = {
@@ -115,6 +116,7 @@ const App = () => {
   const location = useLocation();
   const { state } = useApp();
   const { isAuthenticated, user, logout, loading: authLoading, completeOnboarding } = useAuth();
+  const { setLanguage } = useContext(LanguageContext);
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
@@ -182,6 +184,24 @@ const App = () => {
       setOnboardingOpen(false);
     }
   }, [isAuthenticated, user]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let active = true;
+    const syncLanguage = async () => {
+      try {
+        const profile = await api.getAgentProfile();
+        if (!active) return;
+        setLanguage(profile?.language || 'es');
+      } catch {
+        // ignore profile language errors
+      }
+    };
+    syncLanguage();
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, setLanguage]);
 
   const runMigration = async () => {
     setMigrationLoading(true);

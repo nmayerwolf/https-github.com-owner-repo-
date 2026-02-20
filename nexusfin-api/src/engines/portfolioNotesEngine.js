@@ -39,8 +39,13 @@ const generatePortfolioNotes = async (snapshot, metrics, regimeState, userProfil
     .sort((a, b) => Number(b?.weight_pct || 0) - Number(a?.weight_pct || 0))
     .slice(0, 5);
   const leadership = safeList(regimeState?.leadership).join(', ');
+  const languageInstruction = String(userProfile?.language || '').toLowerCase() === 'en'
+    ? 'Write notes in English.'
+    : 'Write notes in Spanish (Latin American).';
 
-  const prompt = `You are Horsai's portfolio analyst. Generate 2-4 short, actionable notes about this portfolio.
+  const prompt = `You are Horsai's portfolio analyst.
+${languageInstruction}
+Generate 2-4 short, actionable notes about this portfolio.
 
 PORTFOLIO:
 Total value: $${Number(snapshot?.total_value || 0).toFixed(2)}

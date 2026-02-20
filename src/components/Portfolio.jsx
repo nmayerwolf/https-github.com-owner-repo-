@@ -3,6 +3,7 @@ import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { WATCHLIST_CATALOG } from '../utils/constants';
 import { formatPct, formatUSD, shortDate } from '../utils/format';
+import { useTranslation } from '../i18n/useTranslation';
 
 const todayIsoDate = () => new Date().toISOString().slice(0, 10);
 const createEmptyForm = () => ({ symbol: '', name: '', category: 'equity', buyDate: todayIsoDate(), buyPrice: '', amountUsd: '', stopLoss: '', takeProfit: '' });
@@ -120,6 +121,7 @@ const PositionRow = memo(function PositionRow({ position, onOpenSell, onDelete, 
 });
 
 const Portfolio = () => {
+  const { t } = useTranslation();
   const { state, actions } = useApp();
   const portfolios = Array.isArray(state.portfolios) ? state.portfolios : [];
   const hasPortfolios = portfolios.length > 0;
@@ -752,14 +754,14 @@ const Portfolio = () => {
   const alignmentTone = alignmentScoreValue == null ? 'neutral' : alignmentScoreValue <= 30 ? 'bad' : alignmentScoreValue <= 60 ? 'mid' : 'good';
   const alignmentLabel =
     alignmentScoreValue == null
-      ? 'Alignment score no disponible todavía.'
+      ? t('portfolio_alignment_unavailable')
       : alignmentScoreValue >= 75
-        ? 'Well aligned with current market environment.'
+        ? t('portfolio_alignment_high')
         : alignmentScoreValue >= 50
-          ? 'Mostly aligned. Some adjustments could help.'
+          ? t('portfolio_alignment_good')
           : alignmentScoreValue >= 25
-            ? 'Partially misaligned with current regime.'
-            : 'Significant misalignment detected.';
+            ? t('portfolio_alignment_partial')
+            : t('portfolio_alignment_low');
   const benchmark = portfolioMetrics?.benchmark || { symbol: 'SPY', benchmark_pnl_pct: 0, portfolio_pnl_pct: 0, alpha: 0 };
   const benchmarkAlpha = toNum(benchmark?.alpha, 0);
   const categoryExposureEntries = Object.entries(portfolioMetrics?.exposure?.by_category || {}).sort((a, b) => toNum(b[1]) - toNum(a[1]));
@@ -956,14 +958,14 @@ const Portfolio = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Market Alignment</h3>
+          <h3 className="section-title">{t('portfolio_alignment')}</h3>
         </div>
         {metricsError ? <div className="muted">{metricsError}</div> : null}
         {metricsLoading ? <div className="muted">Calculando métricas del portfolio...</div> : null}
         {!metricsLoading ? (
           <>
             <div className="portfolio-metric-head">
-              <span className="muted">Market Alignment</span>
+              <span className="muted">{t('portfolio_alignment')}</span>
               <span className="mono portfolio-metric-score">{alignmentScoreValue == null ? '--/100' : `${Math.round(alignmentScoreValue)}/100`}</span>
             </div>
             <div className="portfolio-alignment-track">
@@ -976,24 +978,24 @@ const Portfolio = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Performance vs SPY (20d)</h3>
+          <h3 className="section-title">{t('portfolio_benchmark')}</h3>
         </div>
         <div className="portfolio-benchmark-grid mono">
-          <div>Your portfolio:</div>
+          <div>{t('portfolio_your')}:</div>
           <div className={toNum(benchmark?.portfolio_pnl_pct, 0) >= 0 ? 'up' : 'down'}>{pct(benchmark?.portfolio_pnl_pct)}</div>
-          <div>{String(benchmark?.symbol || 'SPY')} benchmark:</div>
+          <div>{String(benchmark?.symbol || 'SPY')} {t('portfolio_benchmark_label')}:</div>
           <div className={toNum(benchmark?.benchmark_pnl_pct, 0) >= 0 ? 'up' : 'down'}>{pct(benchmark?.benchmark_pnl_pct)}</div>
-          <div>Alpha:</div>
+          <div>{t('portfolio_alpha')}:</div>
           <div className={benchmarkAlpha >= 0 ? 'up' : 'down'}>{pct(benchmarkAlpha)}</div>
         </div>
       </section>
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">Exposure</h3>
+          <h3 className="section-title">{t('portfolio_exposure')}</h3>
         </div>
         <div className="portfolio-exposure-wrap">
-          <div className="muted">By Asset Class</div>
+          <div className="muted">{t('portfolio_by_class')}</div>
           {categoryExposureEntries.length ? (
             categoryExposureEntries.map(([key, value]) => (
               <div key={`cat-${key}`} className="portfolio-exp-row mono">
@@ -1008,11 +1010,11 @@ const Portfolio = () => {
               </div>
             ))
           ) : (
-            <p className="muted">Sin datos de exposición por categoría.</p>
+            <p className="muted">{t('portfolio_no_class_exposure')}</p>
           )}
         </div>
         <div className="portfolio-exposure-wrap" style={{ marginTop: 10 }}>
-          <div className="muted">By Sector</div>
+          <div className="muted">{t('portfolio_by_sector')}</div>
           {sectorExposureEntries.length ? (
             sectorExposureEntries.slice(0, 8).map(([key, value]) => (
               <div key={`sec-${key}`} className="portfolio-exp-row mono">
@@ -1024,21 +1026,21 @@ const Portfolio = () => {
               </div>
             ))
           ) : (
-            <p className="muted">Sin datos de exposición sectorial.</p>
+            <p className="muted">{t('portfolio_no_sector_exposure')}</p>
           )}
         </div>
       </section>
 
       {concentrationTop3 > 60 ? (
         <section className="card portfolio-concentration-warning">
-          <h3 className="section-title">High Concentration</h3>
-          <p className="muted">Top 3 holdings represent {concentrationTop3.toFixed(1)}% of your portfolio.</p>
+          <h3 className="section-title">{t('portfolio_concentration')}</h3>
+          <p className="muted">{t('portfolio_concentration_msg', { pct: concentrationTop3.toFixed(1) })}</p>
         </section>
       ) : null}
 
       <section className="card portfolio-ai-notes">
         <div className="section-header-inline">
-          <h3 className="section-title">AI Notes</h3>
+          <h3 className="section-title">{t('portfolio_ai_notes')}</h3>
         </div>
         {aiNotes.length ? (
           <ul className="portfolio-ai-notes-list">
@@ -1047,7 +1049,7 @@ const Portfolio = () => {
             ))}
           </ul>
         ) : (
-          <p className="muted">Aún no hay notas AI para este portfolio.</p>
+          <p className="muted">{t('portfolio_horsai_none')}</p>
         )}
       </section>
 
@@ -1151,13 +1153,13 @@ const Portfolio = () => {
             <span className="ai-filter-label">Posiciones</span>
             <div className="ai-filter-row">
               <button type="button" className={`ai-filter-chip ${tab === 'all' ? 'is-active is-main' : ''}`} onClick={() => setTab('all')}>
-                Total
+                {t('portfolio_total')}
               </button>
               <button type="button" className={`ai-filter-chip ${tab === 'active' ? 'is-active is-main' : ''}`} onClick={() => setTab('active')}>
-                Activas
+                {t('portfolio_active')}
               </button>
               <button type="button" className={`ai-filter-chip ${tab === 'sold' ? 'is-active is-main' : ''}`} onClick={() => setTab('sold')}>
-                Cerradas
+                {t('portfolio_closed')}
               </button>
             </div>
           </div>
@@ -1181,7 +1183,7 @@ const Portfolio = () => {
           </button>
         </div>
       ) : null}
-      {!rows.length && <div className="card muted">No hay posiciones en esta pestaña.</div>}
+      {!rows.length && <div className="card muted">{t('portfolio_no_positions')}</div>}
 
       <section className="card portfolio-toolbar portfolio-export-card">
         <label className="label" style={{ maxWidth: 280 }}>
@@ -1193,7 +1195,7 @@ const Portfolio = () => {
           </select>
         </label>
         <button type="button" onClick={exportCsv} disabled={exporting}>
-          {exporting ? 'Exportando...' : 'Exportar CSV'}
+          {exporting ? 'Exportando...' : t('portfolio_export')}
         </button>
       </section>
         </>

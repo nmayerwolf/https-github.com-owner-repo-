@@ -2,6 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider } from '../../i18n/LanguageContext';
 
 const { apiMock, subscribeBrowserPushMock, themeCtxMock, authCtxMock } = vi.hoisted(() => ({
   apiMock: {
@@ -34,6 +35,8 @@ afterEach(() => {
 });
 
 describe('Settings', () => {
+  const renderWithLanguage = (ui) => render(<LanguageProvider initialLanguage="en">{ui}</LanguageProvider>);
+
   beforeEach(() => {
     apiMock.getAgentProfile.mockReset();
     apiMock.updateAgentProfile.mockReset();
@@ -44,7 +47,7 @@ describe('Settings', () => {
     themeCtxMock.setTheme.mockReset();
     authCtxMock.logout.mockReset();
 
-    apiMock.getAgentProfile.mockResolvedValue({ preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5 });
+    apiMock.getAgentProfile.mockResolvedValue({ preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5, language: 'en' });
     apiMock.getNotificationPreferences.mockResolvedValue({
       stopLoss: true,
       opportunities: true,
@@ -56,15 +59,15 @@ describe('Settings', () => {
   });
 
   it('switches theme to light', async () => {
-    render(<Settings />);
+    renderWithLanguage(<Settings />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Light' }));
 
     expect(themeCtxMock.setTheme).toHaveBeenCalledWith('light');
   });
 
   it('saves agent profile', async () => {
-    render(<Settings />);
+    renderWithLanguage(<Settings />);
 
     await waitFor(() => expect(apiMock.getAgentProfile).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: 'Strategic Core' }));
@@ -77,12 +80,12 @@ describe('Settings', () => {
   it('updates password successfully', async () => {
     apiMock.resetPassword.mockResolvedValueOnce({ ok: true });
 
-    render(<Settings />);
+    renderWithLanguage(<Settings />);
 
-    fireEvent.change(screen.getByLabelText('Contraseña actual'), { target: { value: 'abc12345' } });
-    fireEvent.change(screen.getByLabelText('Nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.change(screen.getByLabelText('Confirmar nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }));
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'abc12345' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'newpass123' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'newpass123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
 
     expect(apiMock.resetPassword).toHaveBeenCalledWith('abc12345', 'newpass123');
     expect(await screen.findByText('Contraseña actualizada correctamente.')).toBeTruthy();

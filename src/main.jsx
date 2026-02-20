@@ -5,6 +5,7 @@ import App from './App';
 import { AuthProvider } from './store/AuthContext';
 import { AppProvider } from './store/AppContext';
 import { ThemeProvider } from './store/ThemeContext';
+import { LanguageProvider } from './i18n/LanguageContext';
 import './styles.css';
 
 window.__HORSAI_BOOTED__ = true;
@@ -49,9 +50,11 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <AuthProvider>
-          <AppProvider>
-            <App />
-          </AppProvider>
+          <LanguageProvider initialLanguage="es">
+            <AppProvider>
+              <App />
+            </AppProvider>
+          </LanguageProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

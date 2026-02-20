@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from '../i18n/useTranslation';
 
 const actionClass = (action) => {
   const value = String(action || '').toUpperCase();
@@ -15,6 +16,7 @@ const confidenceClass = (value) => {
 };
 
 const IdeaCard = ({ item, variant = 'strategic' }) => {
+  const { t } = useTranslation();
   const symbol = String(item?.symbol || item?.ideaId || 'IDEA').toUpperCase();
   const action = String(item?.action || 'WATCH').toUpperCase();
   const timeframe = String(item?.timeframe || 'weeks');
@@ -23,15 +25,17 @@ const IdeaCard = ({ item, variant = 'strategic' }) => {
   const tags = Array.isArray(item?.tags) ? item.tags : [];
   const opportunisticType = String(item?.opportunisticType || item?.opportunistic_type || '').trim();
 
+  const actionText = action === 'BUY' ? t('common_buy') : action === 'SELL' ? t('common_sell') : t('common_watch');
+
   return (
     <article className={`card idea-card ${variant === 'opportunistic' ? 'idea-card-opportunistic' : 'idea-card-strategic'}`}>
       <div className="row">
         <div className="idea-symbol mono">{symbol}</div>
-        <span className={actionClass(action)}>{action}</span>
+        <span className={actionClass(action)}>{actionText}</span>
       </div>
 
       <div className="row idea-card-meta-row">
-        <div className={`mono ${confidenceClass(item?.confidence)}`}>Confidence: {Number(item?.confidence || 0).toFixed(2)}</div>
+        <div className={`mono ${confidenceClass(item?.confidence)}`}>{t('ideas_confidence')}: {Number(item?.confidence || 0).toFixed(2)}</div>
         <span className="pill-muted">{timeframe}</span>
       </div>
 
@@ -47,14 +51,14 @@ const IdeaCard = ({ item, variant = 'strategic' }) => {
 
       {item?.invalidation ? (
         <div className="idea-invalidation-wrap">
-          <div className="idea-kicker">Invalidation:</div>
+          <div className="idea-kicker">{t('ideas_invalidation')}:</div>
           <div className="muted idea-invalidation-text">{item.invalidation}</div>
         </div>
       ) : null}
 
       {risks.length ? (
         <div>
-          <div className="idea-kicker">Risks:</div>
+          <div className="idea-kicker">{t('ideas_risks')}:</div>
           <ul className="idea-list idea-list-risks">
             {risks.slice(0, 3).map((line) => (
               <li key={line}>{line}</li>

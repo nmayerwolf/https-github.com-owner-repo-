@@ -44,8 +44,12 @@ const buildPrompt = ({ regimeState = {}, crisisState = {}, newsHeadlines = [], u
   const focusLabel = userProfile.focus > 0.7 ? 'opportunistic' : userProfile.focus < 0.3 ? 'strategic' : 'balanced';
   const riskLabel = userProfile.risk_level > 0.7 ? 'aggressive' : userProfile.risk_level < 0.3 ? 'conservative' : 'moderate';
   const horizonLabel = userProfile.horizon > 0.7 ? 'long-term' : userProfile.horizon < 0.3 ? 'short-term' : 'medium-term';
+  const languageInstruction = String(userProfile.language || '').toLowerCase() === 'en'
+    ? 'Respond entirely in English.'
+    : 'Respond entirely in Spanish (Latin American, using "vos" instead of "tú").';
 
   return `You are Horsai's daily market briefing writer.
+${languageInstruction}
 
 MARKET STATE:
 - Regime: ${regimeState.regime} (${regimeState.volatility_regime})

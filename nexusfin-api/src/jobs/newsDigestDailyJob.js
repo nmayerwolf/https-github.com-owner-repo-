@@ -29,7 +29,7 @@ const runCore = async (runDate) => {
       [runDate]
     ),
     query(
-      `SELECT u.id, p.focus, p.risk_level, p.horizon
+      `SELECT u.id, p.focus, p.risk_level, p.horizon, p.language
        FROM users u
        LEFT JOIN user_agent_profile p ON p.user_id = u.id
        ORDER BY u.created_at ASC`
@@ -48,7 +48,8 @@ const runCore = async (runDate) => {
     const userProfile = {
       focus: Number(user.focus || 0.5),
       risk_level: Number(user.risk_level || 0.5),
-      horizon: Number(user.horizon || 0.5)
+      horizon: Number(user.horizon || 0.5),
+      language: String(user.language || 'es').toLowerCase() === 'en' ? 'en' : 'es'
     };
     const aiResult = await generateDigest(regimeState, crisisState, newsHeadlines, userProfile);
     const digest = aiResult.digest || { bullets: [], key_risks: [], macro_drivers: [] };

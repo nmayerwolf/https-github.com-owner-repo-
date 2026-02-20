@@ -29,7 +29,7 @@ describe('agent routes', () => {
     query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
-        rows: [{ preset_type: 'balanced', risk_level: '0.5', horizon: '0.5', focus: '0.5' }]
+        rows: [{ preset_type: 'balanced', risk_level: '0.5', horizon: '0.5', focus: '0.5', language: 'es' }]
       });
 
     const res = await request(makeApp()).get('/api/agent/profile');
@@ -37,6 +37,7 @@ describe('agent routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.preset_type).toBe('balanced');
     expect(res.body.risk_level).toBe(0.5);
+    expect(res.body.language).toBe('es');
   });
 
   it('upserts profile on PUT', async () => {
@@ -47,6 +48,7 @@ describe('agent routes', () => {
           risk_level: '0.300',
           horizon: '0.800',
           focus: '0.200',
+          language: 'en',
           preferred_tags: ['rates']
         }
       ]
@@ -57,6 +59,7 @@ describe('agent routes', () => {
       riskLevel: 0.3,
       horizon: 0.8,
       focus: 0.2,
+      language: 'en',
       preferredTags: ['rates'],
       notificationMode: 'digest_only'
     });
@@ -64,5 +67,6 @@ describe('agent routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.preset_type).toBe('strategic_core');
     expect(res.body.risk_level).toBe(0.3);
+    expect(res.body.language).toBe('en');
   });
 });
