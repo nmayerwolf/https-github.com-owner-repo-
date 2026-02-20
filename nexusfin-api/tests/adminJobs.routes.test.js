@@ -99,4 +99,22 @@ describe('admin jobs route', () => {
     expect(res.status).toBe(200);
     expect(res.body.results.mvp_daily.ok).toBe(true);
   });
+
+  it('runs market ingestion jobs when requested', async () => {
+    const app = makeApp({
+      marketIngestion: {
+        runMarketSnapshotDaily: jest.fn(async () => ({ generated: 100 })),
+        runFundamentalsWeekly: jest.fn(async () => ({ generated: 20 }))
+      }
+    });
+
+    const res = await request(app)
+      .post('/api/admin/jobs/run')
+      .set('x-admin-token', 'admin-secret')
+      .send({ jobs: ['market_snapshot_daily', 'fundamentals_weekly'], date: '2026-02-20' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results.market_snapshot_daily.ok).toBe(true);
+    expect(res.body.results.fundamentals_weekly.ok).toBe(true);
+  });
 });

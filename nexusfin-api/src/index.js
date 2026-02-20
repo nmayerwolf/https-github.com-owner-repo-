@@ -21,6 +21,7 @@ const { createPortfolioAdvisor } = require('./services/portfolioAdvisor');
 const { createMvpDailyPipeline } = require('./services/mvpDailyPipeline');
 const { createPortfolioSnapshotsService } = require('./services/portfolioSnapshots');
 const { createNotificationPolicyService } = require('./services/notificationPolicy');
+const { createMarketIngestionService } = require('./services/marketIngestion');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -454,11 +455,13 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const aiAgent = createAiAgent();
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
   const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
+  const marketIngestion = createMarketIngestionService({ query, logger: console });
   const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
   const portfolioSnapshots = createPortfolioSnapshotsService({ query, logger: console });
   const notificationPolicy = createNotificationPolicyService({ query, pushNotifier, logger: console });
   app.locals.macroRadar = macroRadar;
   app.locals.portfolioAdvisor = portfolioAdvisor;
+  app.locals.marketIngestion = marketIngestion;
   app.locals.mvpDailyPipeline = mvpDailyPipeline;
   app.locals.portfolioSnapshots = portfolioSnapshots;
   app.locals.notificationPolicy = notificationPolicy;
@@ -486,10 +489,19 @@ const startHttpServer = ({ port = env.port } = {}) => {
     forex: () => runMarketCycleWithOutcome({ categories: ['fx'], includeStopLoss: false }),
     commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false }),
     macroDaily: async () => {
+      const marketSnapshotOut = await marketIngestion.runMarketSnapshotDaily();
+      const fundamentalsOut = await marketIngestion.runFundamentalsWeekly();
       const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
       const notifyOut = await notificationPolicy.runDaily({ date: mvpOut?.date });
       return {
-        generated: Number(macroOut?.generated || 0) + Number(mvpOut?.generated || 0) + Number(notifyOut?.sent || 0),
+        generated:
+          Number(marketSnapshotOut?.generated || 0) +
+          Number(fundamentalsOut?.generated || 0) +
+          Number(macroOut?.generated || 0) +
+          Number(mvpOut?.generated || 0) +
+          Number(notifyOut?.sent || 0),
+        marketSnapshot: marketSnapshotOut,
+        fundamentals: fundamentalsOut,
         mvp: mvpOut,
         notifications: notifyOut
       };
