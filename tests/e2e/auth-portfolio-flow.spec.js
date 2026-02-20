@@ -199,43 +199,29 @@ test('login and add position in portfolio', async ({ page }) => {
   await expect(navItems).toHaveCount(4);
   await expect(page.locator('nav.bottom-nav')).toContainText('Ideas');
   await expect(page.locator('nav.bottom-nav')).not.toContainText('Mercados');
-  await expect(page.locator('nav.bottom-nav')).toContainText('Portfolio');
-  await expect(page.locator('nav.bottom-nav')).toContainText('News');
-  await expect(page.locator('nav.bottom-nav')).toContainText('Your AI Agent');
-  await expect(page.locator('a.nav-item.active[href="/news"]')).toBeVisible();
+  await expect(page.locator('nav.bottom-nav')).toContainText('Portafolio');
+  await expect(page.locator('nav.bottom-nav')).toContainText('Agente');
+  await expect(page.locator('a.nav-item.active[href="/brief"]')).toBeVisible();
 
   await page.goto('/markets');
-  await expect(page).toHaveURL(/\/news$/);
-  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/markets$/);
+  await expect(page.getByRole('heading', { name: 'Ideas', exact: true })).toBeVisible();
 
   await page.goto('/markets/AAPL');
-  await expect(page).toHaveURL(/\/news$/);
-  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/markets\/AAPL$/);
+  await expect(page.getByRole('heading', { name: /^AAPL/i })).toBeVisible();
 
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();
     await expect(migrationHeading).toBeHidden();
   }
-  await page.locator('a.nav-item[href="/news"]').click();
-  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible();
-  await expect(page.getByText('AAPL announces product launch')).toBeVisible();
+  await page.locator('a.nav-item[href="/agent"]').click();
+  await expect(page).toHaveURL(/\/agent$/);
 
   await page.locator('a.nav-item[href="/portfolio"]').click();
-  const addPortfolioBtn = page.getByRole('button', { name: /\+ Agregar portfolio/i });
-  if (await addPortfolioBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    page.once('dialog', async (dialog) => {
-      await dialog.accept('Core');
-    });
-    await addPortfolioBtn.click();
-  }
-  await expect(page.getByRole('heading', { name: 'Nueva posición' })).toBeVisible();
-
-  await page.getByLabel('Activo').fill('AAPL');
-  await page.getByLabel('Fecha compra').fill('2026-02-15');
-  await page.getByLabel('Precio compra').fill('190');
-  await page.getByLabel('Monto total (USD)').fill('380');
-  await page.getByRole('button', { name: 'Agregar', exact: true }).click();
-
-  await expect(page.locator('.pos-sym', { hasText: 'AAPL' }).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/portfolio$/);
+  await expect(page.getByRole('heading', { name: 'Portfolio', exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Snapshot')).toBeVisible();
+  await expect(page.getByText('No active exposure.')).toBeVisible();
 });
