@@ -167,4 +167,43 @@ describe('admin jobs route', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('lists job status history from job_runs', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'jr-1',
+          job_name: 'mvp_daily',
+          run_date: '2026-02-20',
+          status: 'success',
+          started_at: '2026-02-20T06:00:00.000Z',
+          finished_at: '2026-02-20T06:00:10.000Z',
+          error: null
+        }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/admin/jobs/status?job=mvp_daily&status=success&date_from=2026-02-01&date_to=2026-02-20&limit=5')
+      .set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.runs).toHaveLength(1);
+    expect(res.body.runs[0].job).toBe('mvp_daily');
+    expect(res.body.runs[0].status).toBe('success');
+    expect(res.body.filters.limit).toBe(5);
+  });
+
+  it('returns warning when job_runs table is missing', async () => {
+    query.mockRejectedValueOnce(new Error('relation "job_runs" does not exist'));
+    const app = makeApp();
+    const res = await request(app).get('/api/admin/jobs/status').set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.runs).toEqual([]);
+    expect(res.body.warning).toBe('JOB_RUNS_TABLE_MISSING');
+  });
 });

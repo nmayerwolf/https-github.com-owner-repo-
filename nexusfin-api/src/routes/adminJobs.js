@@ -241,4 +241,66 @@ router.get('/runs', async (req, res, next) => {
   }
 });
 
+router.get('/status', async (req, res, next) => {
+  try {
+    ensureAuthorized(req);
+    const limit = parseLimit(req.query?.limit);
+    const dateFrom = parseDate(req.query?.date_from, 'date_from');
+    const dateTo = parseDate(req.query?.date_to, 'date_to');
+    const job = parseJobName(req.query?.job);
+    const status = parseStatus(req.query?.status);
+
+    const filters = [];
+    const params = [];
+
+    if (dateFrom) {
+      params.push(dateFrom);
+      filters.push(`run_date >= $${params.length}`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      filters.push(`run_date <= $${params.length}`);
+    }
+    if (job) {
+      params.push(job);
+      filters.push(`job_name = $${params.length}`);
+    }
+    if (status && ['started', 'success', 'failed'].includes(status)) {
+      params.push(status);
+      filters.push(`status = $${params.length}`);
+    }
+
+    params.push(limit);
+    const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const out = await query(
+      `SELECT id, job_name, run_date, status, started_at, finished_at, error
+       FROM job_runs
+       ${whereSql}
+       ORDER BY run_date DESC, started_at DESC
+       LIMIT $${params.length}`,
+      params
+    );
+
+    return res.json({
+      ok: true,
+      filters: { limit, dateFrom, dateTo, job, status },
+      runs: (out.rows || []).map((row) => ({
+        id: row.id,
+        job: row.job_name,
+        runDate: row.run_date,
+        status: row.status,
+        startedAt: row.started_at || null,
+        finishedAt: row.finished_at || null,
+        error: row.error || null
+      }))
+    });
+  } catch (error) {
+    if (/job_runs/i.test(String(error?.message || '')) && /does not exist/i.test(String(error?.message || ''))) {
+      return res.json({ ok: true, filters: {}, runs: [], warning: 'JOB_RUNS_TABLE_MISSING' });
+    }
+    return next(error);
+  }
+});
+
 module.exports = router;
