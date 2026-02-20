@@ -237,7 +237,7 @@ const News = () => {
     <div className="grid">
       <section className="card">
         <div className="section-header-inline">
-          <h2 className="screen-title">Noticias</h2>
+          <h2 className="screen-title">News</h2>
         </div>
         <div className="muted">Cobertura global para mercados, filtrada en ventana de últimas {WINDOW_HOURS}h.</div>
       </section>

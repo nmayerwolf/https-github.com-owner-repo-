@@ -75,17 +75,17 @@ describe('App route error boundaries', () => {
     appCtxMock.actions.dismissUiError.mockReset();
   });
 
-  it('renders fallback when agente IA crashes', async () => {
+  it('renders fallback when ideas module crashes', async () => {
     apiMock.health.mockResolvedValueOnce({ ok: true });
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
-      <MemoryRouter initialEntries={['/']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/ideas']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Error en Agente IA')).toBeTruthy();
+    expect(await screen.findByText('Error en Ideas')).toBeTruthy();
     expect(await screen.findByText(/alerts exploded/i)).toBeTruthy();
     errSpy.mockRestore();
   });

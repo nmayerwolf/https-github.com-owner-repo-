@@ -177,8 +177,8 @@ const Settings = () => {
   return (
     <div className="grid settings-page" style={{ gap: 12 }}>
       <section className="card">
-        <h2 className="screen-title" style={{ marginBottom: 0 }}>Ajustes</h2>
-        <p className="muted">Preferencias de notificaciones, cuenta y seguridad.</p>
+        <h2 className="screen-title" style={{ marginBottom: 0 }}>Your AI Agent</h2>
+        <p className="muted">Agent preferences, notifications and account security.</p>
       </section>
 
       <div className="card">
