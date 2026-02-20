@@ -1,6 +1,6 @@
-const { computeProfileMix } = require('./profileFocus');
 const { createMvpNarrativeService } = require('./mvpNarrative');
 const { withTrackedJobRun } = require('./jobRunTracker');
+const { toEvent, toBullet, toIdeaState } = require('../constants/decisionContracts');
 
 const toNum = (value, fallback = 0) => {
   const out = Number(value);
@@ -12,6 +12,14 @@ const isoDate = (date = new Date()) =>
 
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
 const SHOCK_EVENT_TAGS = new Set(['war', 'invasion', 'terror_attack', 'earthquake_major', 'bank_failure', 'default', 'sanctions_major']);
+const DAILY_BRIEF_IDEAL_BULLETS = 5;
+const DAILY_BRIEF_HARD_CAP_BULLETS = 10;
+const EXTRA_BRIEF_RELEVANCE_THRESHOLD = 6.2;
+const HORIZON_DAYS_BY_TIMEFRAME = {
+  weeks: 21,
+  months: 63
+};
+const MAX_ALPHA_IDEAS_DAILY = 3;
 
 const mean = (values = []) => {
   if (!values.length) return null;
@@ -54,6 +62,72 @@ const summarizeRegime = (regime, confidence) => {
   if (regime === 'risk_on') return `Regime Today: Risk-on (${Math.round(confidence * 100)}% confidence).`;
   if (regime === 'risk_off') return `Regime Today: Risk-off (${Math.round(confidence * 100)}% confidence).`;
   return `Regime Today: Transition (${Math.round(confidence * 100)}% confidence).`;
+};
+
+const toIsoDay = (value) => String(value || '').slice(0, 10);
+
+const addDaysIso = (dateStr, days) => {
+  const [yy, mm, dd] = toIsoDay(dateStr)
+    .split('-')
+    .map((x) => Number(x));
+  if (!yy || !mm || !dd) return toIsoDay(dateStr);
+  const dt = new Date(Date.UTC(yy, mm - 1, dd + Number(days || 0)));
+  return dt.toISOString().slice(0, 10);
+};
+
+const classifyIdeaTheme = (idea = {}) => {
+  const tags = Array.isArray(idea.tags) ? idea.tags.map((x) => String(x || '').toLowerCase()) : [];
+  const preferred = ['energy', 'technology', 'financials', 'healthcare', 'industrials', 'consumer_staples', 'consumer_discretionary', 'utilities', 'materials', 'real_estate', 'credit', 'rates', 'metals', 'crypto'];
+  for (const theme of preferred) {
+    if (tags.includes(theme)) return theme;
+  }
+  return idea.category === 'opportunistic' ? 'special_situations' : 'broad_equity';
+};
+
+const toConvictionScore = (idea = {}, regimeState = {}) => {
+  const raw = idea.rawScores || {};
+  const ret1m = toNum(raw.ret1m, 0);
+  const ret3m = toNum(raw.ret3m, 0);
+  const vol20d = toNum(raw.vol20d, 0.02);
+  const primary = toNum(raw.score, toNum(idea.confidence, 0));
+  const regime = String(regimeState.regime || 'transition');
+
+  const macroAlignment =
+    regime === 'risk_on' ? (idea.action === 'BUY' ? 2 : 1) : regime === 'risk_off' ? (idea.action === 'SELL' ? 2 : 1) : 1.4;
+  const flowConfirmation = clamp01(0.4 + Math.abs(ret1m) * 3 + (idea.category === 'opportunistic' ? 0.1 : 0)) * 2;
+  const fundamentalsMomentum = clamp01(0.35 + Math.max(0, primary) * 2) * 2;
+  const relativeStrength = clamp01(0.35 + (ret1m + ret3m) * 1.2) * 2;
+  const riskReward = clamp01(0.75 - vol20d * 8 + Math.abs(ret1m) * 0.9) * 2;
+
+  const total = macroAlignment + flowConfirmation + fundamentalsMomentum + relativeStrength + riskReward;
+  return {
+    score: Number(Math.max(0, Math.min(10, total)).toFixed(1)),
+    breakdown: {
+      macroAlignment: Number(macroAlignment.toFixed(2)),
+      flowConfirmation: Number(flowConfirmation.toFixed(2)),
+      fundamentalsMomentum: Number(fundamentalsMomentum.toFixed(2)),
+      relativeStrength: Number(relativeStrength.toFixed(2)),
+      riskReward: Number(riskReward.toFixed(2))
+    }
+  };
+};
+
+const withIdeaState = (idea = {}, date) => {
+  const horizonDays = HORIZON_DAYS_BY_TIMEFRAME[String(idea.timeframe || '').toLowerCase()] || 21;
+  const nextReviewDate = addDaysIso(date, Math.min(14, Math.max(5, Math.round(horizonDays / 3))));
+  const expiryDate = addDaysIso(date, horizonDays);
+  return {
+    ...idea,
+    ideaState: toIdeaState({
+      horizonDays,
+      createdDate: date,
+      nextReviewDate,
+      expiryDate,
+      status: 'active',
+      reviewSuggestion: 'extend',
+      daysRemaining: horizonDays
+    })
+  };
 };
 
 const buildRegimeFromMetrics = (rows = [], inputs = {}) => {
@@ -519,41 +593,64 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
         [user.id]
       );
       const profile = profileOut.rows[0] || { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5 };
-      const focus = clamp01(profile.focus);
       const riskLevel = clamp01(profile.risk_level);
-      const mix = computeProfileMix(focus);
+      const minConviction = Math.max(4.8, 5.6 + (1 - riskLevel) * 1.2 + (crisisState.isActive ? 0.4 : 0));
 
-      const minConfidence = clamp01(0.45 + (1 - riskLevel) * 0.2 + (crisisState.isActive ? 0.1 : 0));
-      const strategicCap = crisisState.isActive ? 3 : 4;
-      const opportunisticCap = Math.min(3, crisisState.isActive ? 1 : 3);
-      const riskCap = crisisState.isActive ? 4 : riskLevel < 0.4 ? 4 : 3;
+      const rankedCandidates = [...strategicIdeas, ...opportunisticIdeas]
+        .map((idea) => {
+          const conviction = toConvictionScore(idea, regimeState);
+          return withIdeaState(
+            {
+              ...idea,
+              convictionScore: conviction.score,
+              convictionBreakdown: conviction.breakdown,
+              theme: classifyIdeaTheme(idea)
+            },
+            date
+          );
+        })
+        .sort((a, b) => b.convictionScore - a.convictionScore);
 
-      const strategicCount = Math.max(1, Math.round(strategicCap * mix.strategicRatio));
-      const opportunisticCount = Math.max(0, Math.min(opportunisticCap, Math.round(opportunisticCap * mix.opportunisticRatio + 0.2)));
+      const fallbackIdea = rankedCandidates[0] || null;
+      const filteredAlphaIdeas = rankedCandidates.filter((idea) => idea.convictionScore >= minConviction);
+      const mainIdeas = (filteredAlphaIdeas.length ? filteredAlphaIdeas : fallbackIdea ? [fallbackIdea] : []).slice(0, MAX_ALPHA_IDEAS_DAILY);
+      const topRisk = (riskIdeas || []).slice(0, 1);
 
-      const strategic = strategicIdeas.filter((x) => x.confidence >= minConfidence).slice(0, strategicCount);
-      const opportunistic = opportunisticIdeas
-        .filter((x) => x.confidence >= Math.max(0.35, minConfidence - 0.08))
-        .slice(0, opportunisticCount);
-      const riskAlerts = riskIdeas.slice(0, riskCap);
-
-      const ordered = crisisState.isActive
-        ? [...riskAlerts, ...strategic, ...opportunistic]
-        : [...strategic, ...opportunistic, ...riskAlerts];
-
+      const selected = [...mainIdeas, ...topRisk].filter(Boolean);
       const narrative = await narrativeService.polishRecommendationItems({
         profile,
         regimeState,
         crisisState,
-        items: ordered
+        items: selected
       });
+      const narrativeById = new Map(
+        Array.isArray(narrative.items)
+          ? narrative.items.map((x) => [
+              String(x.ideaId || ''),
+              {
+                rationale: x.rationale,
+                risks: x.risks
+              }
+            ])
+          : []
+      );
+      const finalAlphaIdeas = mainIdeas.map((idea) => {
+        const polished = narrativeById.get(String(idea.ideaId || ''));
+        if (!polished) return idea;
+        return {
+          ...idea,
+          rationale: polished.rationale || idea.rationale,
+          risks: polished.risks || idea.risks
+        };
+      });
+      const finalItems = [...finalAlphaIdeas, ...topRisk].filter(Boolean);
 
       await query(
         `INSERT INTO user_recommendations (user_id, date, items, updated_at)
          VALUES ($1,$2,$3::jsonb,NOW())
          ON CONFLICT (user_id, date)
          DO UPDATE SET items = EXCLUDED.items, updated_at = NOW()`,
-        [user.id, date, JSON.stringify(narrative.items)]
+        [user.id, date, JSON.stringify(finalItems)]
       );
 
       generatedUsers += 1;
@@ -571,6 +668,58 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
     if (/warning|downgrade|risk|volatility|stress|default|credit/.test(text)) return 'risk';
     if ((Array.isArray(item.tickers) ? item.tickers.length : 0) > 0) return 'company';
     return 'sector';
+  };
+
+  const dedupeNewsEvents = (items = []) => {
+    const seen = new Set();
+    const out = [];
+    for (const raw of items) {
+      const event = toEvent(raw);
+      const key = `${event.headline.toLowerCase()}|${event.tickers.join(',')}`;
+      if (!event.headline || seen.has(key)) continue;
+      seen.add(key);
+      out.push(event);
+    }
+    return out;
+  };
+
+  const scoreCapitalRelevance = ({ event, bucket, profile, preferred, regimeState }) => {
+    const tags = new Set(Array.isArray(event.tags) ? event.tags : []);
+    let score = bucket === 'macro' ? 5.2 : bucket === 'risk' ? 4.8 : bucket === 'company' ? 4.2 : 3.7;
+    for (const tag of tags) {
+      if (preferred.has(tag)) score += 1.4;
+    }
+    score += (toNum(profile.focus) - 0.5) * (bucket === 'macro' ? 1.1 : 0.4);
+    if (regimeState.regime === 'risk_off' && bucket === 'risk') score += 0.8;
+    if (regimeState.regime === 'risk_on' && bucket === 'company') score += 0.4;
+
+    const ageHours = Math.max(0, (Date.now() - Date.parse(event.ts || 0)) / 3600000);
+    if (Number.isFinite(ageHours)) score += Math.max(0, 0.8 - ageHours * 0.03);
+    return score;
+  };
+
+  const formatCapitalBriefBullet = ({ event, bucket, regimeState }) => {
+    const eventText = event.headline || 'Evento relevante';
+    const impactText =
+      bucket === 'risk'
+        ? 'sube prima de riesgo y volatilidad'
+        : bucket === 'macro'
+          ? 'ajusta expectativas de tasas y crecimiento'
+          : bucket === 'company'
+            ? 'mueve valuaciones del sector ligado'
+            : 'rota flujos entre sectores';
+    const reasonText =
+      regimeState.regime === 'risk_off'
+        ? 'importa para proteger capital y priorizar calidad'
+        : regimeState.regime === 'risk_on'
+          ? 'importa para capturar continuidad de tendencia'
+          : 'importa para no sobrerreaccionar en transición';
+
+    return toBullet({
+      event: eventText,
+      marketImpact: impactText,
+      whyItMatters: reasonText
+    }).line;
   };
 
   const runNewsDigestDaily = async (date, regimeState, crisisState) => {
@@ -598,39 +747,24 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
       const preferred = new Set((Array.isArray(profile.preferred_tags) ? profile.preferred_tags : []).map((x) => String(x).toLowerCase()));
       const excluded = new Set((Array.isArray(profile.excluded_tags) ? profile.excluded_tags : []).map((x) => String(x).toLowerCase()));
 
-      const ranked = newsRows
-        .map((item) => {
-          const bucket = classifyNewsBucket(item);
-          const tags = Array.isArray(item.tags) ? item.tags.map((t) => String(t).toLowerCase()) : [];
+      const ranked = dedupeNewsEvents(newsRows)
+        .map((event) => {
+          const bucket = classifyNewsBucket(event);
+          const tags = Array.isArray(event.tags) ? event.tags.map((t) => String(t).toLowerCase()) : [];
           if (tags.some((t) => excluded.has(t))) return null;
-          let score = bucket === 'macro' ? 4 : bucket === 'risk' ? 3.5 : bucket === 'company' ? 2.5 : 2;
-          if (tags.some((t) => preferred.has(t))) score += 1.5;
-          score += (toNum(profile.focus) - 0.5) * (bucket === 'macro' ? 1 : -0.5);
-          score += (0.5 - toNum(profile.risk_level)) * (bucket === 'risk' ? 0.8 : 0);
-          return { ...item, bucket, score };
+          const score = scoreCapitalRelevance({ event, bucket, profile, preferred, regimeState });
+          return { event, bucket, score };
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 8);
+        .slice(0, DAILY_BRIEF_HARD_CAP_BULLETS);
 
-      const bullets = [];
-      bullets.push(summarizeRegime(regimeState.regime, regimeState.confidence));
-      bullets.push(`Leadership/themes: ${(regimeState.leadership || []).join(', ') || 'sin liderazgo claro'}.`);
-      bullets.push(`Key risks: ${(regimeState.riskFlags || []).slice(0, 2).join('; ') || 'sin flags críticos'}.`);
-
-      for (const item of ranked) {
-        const prefix = item.bucket === 'macro' ? 'Macro' : item.bucket === 'risk' ? 'Risk' : item.bucket === 'company' ? 'Company' : 'Sector';
-        bullets.push(`${prefix}: ${String(item.headline || '').trim()}`.slice(0, 180));
-        if (bullets.length >= 10) break;
-      }
-
-      const narrative = await narrativeService.polishDigestBullets({
-        profile,
-        regimeState,
-        crisisState,
-        bullets: bullets.slice(0, 10)
-      });
-      const finalBullets = Array.isArray(narrative.bullets) && narrative.bullets.length ? narrative.bullets.slice(0, 10) : bullets.slice(0, 10);
+      const ideal = ranked.slice(0, DAILY_BRIEF_IDEAL_BULLETS);
+      const extras = ranked
+        .slice(DAILY_BRIEF_IDEAL_BULLETS)
+        .filter((x) => Number(x.score) >= EXTRA_BRIEF_RELEVANCE_THRESHOLD)
+        .slice(0, Math.max(0, DAILY_BRIEF_HARD_CAP_BULLETS - DAILY_BRIEF_IDEAL_BULLETS));
+      const finalBullets = [...ideal, ...extras].map((item) => formatCapitalBriefBullet({ event: item.event, bucket: item.bucket, regimeState }));
 
       await query(
         `INSERT INTO daily_digest (
@@ -653,7 +787,7 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
           JSON.stringify(toCrisisBanner(crisisState)),
           JSON.stringify(regimeState.leadership || []),
           JSON.stringify(regimeState.riskFlags || []),
-          JSON.stringify({ pickedNewsIds: ranked.map((x) => x.id), profile, narrative: narrative.meta || { mode: 'fallback' } })
+          JSON.stringify({ pipeline: ['ingest', 'dedupe', 'rank', 'select_top_5'], pickedNewsIds: ranked.map((x) => x.event.id), profile })
         ]
       );
     }

@@ -31,7 +31,7 @@ describe('reco routes', () => {
         rows: [
           {
             items: [
-              { ideaId: 's1', category: 'strategic', symbol: 'AAPL', confidence: 0.7, rationale: ['a'], risks: ['r'] },
+              { ideaId: 's1', category: 'strategic', symbol: 'AAPL', confidence: 0.7, convictionScore: 7.6, theme: 'technology', rationale: ['a'], risks: ['r'] },
               { ideaId: 'o1', category: 'opportunistic', symbol: 'TSLA', confidence: 0.6, rationale: ['a'], risks: ['r'] },
               { ideaId: 'r1', category: 'risk', symbol: null, confidence: 0.9, rationale: ['a'], risks: ['r'] }
             ]
@@ -39,7 +39,8 @@ describe('reco routes', () => {
         ]
       })
       .mockResolvedValueOnce({ rows: [{ regime: 'risk_on', volatility_regime: 'normal', leadership: [], macro_drivers: [], risk_flags: [], confidence: 0.8 }] })
-      .mockResolvedValueOnce({ rows: [{ is_active: false, summary: 'ok', triggers: [], learn_more: {} }] });
+      .mockResolvedValueOnce({ rows: [{ is_active: false, summary: 'ok', triggers: [], learn_more: {} }] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp()).get('/api/reco/2026-02-20');
 
@@ -47,6 +48,11 @@ describe('reco routes', () => {
     expect(res.body.sections.strategic).toHaveLength(1);
     expect(res.body.sections.opportunistic).toHaveLength(1);
     expect(res.body.sections.riskAlerts).toHaveLength(1);
+    expect(Array.isArray(res.body.topIdeas)).toBe(true);
+    expect(res.body.topIdeas.length).toBeLessThanOrEqual(3);
+    expect(res.body.topIdea.theme).toBeTruthy();
+    expect(res.body.topIdea.thesis).toBeTruthy();
+    expect(res.body.topIdea.instruments.length).toBeGreaterThanOrEqual(2);
   });
 
   it('limits risks to 2 and only includes opportunisticType for opportunistic cards', async () => {
@@ -78,7 +84,8 @@ describe('reco routes', () => {
         ]
       })
       .mockResolvedValueOnce({ rows: [{ regime: 'risk_on', volatility_regime: 'normal', leadership: [], macro_drivers: [], risk_flags: [], confidence: 0.8 }] })
-      .mockResolvedValueOnce({ rows: [{ is_active: false, summary: 'ok', triggers: [], learn_more: {} }] });
+      .mockResolvedValueOnce({ rows: [{ is_active: false, summary: 'ok', triggers: [], learn_more: {} }] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp()).get('/api/reco/2026-02-20');
 
