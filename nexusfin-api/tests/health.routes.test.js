@@ -80,7 +80,8 @@ describe('health routes', () => {
           { job_name: 'market_snapshot_daily', run_date: '2026-02-20' },
           { job_name: 'metrics_daily', run_date: '2026-02-20' },
           { job_name: 'regime_daily', run_date: '2026-02-20' },
-          { job_name: 'crisis_check', run_date: '2026-02-20' }
+          { job_name: 'crisis_check', run_date: '2026-02-20' },
+          { job_name: 'portfolio_snapshot_daily', run_date: '2026-02-20' }
         ]
       })
       .mockResolvedValueOnce({ rows: [{ total: 98 }] });
@@ -92,5 +93,6 @@ describe('health routes', () => {
     expect(res.body.metrics.symbols_computed).toBe(92);
     expect(res.body.regime.regime).toBe('risk_on');
     expect(res.body.crisis.is_active).toBe(false);
+    expect(res.body.portfolio_snapshot.last_run).toBe('2026-02-20');
   });
 });

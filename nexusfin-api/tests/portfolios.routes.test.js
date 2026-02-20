@@ -155,4 +155,74 @@ describe('portfolios v2 routes', () => {
     expect(res.body.exposures).toEqual({});
     expect(res.body.aiNotes).toBeNull();
   });
+
+  it('GET /metrics returns latest metrics payload', async () => {
+    query
+      .mockResolvedValueOnce({
+        rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', role: 'owner', name: 'Core', currency: 'USD' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            metric_date: '2026-02-20',
+            alignment_score: 72,
+            benchmark_symbol: 'SPY',
+            benchmark_pnl_pct: 1.25,
+            portfolio_pnl_pct: 2.1,
+            alpha: 0.85,
+            sector_exposure: { Technology: 45.2 },
+            category_exposure: { equity: 62.5 },
+            concentration_top3_pct: 67.3,
+            ai_notes: ['note 1', 'note 2']
+          }
+        ]
+      });
+
+    const res = await request(makeApp()).get('/api/portfolios/11111111-1111-4111-8111-111111111111/metrics');
+    expect(res.status).toBe(200);
+    expect(res.body.alignment_score).toBe(72);
+    expect(res.body.benchmark.symbol).toBe('SPY');
+    expect(res.body.exposure.by_category.equity).toBe(62.5);
+    expect(res.body.ai_notes).toHaveLength(2);
+  });
+
+  it('GET /snapshots returns latest N snapshots', async () => {
+    query
+      .mockResolvedValueOnce({
+        rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', role: 'owner', name: 'Core', currency: 'USD' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { snapshot_date: '2026-02-20', total_value: '12500', pnl_pct: '8.5' },
+          { snapshot_date: '2026-02-19', total_value: '12380', pnl_pct: '7.4' }
+        ]
+      });
+
+    const res = await request(makeApp()).get('/api/portfolios/11111111-1111-4111-8111-111111111111/snapshots?days=2');
+    expect(res.status).toBe(200);
+    expect(res.body.snapshots).toHaveLength(2);
+    expect(res.body.snapshots[0].date).toBe('2026-02-20');
+  });
+
+  it('GET /holdings/detail returns latest snapshot holdings detail', async () => {
+    query
+      .mockResolvedValueOnce({
+        rows: [{ id: '11111111-1111-4111-8111-111111111111', owner_user_id: 'u1', role: 'owner', name: 'Core', currency: 'USD' }]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            snapshot_date: '2026-02-20',
+            total_value: '12500',
+            holdings_detail: [{ symbol: 'AAPL', qty: 10, current_price: 263.04, weight_pct: 32.5 }]
+          }
+        ]
+      });
+
+    const res = await request(makeApp()).get('/api/portfolios/11111111-1111-4111-8111-111111111111/holdings/detail');
+    expect(res.status).toBe(200);
+    expect(res.body.date).toBe('2026-02-20');
+    expect(res.body.holdings).toHaveLength(1);
+    expect(res.body.holdings[0].symbol).toBe('AAPL');
+  });
 });

@@ -9,6 +9,22 @@ const PORTFOLIO_ID_RE = /^[0-9a-f-]{36}$/i;
 const MAX_PORTFOLIOS = 3;
 const MAX_HOLDINGS = 15;
 const ROLE_VALUES = new Set(['owner', 'editor', 'viewer']);
+const toNum = (value, fallback = 0) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : fallback;
+};
+
+const toPositiveInt = (value, fallback = 30, { min = 1, max = 365 } = {}) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(n)));
+};
+
+const asArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) return [value.trim()];
+  return [];
+};
 
 const toPortfolioId = (value) => {
   const safe = String(value || '').trim();
@@ -316,6 +332,118 @@ router.post('/:id/accept', async (req, res, next) => {
     );
 
     return res.json({ ok: true, portfolioId, inviteId, role: invite.role || 'editor' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:id/metrics', async (req, res, next) => {
+  try {
+    const portfolioId = toPortfolioId(req.params.id);
+    await getAccess(portfolioId, req.user.id);
+
+    const out = await query(
+      `SELECT COALESCE(metric_date, date) AS metric_date,
+              alignment_score,
+              benchmark_symbol,
+              benchmark_pnl_pct,
+              portfolio_pnl_pct,
+              alpha,
+              sector_exposure,
+              category_exposure,
+              concentration_top3_pct,
+              ai_notes
+       FROM portfolio_metrics
+       WHERE portfolio_id = $1
+       ORDER BY COALESCE(metric_date, date) DESC
+       LIMIT 1`,
+      [portfolioId]
+    );
+    const row = out.rows?.[0];
+
+    if (!row) {
+      return res.json({
+        portfolio_id: portfolioId,
+        date: null,
+        alignment_score: null,
+        benchmark: { symbol: 'SPY', benchmark_pnl_pct: 0, portfolio_pnl_pct: 0, alpha: 0 },
+        exposure: { by_category: {}, by_sector: {} },
+        concentration_top3_pct: 0,
+        ai_notes: []
+      });
+    }
+
+    return res.json({
+      portfolio_id: portfolioId,
+      date: row.metric_date,
+      alignment_score: row.alignment_score == null ? null : toNum(row.alignment_score, 0),
+      benchmark: {
+        symbol: String(row.benchmark_symbol || 'SPY'),
+        benchmark_pnl_pct: toNum(row.benchmark_pnl_pct, 0),
+        portfolio_pnl_pct: toNum(row.portfolio_pnl_pct, 0),
+        alpha: toNum(row.alpha, 0)
+      },
+      exposure: {
+        by_category: row.category_exposure && typeof row.category_exposure === 'object' ? row.category_exposure : {},
+        by_sector: row.sector_exposure && typeof row.sector_exposure === 'object' ? row.sector_exposure : {}
+      },
+      concentration_top3_pct: toNum(row.concentration_top3_pct, 0),
+      ai_notes: asArray(row.ai_notes)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:id/snapshots', async (req, res, next) => {
+  try {
+    const portfolioId = toPortfolioId(req.params.id);
+    await getAccess(portfolioId, req.user.id);
+    const days = toPositiveInt(req.query?.days, 30, { min: 1, max: 365 });
+
+    const out = await query(
+      `SELECT COALESCE(snapshot_date, date) AS snapshot_date, total_value, pnl_pct
+       FROM portfolio_snapshots
+       WHERE portfolio_id = $1
+       ORDER BY COALESCE(snapshot_date, date) DESC
+       LIMIT $2`,
+      [portfolioId, days]
+    );
+
+    return res.json({
+      portfolio_id: portfolioId,
+      snapshots: (out.rows || []).map((row) => ({
+        date: row.snapshot_date,
+        total_value: toNum(row.total_value, 0),
+        pnl_pct: toNum(row.pnl_pct, 0)
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:id/holdings/detail', async (req, res, next) => {
+  try {
+    const portfolioId = toPortfolioId(req.params.id);
+    await getAccess(portfolioId, req.user.id);
+
+    const out = await query(
+      `SELECT COALESCE(snapshot_date, date) AS snapshot_date, total_value, holdings_detail
+       FROM portfolio_snapshots
+       WHERE portfolio_id = $1
+       ORDER BY COALESCE(snapshot_date, date) DESC
+       LIMIT 1`,
+      [portfolioId]
+    );
+    const row = out.rows?.[0];
+
+    return res.json({
+      portfolio_id: portfolioId,
+      date: row?.snapshot_date || null,
+      total_value: toNum(row?.total_value, 0),
+      holdings: Array.isArray(row?.holdings_detail) ? row.holdings_detail : []
+    });
   } catch (error) {
     return next(error);
   }
