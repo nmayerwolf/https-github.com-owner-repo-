@@ -5,11 +5,12 @@ import { typography } from '../theme/typography';
 
 const LoginScreen = ({ onOAuth, loading, error, oauthProviders, oauthLoading = false, theme = 'dark' }) => {
   const palette = getThemePalette(theme);
+  const subtitle = oauthProviders?.gmailOnly ? 'Iniciar sesión con Google (solo Gmail)' : 'Iniciar sesión con Google';
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
       <Text style={[styles.title, { color: palette.text }]}>Horsai</Text>
-      <Text style={[styles.subtitle, { color: palette.muted }]}>Iniciar sesión con Google</Text>
+      <Text style={[styles.subtitle, { color: palette.muted }]}>{subtitle}</Text>
 
       {error ? <Text style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
 

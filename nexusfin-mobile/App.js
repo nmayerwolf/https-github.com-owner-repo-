@@ -44,7 +44,7 @@ const App = () => {
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState('dashboard');
   const [theme, setTheme] = useState('dark');
-  const [oauthProviders, setOauthProviders] = useState({ google: false, apple: false });
+  const [oauthProviders, setOauthProviders] = useState({ google: false, apple: false, gmailOnly: true });
   const [oauthLoading, setOauthLoading] = useState(false);
 
   const palette = getThemePalette(theme);
@@ -74,11 +74,11 @@ const App = () => {
       .getOAuthProviders()
       .then((out) => {
         if (!active) return;
-        setOauthProviders({ google: !!out?.google, apple: !!out?.apple });
+        setOauthProviders({ google: !!out?.google, apple: !!out?.apple, gmailOnly: out?.gmailOnly !== false });
       })
       .catch(() => {
         if (!active) return;
-        setOauthProviders({ google: false, apple: false });
+        setOauthProviders({ google: false, apple: false, gmailOnly: true });
       });
 
     return () => {
