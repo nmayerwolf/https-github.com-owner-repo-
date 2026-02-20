@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { FinnhubProvider } = require('../providers/FinnhubProvider');
 
 const DAY_SEC = 24 * 60 * 60;
@@ -124,6 +125,41 @@ const buildSectorPercentiles = (rows = []) => {
 
   return out;
 };
+
+const buildNewsId = (item = {}) => {
+  const explicit = String(item.id || '').trim();
+  if (explicit) return explicit.slice(0, 140);
+
+  const base = JSON.stringify({
+    ts: String(item.ts || ''),
+    headline: String(item.headline || '').slice(0, 240),
+    url: String(item.url || '').slice(0, 240)
+  });
+  return `auto-${crypto.createHash('sha256').update(base).digest('hex').slice(0, 24)}`;
+};
+
+const normalizeNewsRows = (rows = []) =>
+  rows
+    .map((item) => {
+      const tsRaw = String(item.ts || '').trim();
+      const ts = tsRaw ? new Date(tsRaw).toISOString() : new Date().toISOString();
+      const headline = String(item.headline || '').trim();
+      if (!headline) return null;
+      return {
+        id: buildNewsId(item),
+        ts,
+        source: String(item.source || '').trim() || null,
+        headline: headline.slice(0, 500),
+        summary: String(item.summary || '').trim().slice(0, 4000) || null,
+        tags: Array.isArray(item.tags) ? item.tags.slice(0, 30) : [],
+        tickers: Array.isArray(item.tickers)
+          ? item.tickers.map((x) => String(x || '').toUpperCase()).filter(Boolean).slice(0, 20)
+          : [],
+        url: String(item.url || '').trim().slice(0, 1000) || null,
+        raw: item.raw && typeof item.raw === 'object' ? item.raw : {}
+      };
+    })
+    .filter(Boolean);
 
 const createMarketIngestionService = ({ query, provider = new FinnhubProvider(), logger = console } = {}) => {
   const activeUniverseSymbols = async () => {
@@ -313,14 +349,63 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
     };
   };
 
+  const runNewsIngestDaily = async ({ date = null } = {}) => {
+    const runDate = asDate(date || new Date());
+    const fromDate = asDate(new Date(new Date(`${runDate}T00:00:00Z`).getTime() - DAY_SEC * 1000));
+
+    const sourceRows = await provider.getNews(fromDate, runDate, []);
+    const rows = normalizeNewsRows(sourceRows);
+
+    let upserted = 0;
+    for (const row of rows) {
+      await query(
+        `INSERT INTO news_items (id, ts, source, headline, summary, tags, tickers, url, raw)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9::jsonb)
+         ON CONFLICT (id)
+         DO UPDATE SET
+           ts = EXCLUDED.ts,
+           source = EXCLUDED.source,
+           headline = EXCLUDED.headline,
+           summary = EXCLUDED.summary,
+           tags = EXCLUDED.tags,
+           tickers = EXCLUDED.tickers,
+           url = EXCLUDED.url,
+           raw = EXCLUDED.raw`,
+        [
+          row.id,
+          row.ts,
+          row.source,
+          row.headline,
+          row.summary,
+          JSON.stringify(row.tags || []),
+          JSON.stringify(row.tickers || []),
+          row.url,
+          JSON.stringify(row.raw || {})
+        ]
+      );
+      upserted += 1;
+    }
+
+    logger.log('[marketIngestion] news ingest daily done', { runDate, fromDate, upserted });
+    return {
+      generated: upserted,
+      date: runDate,
+      fromDate,
+      upserted
+    };
+  };
+
   return {
     runMarketSnapshotDaily,
-    runFundamentalsWeekly
+    runFundamentalsWeekly,
+    runNewsIngestDaily
   };
 };
 
 module.exports = {
   createMarketIngestionService,
   computeSeriesMetrics,
-  buildSectorPercentiles
+  buildSectorPercentiles,
+  buildNewsId,
+  normalizeNewsRows
 };

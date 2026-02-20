@@ -1,4 +1,4 @@
-const { computeSeriesMetrics, buildSectorPercentiles } = require('../src/services/marketIngestion');
+const { computeSeriesMetrics, buildSectorPercentiles, buildNewsId, normalizeNewsRows } = require('../src/services/marketIngestion');
 
 describe('marketIngestion helpers', () => {
   it('computes rolling metrics for daily bars', () => {
@@ -34,5 +34,28 @@ describe('marketIngestion helpers', () => {
     const c = out.find((row) => row.symbol === 'C');
     expect(a.pe_percentile).toBeLessThan(c.pe_percentile);
     expect(a.fcf_yield_percentile).toBeLessThan(c.fcf_yield_percentile);
+  });
+
+  it('normalizes news rows and creates deterministic ids', () => {
+    const inRows = [
+      {
+        ts: '2026-02-20T10:00:00.000Z',
+        headline: 'Fed signals slower cuts',
+        summary: 'Market reacts to policy path.',
+        tags: ['macro'],
+        tickers: ['spy'],
+        url: 'https://news.test/fed'
+      },
+      {
+        ts: '2026-02-20T11:00:00.000Z',
+        headline: '  ',
+        summary: 'invalid because missing headline'
+      }
+    ];
+
+    const out = normalizeNewsRows(inRows);
+    expect(out).toHaveLength(1);
+    expect(out[0].tickers).toEqual(['SPY']);
+    expect(out[0].id).toEqual(buildNewsId(inRows[0]));
   });
 });
