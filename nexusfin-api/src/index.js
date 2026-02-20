@@ -491,17 +491,20 @@ const startHttpServer = ({ port = env.port } = {}) => {
     macroDaily: async () => {
       const marketSnapshotOut = await marketIngestion.runMarketSnapshotDaily();
       const fundamentalsOut = await marketIngestion.runFundamentalsWeekly();
+      const newsIngestOut = await marketIngestion.runNewsIngestDaily();
       const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
       const notifyOut = await notificationPolicy.runDaily({ date: mvpOut?.date });
       return {
         generated:
           Number(marketSnapshotOut?.generated || 0) +
           Number(fundamentalsOut?.generated || 0) +
+          Number(newsIngestOut?.generated || 0) +
           Number(macroOut?.generated || 0) +
           Number(mvpOut?.generated || 0) +
           Number(notifyOut?.sent || 0),
         marketSnapshot: marketSnapshotOut,
         fundamentals: fundamentalsOut,
+        newsIngest: newsIngestOut,
         mvp: mvpOut,
         notifications: notifyOut
       };

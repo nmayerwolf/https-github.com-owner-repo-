@@ -11,6 +11,7 @@ const JOB_NAMES = new Set([
   'notification_policy',
   'market_snapshot_daily',
   'fundamentals_weekly',
+  'news_ingest_daily',
   'macro_radar',
   'portfolio_advisor'
 ]);
@@ -94,6 +95,7 @@ router.post('/run', async (req, res, next) => {
       notification_policy: req.app?.locals?.notificationPolicy?.runDaily,
       market_snapshot_daily: req.app?.locals?.marketIngestion?.runMarketSnapshotDaily,
       fundamentals_weekly: req.app?.locals?.marketIngestion?.runFundamentalsWeekly,
+      news_ingest_daily: req.app?.locals?.marketIngestion?.runNewsIngestDaily,
       macro_radar: req.app?.locals?.macroRadar?.runGlobalDaily,
       portfolio_advisor: req.app?.locals?.portfolioAdvisor?.runGlobalDaily
     };
