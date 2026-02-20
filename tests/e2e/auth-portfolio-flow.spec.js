@@ -85,6 +85,31 @@ test('login and add position in portfolio', async ({ page }) => {
     }
 
     if (isPath('/api/health') && method === 'GET') return json(200, { status: 'ok' });
+    if (isPath('/api/news/digest/today') && method === 'GET') {
+      return json(200, {
+        date: '2026-02-20',
+        regime_label: 'Supportive',
+        volatility_label: 'Calm',
+        confidence_label: 'High',
+        crisis_active: false,
+        bullets: ['S&P 500 extended above its 50-day moving average for another session.'],
+        key_risks: ['Market breadth narrowing to 58%'],
+        leadership: ['Technology'],
+        macro_drivers: ['Dollar weakness']
+      });
+    }
+    if (isPath('/api/crisis/today') && method === 'GET') {
+      return json(200, { isActive: false });
+    }
+    if (isPath('/api/reco/today') && method === 'GET') {
+      return json(200, { date: '2026-02-20', strategic: [], opportunistic: [], risk_alerts: [] });
+    }
+    if (isPath('/api/agent/profile') && method === 'GET') {
+      return json(200, { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5 });
+    }
+    if (isPath('/api/agent/profile') && method === 'PUT') {
+      return json(200, req.postDataJSON());
+    }
     if (isPath('/api/config') && method === 'GET') {
       return json(200, {
         riskProfile: 'moderado',
@@ -201,16 +226,16 @@ test('login and add position in portfolio', async ({ page }) => {
   await expect(page.locator('nav.bottom-nav')).not.toContainText('Mercados');
   await expect(page.locator('nav.bottom-nav')).toContainText('Portfolio');
   await expect(page.locator('nav.bottom-nav')).toContainText('News');
-  await expect(page.locator('nav.bottom-nav')).toContainText('Your AI Agent');
+  await expect(page.locator('nav.bottom-nav')).toContainText('Agent');
   await expect(page.locator('a.nav-item.active[href="/news"]')).toBeVisible();
 
   await page.goto('/markets');
   await expect(page).toHaveURL(/\/news$/);
-  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible();
+  await expect(page.getByText('Market Environment')).toBeVisible();
 
   await page.goto('/markets/AAPL');
   await expect(page).toHaveURL(/\/news$/);
-  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible();
+  await expect(page.getByText('Market Environment')).toBeVisible();
 
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
@@ -218,8 +243,8 @@ test('login and add position in portfolio', async ({ page }) => {
     await expect(migrationHeading).toBeHidden();
   }
   await page.locator('a.nav-item[href="/news"]').click();
-  await expect(page.getByRole('heading', { name: 'News', exact: true })).toBeVisible();
-  await expect(page.getByText('AAPL announces product launch')).toBeVisible();
+  await expect(page.getByText('Today\'s Briefing')).toBeVisible();
+  await expect(page.getByText('S&P 500 extended above its 50-day moving average for another session.')).toBeVisible();
 
   await page.locator('a.nav-item[href="/portfolio"]').click();
   const addPortfolioBtn = page.getByRole('button', { name: /\+ Agregar portfolio/i });
