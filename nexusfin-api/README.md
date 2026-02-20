@@ -1,6 +1,6 @@
-# NexusFin API (Phase 4)
+# NexusFin API (MVP)
 
-Backend de NexusFin para auth, portfolio/config/watchlist, market proxy, realtime WS, cron/AI agent y notificaciones push.
+Backend de NexusFin para auth (Google/Gmail only), digest/recommendations batch, portfolios compartidos, jobs diarios y notificaciones.
 
 ## Setup local
 
@@ -48,6 +48,18 @@ AI_AGENT_MAX_ALERTS_PER_USER_PER_DAY=10
 AI_AGENT_COOLDOWN_HOURS=4
 AI_AGENT_REJECTION_COOLDOWN_HOURS=24
 AI_AGENT_TIMEOUT_MS=10000
+AI_NARRATIVE_ENABLED=false
+AI_NARRATIVE_MODEL=claude-haiku-4-5-20251001
+AI_NARRATIVE_TIMEOUT_MS=9000
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=
+
+ADMIN_JOB_TOKEN=
+ADMIN_JOB_TOKEN_NEXT=
+ADMIN_JOBS_RATE_LIMIT_WINDOW_MS=60000
+ADMIN_JOBS_RATE_LIMIT_MAX=10
 
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
@@ -61,16 +73,23 @@ Template prod:
 ## Endpoints clave
 
 Auth:
-- `POST /api/auth/register`
-- `POST /api/auth/login`
+- `GET /api/auth/oauth/providers` (incluye `gmailOnly=true`)
+- `GET /api/auth/google`
+- `GET /api/auth/google/callback`
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
-- `POST /api/auth/forgot-password`
-- `POST /api/auth/reset-password` (por token)
-- `POST /api/auth/reset-password/authenticated`
 - `GET /api/auth/csrf`
 - `GET /api/auth/me`
 - `PATCH /api/auth/me`
+
+MVP contract:
+- `GET|PUT /api/agent/profile`
+- `GET /api/news/digest/today`
+- `GET /api/news/digest/:date`
+- `GET /api/reco/today`
+- `GET /api/reco/:date`
+- `GET /api/crisis/today`
+- `GET|POST|PUT /api/portfolios*` (incluye invite/accept y holdings)
 
 Market:
 - `GET /api/market/quote`
@@ -102,6 +121,11 @@ Health/realtime:
 - `GET /api/health/phase3`
 - `GET /api/health/cron`
 - `WS /ws`
+
+Admin jobs:
+- `POST /api/admin/jobs/run`
+- `GET /api/admin/jobs/runs`
+- `GET /api/admin/jobs/status`
 
 ## API Error Contract (v1.1)
 
@@ -155,6 +179,17 @@ Códigos mínimos usados en MVP:
 - `004_phase4_cron_runs.sql`
 - `005_phase4_ai_agent.sql`
 - `006_phase4_password_reset_tokens.sql`
+- `007_phase4_ai_agent_v2.sql`
+- `008_phase5_multi_portfolio.sql`
+- `009_phase5_remove_legacy_default_portfolio.sql`
+- `010_phase5_portfolio_collaboration.sql`
+- `011_phase5_news_telemetry.sql`
+- `012_mvp_phase1_core.sql`
+- `013_phase1_active_holding_unique.sql`
+- `014_phase6_mvp_contract.sql`
+- `015_phase6_notification_events.sql`
+- `016_phase6_admin_job_runs_audit.sql`
+- `017_mvp_universe_expand.sql`
 
 ## Tests
 

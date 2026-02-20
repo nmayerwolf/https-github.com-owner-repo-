@@ -58,16 +58,19 @@ npm run build
 ## 5. Smoke tests (manual)
 
 - `GET /api/health` returns `{ "ok": true }` (requires DB reachable from backend runtime).
-- Auth by provider works (`/api/auth/google` callback flow).
+- Auth Google works (`/api/auth/google` callback flow).
+- Gmail-only enforced (non-gmail account is rejected).
 - `GET|POST /api/auth/apple/callback` returns `oauth_error=provider_disabled` (expected).
 - `POST /api/auth/register` and `POST /api/auth/login` return `403 GOOGLE_OAUTH_ONLY` (expected).
 - Logout works and next protected call requires re-login.
+- `POST /api/auth/forgot-password` and `POST /api/auth/reset-password*` return `403 GOOGLE_OAUTH_ONLY` (expected).
 - Dashboard loads market data via backend.
 - Portfolio CRUD persists after reload.
 - Config changes persist after reload.
 - Watchlist add/remove persists after reload.
 - Groups: create, join, rename, delete group, remove member, leave.
-- Reset password flow works from Settings.
+- `POST /api/admin/jobs/run` executes selected jobs with `x-admin-token`.
+- `GET /api/admin/jobs/runs` and `GET /api/admin/jobs/status` return run history.
 
 ## 6. PR sanity
 
