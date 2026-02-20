@@ -17,7 +17,11 @@ DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret ./s
 1. Crear proyecto en Railway desde GitHub.
 2. Configurar `Root Directory`: `nexusfin-api`.
 3. Railway tomará `nexusfin-api/railway.toml`.
-4. Variables mínimas:
+4. Tomar como base:
+```bash
+cp /Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env.production.example /tmp/nexusfin-api.env
+```
+5. Variables mínimas:
 ```env
 PORT=3001
 DATABASE_URL=postgresql://...
@@ -29,11 +33,12 @@ TWELVE_DATA_KEY=<key>
 ANTHROPIC_API_KEY=<key>
 AI_AGENT_ENABLED=true
 CRON_ENABLED=true
+REALTIME_ENABLED=false
 FRONTEND_URL=https://horsai.app
 NODE_ENV=production
 COOKIE_DOMAIN=horsai.app
 ```
-5. Verificar:
+6. Verificar:
 ```bash
 curl -sS https://api.horsai.app/api/health
 curl -sS https://api.horsai.app/api/health/cron
@@ -42,12 +47,18 @@ curl -sS https://api.horsai.app/api/health/cron
 ## 4. Frontend (Vercel)
 1. Importar repo en Vercel (root `.`).
 2. Vercel usará `vercel.json`.
-3. Variables:
+3. Tomar como base:
+```bash
+cp /Users/nmayerwolf/Documents/nexusfin/.env.production.example /tmp/nexusfin-web.env
+```
+4. Variables:
 ```env
 VITE_API_URL=https://api.horsai.app/api
 VITE_WS_URL=wss://api.horsai.app/ws
+VITE_MARKET_VISIBLE=false
+VITE_REALTIME_ENABLED=false
 ```
-4. Verificar `https://horsai.app`.
+5. Verificar `https://horsai.app`.
 
 ## 5. DNS
 - `horsai.app` -> Vercel
@@ -55,12 +66,12 @@ VITE_WS_URL=wss://api.horsai.app/ws
 
 ## 6. Smoke post-deploy
 1. Login Google.
-2. Mercado carga watchlist.
+2. Mercado no visible en UI (oculto por feature flag).
 3. Agregar/quitar watchlist.
 4. Agente IA responde.
 5. Noticias cargan.
 6. Portfolio crea posición.
-7. WebSocket conecta.
+7. Realtime desactivado para MVP strict (si `REALTIME_ENABLED=true`, verificar WebSocket conecta).
 8. `/api/health` y `/api/health/cron` OK.
 
 ## 7. Seguridad mínima obligatoria

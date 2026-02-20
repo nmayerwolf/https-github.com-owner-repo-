@@ -12,7 +12,6 @@ const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
 const av = require('./services/alphavantage');
-const twelvedata = require('./services/twelvedata');
 const { resolveMarketQuote } = require('./services/marketDataProvider');
 const { createAlertEngine } = require('./services/alertEngine');
 const { createAiAgent } = require('./services/aiAgent');
@@ -82,7 +81,7 @@ app.locals.getCronStatus = () => ({
 app.locals.getMobileHealthStatus = () => ({
   ok: true,
   ws: {
-    enabled: true,
+    enabled: Boolean(env.realtimeEnabled),
     intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000)
   },
   push: {
@@ -125,7 +124,7 @@ app.get('/api/health/mobile', (_req, res) => {
   return res.json(
     status || {
       ok: true,
-      ws: { enabled: true, intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000) },
+      ws: { enabled: Boolean(env.realtimeEnabled), intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000) },
       push: { web: false, expo: Boolean(env.expoAccessToken) },
       auth: {
         appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
@@ -140,7 +139,7 @@ app.get('/api/health/phase3', (_req, res) => {
   const check = {
     mobileOAuth: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey),
     expoPush: Boolean(env.expoAccessToken),
-    realtimeWs: wsIntervalMs >= 5000,
+    realtimeWs: Boolean(env.realtimeEnabled) && wsIntervalMs >= 5000,
     marketUniverse: Array.isArray(MARKET_UNIVERSE) && MARKET_UNIVERSE.length >= 30,
     exportPdf: true,
     groupsSocial: true
@@ -181,9 +180,9 @@ app.get('/api/health/market-data', async (_req, res) => {
 
   return res.json({
     ok: true,
-    providerMode: 'twelvedata-only',
-    keyPresent: twelvedata.hasKey(),
-    keyLength: twelvedata.keyLength(),
+    providerMode: 'finnhub-polling',
+    keyPresent: Boolean(String(env.finnhubKey || '').trim()),
+    keyLength: String(env.finnhubKey || '').trim().length,
     universe: {
       count: symbols.size,
       hasMerval: symbols.has('^MERV'),
@@ -192,7 +191,6 @@ app.get('/api/health/market-data', async (_req, res) => {
     ws: { chainResolverEnabled: true },
     strictRealtime: Boolean(env.marketStrictRealtime),
     probes,
-    metrics: twelvedata.getMetrics(),
     ts: new Date().toISOString()
   });
 });
@@ -248,7 +246,7 @@ const providerForRealtimeSymbol = (symbol) =>
     .toUpperCase()
     .startsWith(AV_SYMBOL_PREFIX)
     ? 'alphavantage'
-    : 'market-chain';
+    : 'finnhub';
 
 const canonicalSymbolFromRealtime = (symbol) => {
   const upper = String(symbol || '').trim().toUpperCase();
@@ -425,9 +423,16 @@ const startWsPriceRuntime = ({
   };
 };
 
+const createNoopWsHub = () => ({
+  getSubscribedSymbols: () => [],
+  broadcastPrice: () => {},
+  broadcastAlert: () => {},
+  close: async () => {}
+});
+
 const startHttpServer = ({ port = env.port } = {}) => {
   const server = http.createServer(app);
-  const wsHub = startWSHub(server);
+  const wsHub = env.realtimeEnabled ? startWSHub(server) : createNoopWsHub();
   const pushNotifier = createPushNotifier({ query, logger: console });
   const aiAgent = createAiAgent();
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
@@ -530,18 +535,25 @@ const startHttpServer = ({ port = env.port } = {}) => {
   };
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console, logRun: logCronRun });
   app.locals.getCronStatus = cronRuntime.getStatus;
-  const wsPriceRuntime = startWsPriceRuntime({
-    wsHub,
-    finnhubSvc: finnhub,
-    alphaSvc: av,
-    quoteResolver: (symbol) => resolveMarketQuote(symbol, { strictRealtime: env.marketStrictRealtime }),
-    logger: console
-  });
+  const wsPriceRuntime = env.realtimeEnabled
+    ? startWsPriceRuntime({
+        wsHub,
+        finnhubSvc: finnhub,
+        alphaSvc: av,
+        quoteResolver: (symbol) => resolveMarketQuote(symbol, { strictRealtime: env.marketStrictRealtime }),
+        logger: console
+      })
+    : {
+        enabled: false,
+        intervalMs: 0,
+        stop: () => {},
+        getStatus: () => ({ enabled: false, intervalMs: 0, activeSymbols: [], metrics: {} })
+      };
   app.locals.getWsPriceStatus = wsPriceRuntime.getStatus;
   app.locals.getMobileHealthStatus = () => ({
     ok: true,
     ws: {
-      enabled: true,
+      enabled: Boolean(env.realtimeEnabled),
       intervalMs: wsPriceRuntime.intervalMs,
       activeSymbols: wsHub.getSubscribedSymbols?.() || []
     },
@@ -557,8 +569,12 @@ const startHttpServer = ({ port = env.port } = {}) => {
 
   server.listen(port, () => {
     console.log(`nexusfin-api listening on :${port}`);
-    console.log(`ws hub ready on :${port}/ws`);
-    console.log(`ws prices enabled (${wsPriceRuntime.intervalMs}ms)`);
+    if (env.realtimeEnabled) {
+      console.log(`ws hub ready on :${port}/ws`);
+      console.log(`ws prices enabled (${wsPriceRuntime.intervalMs}ms)`);
+    } else {
+      console.log('ws realtime disabled (REALTIME_ENABLED=false)');
+    }
     console.log(`cron ${cronRuntime.enabled ? 'enabled' : 'disabled'}`);
     console.log(`push ${pushNotifier.hasVapidConfig ? 'enabled' : 'disabled'}`);
   });

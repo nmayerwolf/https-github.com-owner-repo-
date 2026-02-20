@@ -17,6 +17,7 @@ import AuthScreen from './components/AuthScreen';
 import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
+import { MARKET_VISIBLE } from './config/features';
 
 const MIGRATION_DISMISSED_KEY = 'horsai_migration_prompt_dismissed_v1';
 const LEGACY_KEYS = {
@@ -570,8 +571,30 @@ const App = () => {
       <main className="container">
         <Routes>
           <Route path="/" element={<Navigate to="/alerts" replace />} />
-          <Route path="/markets" element={<Navigate to="/alerts" replace />} />
-          <Route path="/markets/:symbol" element={<Navigate to="/alerts" replace />} />
+          <Route
+            path="/markets"
+            element={
+              MARKET_VISIBLE ? (
+                <RouteBoundary moduleName="Mercados">
+                  <Markets />
+                </RouteBoundary>
+              ) : (
+                <Navigate to="/alerts" replace />
+              )
+            }
+          />
+          <Route
+            path="/markets/:symbol"
+            element={
+              MARKET_VISIBLE ? (
+                <RouteBoundary moduleName="Detalle de activo">
+                  <AssetDetail />
+                </RouteBoundary>
+              ) : (
+                <Navigate to="/alerts" replace />
+              )
+            }
+          />
           <Route
             path="/alerts"
             element={

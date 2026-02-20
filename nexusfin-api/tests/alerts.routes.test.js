@@ -108,7 +108,7 @@ describe('alerts routes', () => {
     const res = await request(app).get('/api/alerts/missing');
 
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('ALERT_NOT_FOUND');
+    expect(res.body.error.code).toBe('ALERT_NOT_FOUND');
   });
 
   it('returns latest macro insight for user', async () => {
@@ -226,6 +226,6 @@ describe('alerts routes', () => {
     const res = await request(app).post('/api/alerts/a1/share').send({ groupId: 'g1' });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('ALREADY_SHARED');
+    expect(res.body.error.code).toBe('ALREADY_SHARED');
   });
 });

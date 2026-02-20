@@ -5,6 +5,7 @@ const { badRequest } = require('../utils/errors');
 const router = express.Router();
 
 const SYMBOL_PATTERN = /^[A-Z0-9.^/_:-]{1,24}$/;
+const WATCHLIST_LIMIT = 15;
 
 const normalizeSymbol = (value) => String(value || '').trim().toUpperCase();
 
@@ -30,7 +31,9 @@ router.post('/', async (req, res, next) => {
     }
 
     const count = await query('SELECT COUNT(*)::int AS total FROM watchlist_items WHERE user_id = $1', [req.user.id]);
-    if (count.rows[0].total >= 50) return res.status(403).json({ error: 'LIMIT_REACHED', message: 'Máximo 50 símbolos' });
+    if (count.rows[0].total >= WATCHLIST_LIMIT) {
+      return res.status(403).json({ error: { code: 'LIMIT_REACHED', message: `Máximo ${WATCHLIST_LIMIT} símbolos` } });
+    }
 
     const saved = await query(
       `INSERT INTO watchlist_items (user_id, symbol, name, type, category)
@@ -40,7 +43,7 @@ router.post('/', async (req, res, next) => {
       [req.user.id, normalized, name, type, category]
     );
 
-    if (!saved.rows.length) return res.status(409).json({ error: 'ALREADY_EXISTS', message: 'Símbolo ya existente' });
+    if (!saved.rows.length) return res.status(409).json({ error: { code: 'ALREADY_EXISTS', message: 'Símbolo ya existente' } });
     return res.status(201).json(saved.rows[0]);
   } catch (error) {
     return next(error);

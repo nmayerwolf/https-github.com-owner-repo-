@@ -100,6 +100,8 @@ describe('News', () => {
     render(<News />);
 
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(1));
+    await screen.findByText('Recomendadas por IA');
+    await screen.findByText('Todas las noticias');
     expect(apiMock.marketNewsRecommended).toHaveBeenCalledTimes(1);
     expect(screen.getAllByText('Fed signals inflation risk for global markets').length).toBeGreaterThan(0);
     expect(screen.getByText('Minor local event with low financial impact')).toBeTruthy();
@@ -109,6 +111,7 @@ describe('News', () => {
   it('orders news from most recent to oldest', async () => {
     render(<News />);
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(1));
+    await screen.findByText('Todas las noticias');
 
     const allNewsSection = screen.getByText('Todas las noticias').closest('section');
     const headlines = [...allNewsSection.querySelectorAll('.news-headline')].map((node) => node.textContent);
@@ -119,6 +122,7 @@ describe('News', () => {
   it('orders recommended news from most recent to oldest', async () => {
     render(<News />);
     await waitFor(() => expect(apiMock.marketNewsRecommended).toHaveBeenCalledTimes(1));
+    await screen.findByText('Recomendadas por IA');
 
     const recommendedSection = screen.getByText('Recomendadas por IA').closest('section');
     const headlines = [...recommendedSection.querySelectorAll('.news-headline')].map((node) => node.textContent);
@@ -129,6 +133,7 @@ describe('News', () => {
   it('filters by keyword search', async () => {
     render(<News />);
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(1));
+    await screen.findByText('Todas las noticias');
 
     fireEvent.change(screen.getByPlaceholderText(/Buscar en todas/i), { target: { value: 'opec' } });
 
@@ -140,6 +145,7 @@ describe('News', () => {
   it('shows impact badge classification per news item', async () => {
     render(<News />);
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(1));
+    await screen.findByText('Recomendadas por IA');
 
     expect(screen.getByText('Muy relevante')).toBeTruthy();
     expect(screen.getByText('Relevante')).toBeTruthy();
@@ -148,6 +154,7 @@ describe('News', () => {
   it('persists search queries between mounts', async () => {
     const { unmount } = render(<News />);
     await waitFor(() => expect(apiMock.marketNews).toHaveBeenCalledTimes(1));
+    await screen.findByText('Recomendadas por IA');
 
     fireEvent.change(screen.getByPlaceholderText(/Buscar en recomendadas/i), { target: { value: 'inflación' } });
     fireEvent.change(screen.getByPlaceholderText(/Buscar en todas/i), { target: { value: 'china' } });

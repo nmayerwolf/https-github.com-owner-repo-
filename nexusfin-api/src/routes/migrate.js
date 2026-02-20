@@ -25,7 +25,7 @@ router.post('/', async (req, res, next) => {
       Number(existing.rows[0].config_count) > 0
     ) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'ALREADY_MIGRATED', message: 'El usuario ya tiene datos en backend' });
+      return res.status(409).json({ error: { code: 'ALREADY_MIGRATED', message: 'El usuario ya tiene datos en backend' } });
     }
 
     let migratedPositions = 0;

@@ -86,10 +86,10 @@ router.post('/join', async (req, res, next) => {
       throw badRequest('Código de invitación inválido', 'VALIDATION_ERROR');
     }
     const group = await query('SELECT id, name, code FROM groups WHERE code = $1', [code]);
-    if (!group.rows.length) return res.status(404).json({ error: 'GROUP_NOT_FOUND', message: 'Código de invitación inválido' });
+    if (!group.rows.length) return res.status(404).json({ error: { code: 'GROUP_NOT_FOUND', message: 'Código de invitación inválido' } });
 
     const exists = await query('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [group.rows[0].id, req.user.id]);
-    if (exists.rows.length) return res.status(409).json({ error: 'ALREADY_MEMBER', message: 'Ya sos miembro de este grupo' });
+    if (exists.rows.length) return res.status(409).json({ error: { code: 'ALREADY_MEMBER', message: 'Ya sos miembro de este grupo' } });
 
     const myGroups = await userGroupCount(req.user.id);
     if (myGroups >= MAX_GROUPS_PER_USER) {

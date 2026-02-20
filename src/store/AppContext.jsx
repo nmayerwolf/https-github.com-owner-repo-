@@ -8,6 +8,7 @@ import { calculateIndicators } from '../engine/analysis';
 import { buildAlerts, stopLossAlerts } from '../engine/alerts';
 import { calculateConfluence } from '../engine/confluence';
 import { DEFAULT_WATCHLIST, WATCHLIST_CATALOG } from '../utils/constants';
+import { REALTIME_ENABLED } from '../config/features';
 import { useAuth } from './AuthContext';
 import { loadActivePortfolioId, loadPortfolio, loadPortfolios, saveActivePortfolioId, savePortfolio, savePortfolios } from './portfolioStore';
 import { loadConfig, saveConfig } from './configStore';
@@ -134,12 +135,6 @@ const buildSyntheticCandles = (price, prevClose = null, points = 90) => {
 
 const toWsMarketSymbol = (asset) => {
   if (!asset?.symbol) return null;
-  if (asset.source === 'twelvedata' || String(asset.source || '').startsWith('twelvedata_')) {
-    const symbol = String(asset.symbol).toUpperCase();
-    if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
-    if (symbol.includes('_')) return `OANDA:${symbol}`;
-    return symbol;
-  }
   if (asset.source === 'alphavantage_macro') {
     const key = String(asset.symbol).toUpperCase();
     if (key === 'XAU') return 'AV:GOLD';
@@ -154,7 +149,10 @@ const toWsMarketSymbol = (asset) => {
     if (key === 'US10Y') return 'AV:TREASURY_YIELD:10YEAR';
     if (key === 'US30Y') return 'AV:TREASURY_YIELD:30YEAR';
   }
-  return null;
+  const symbol = String(asset.symbol).toUpperCase();
+  if (symbol.endsWith('USDT')) return `BINANCE:${symbol}`;
+  if (symbol.includes('_')) return `OANDA:${symbol}`;
+  return symbol;
 };
 
 export const buildRealtimeSymbolMap = (assets = []) =>
@@ -181,13 +179,13 @@ const resolveMarketMeta = (data = {}, fallbackSource = 'local') => {
   const stale = Boolean(data?.marketMeta?.stale ?? data?.quote?.stale ?? false);
   const unavailable = Boolean(data?.marketMeta?.unavailable ?? false);
   const fallbackLevel = Number.isFinite(Number(data?.marketMeta?.fallbackLevel))
-      ? Number(data.marketMeta.fallbackLevel)
-      : stale
-        ? 3
-        : source === 'twelvedata'
-          ? 0
-          : source === 'alphavantage'
-            ? 1
+    ? Number(data.marketMeta.fallbackLevel)
+    : stale
+      ? 3
+      : source === 'finnhub'
+        ? 0
+        : source === 'alphavantage'
+          ? 1
           : source === 'yahoo'
             ? 2
             : 0;
@@ -229,12 +227,12 @@ const resolveWatchlistAssets = (watchlistSymbols) => {
       if (bySymbol[normalized]) return bySymbol[normalized];
       if (!normalized) return null;
       if (normalized.endsWith('USDT')) {
-        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'twelvedata' };
+        return { symbol: normalized, name: normalized, category: 'crypto', sector: 'crypto', source: 'finnhub' };
       }
       if (normalized.includes('_')) {
-        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'twelvedata' };
+        return { symbol: normalized, name: normalized.replace('_', '/'), category: 'fx', sector: 'fx', source: 'finnhub' };
       }
-      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'twelvedata' };
+      return { symbol: normalized, name: normalized, category: 'equity', sector: 'equity', source: 'finnhub' };
     })
     .filter(Boolean);
 };
@@ -463,6 +461,11 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     dispatch({ type: 'DISMISS_UI_ERRORS_BY_MODULE', payload: 'WebSocket' });
+    if (!REALTIME_ENABLED) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disabled' });
+      dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
+      return;
+    }
     if (!isAuthenticated) {
       dispatch({ type: 'SET_WS_STATUS', payload: 'disconnected' });
       dispatch({ type: 'CLEAR_REALTIME_ALERTS' });
@@ -602,7 +605,7 @@ export const AppProvider = ({ children }) => {
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
           candles: data.candles,
-          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'twelvedata')
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         })
       );
     };
@@ -753,7 +756,7 @@ export const AppProvider = ({ children }) => {
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
           candles: data.candles,
-          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'twelvedata')
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         });
       });
       dispatch({ type: 'SET_ASSETS', payload: next });
@@ -831,6 +834,10 @@ export const AppProvider = ({ children }) => {
   }, [realtimeSymbolMap]);
 
   useEffect(() => {
+    if (!REALTIME_ENABLED) {
+      dispatch({ type: 'SET_WS_STATUS', payload: 'disabled' });
+      return undefined;
+    }
     if (state.loading || !state.assets.length) return undefined;
     if (state.progress.total > 0 && state.progress.loaded < state.progress.total) return undefined;
     const wsSymbols = wsSymbolKey
@@ -1284,10 +1291,10 @@ export const AppProvider = ({ children }) => {
                 category: String(entry.category || fallbackMeta?.category || 'equity').toLowerCase(),
                 sector: String(entry.sector || fallbackMeta?.sector || 'general').toLowerCase(),
                 source: String(entry.source || fallbackMeta?.source || (normalizedSymbol.endsWith('USDT')
-                  ? 'twelvedata'
+                  ? 'finnhub'
                   : normalizedSymbol.includes('_')
-                    ? 'twelvedata'
-                    : 'twelvedata'))
+                    ? 'finnhub'
+                    : 'finnhub'))
               }
             : null;
         const meta = providedMeta || fallbackMeta;
@@ -1345,7 +1352,7 @@ export const AppProvider = ({ children }) => {
           prevClose: data.quote.pc,
           changePercent: data.quote.dp,
           candles: data.candles,
-          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'twelvedata')
+          marketMeta: resolveMarketMeta(data, isAuthenticated ? 'backend' : 'finnhub')
         });
 
         const current = assetsRef.current;

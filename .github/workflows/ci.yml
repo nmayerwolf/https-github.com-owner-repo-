@@ -20,6 +20,9 @@ jobs:
     name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VITE_MARKET_VISIBLE: "false"
+      VITE_REALTIME_ENABLED: "false"
 
     strategy:
       fail-fast: false
@@ -55,6 +58,8 @@ jobs:
     name: API Test (Node 20.x)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      REALTIME_ENABLED: "false"
 
     steps:
       - name: Checkout
@@ -92,6 +97,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: web-test
+    env:
+      VITE_MARKET_VISIBLE: "false"
+      VITE_REALTIME_ENABLED: "false"
 
     steps:
       - name: Checkout
@@ -126,6 +134,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [web-test, api-test, e2e]
+    env:
+      VITE_MARKET_VISIBLE: "false"
+      VITE_REALTIME_ENABLED: "false"
 
     steps:
       - name: Checkout

@@ -29,8 +29,8 @@ describe('watchlist routes', () => {
     query.mockReset();
   });
 
-  it('rejects add symbol when user reached 50 symbols', async () => {
-    query.mockResolvedValueOnce({ rows: [{ total: 50 }] });
+  it('rejects add symbol when user reached 15 symbols', async () => {
+    query.mockResolvedValueOnce({ rows: [{ total: 15 }] });
 
     const app = makeApp();
     const res = await request(app).post('/api/watchlist').send({
@@ -41,7 +41,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('LIMIT_REACHED');
+    expect(res.body.error.code).toBe('LIMIT_REACHED');
   });
 
   it('normalizes symbol to uppercase before insert', async () => {
@@ -112,8 +112,8 @@ describe('watchlist routes', () => {
       category: 'equity'
     });
 
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -131,7 +131,7 @@ describe('watchlist routes', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe('ALREADY_EXISTS');
+    expect(res.body.error.code).toBe('ALREADY_EXISTS');
   });
 
   it('normalizes symbol to uppercase on delete', async () => {

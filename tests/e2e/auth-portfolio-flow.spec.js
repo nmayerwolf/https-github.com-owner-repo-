@@ -204,6 +204,14 @@ test('login and add position in portfolio', async ({ page }) => {
   await expect(page.locator('nav.bottom-nav')).toContainText('Ajustes');
   await expect(page.locator('a.nav-item.active[href="/alerts"]')).toBeVisible();
 
+  await page.goto('/markets');
+  await expect(page).toHaveURL(/\/alerts$/);
+  await expect(page.getByRole('heading', { name: 'Agente IA', exact: true })).toBeVisible();
+
+  await page.goto('/markets/AAPL');
+  await expect(page).toHaveURL(/\/alerts$/);
+  await expect(page.getByRole('heading', { name: 'Agente IA', exact: true })).toBeVisible();
+
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();

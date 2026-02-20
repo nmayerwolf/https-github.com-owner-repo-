@@ -13,8 +13,9 @@ import { hydrateSession, loginWithToken, logoutSession } from './src/store/auth'
 import { hydrateTheme, saveTheme } from './src/store/theme';
 import { getThemePalette } from './src/theme/palette';
 import { typography } from './src/theme/typography';
+import { MARKET_VISIBLE } from './src/config/features';
 
-const TABS = ['dashboard', 'markets', 'alerts', 'groups', 'settings'];
+const TABS = MARKET_VISIBLE ? ['dashboard', 'markets', 'alerts', 'groups', 'settings'] : ['dashboard', 'alerts', 'groups', 'settings'];
 const TAB_LABEL = {
   dashboard: 'Inicio',
   markets: 'Mercados',
@@ -70,6 +71,12 @@ const App = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!MARKET_VISIBLE && tab === 'markets') {
+      setTab('dashboard');
+    }
+  }, [tab]);
 
   useEffect(() => {
     let active = true;
@@ -175,7 +182,7 @@ const App = () => {
           />
         ) : null}
         {!onboardingPending && tab === 'dashboard' ? <DashboardScreen user={session.user} theme={theme} /> : null}
-        {!onboardingPending && tab === 'markets' ? <MarketsScreen theme={theme} /> : null}
+        {!onboardingPending && MARKET_VISIBLE && tab === 'markets' ? <MarketsScreen theme={theme} /> : null}
         {!onboardingPending && tab === 'alerts' ? <AlertsScreen theme={theme} /> : null}
         {!onboardingPending && tab === 'groups' ? <GroupsScreen theme={theme} /> : null}
         {!onboardingPending && tab === 'settings' ? <SettingsScreen onLogout={logout} theme={theme} onThemeChange={handleThemeChange} /> : null}

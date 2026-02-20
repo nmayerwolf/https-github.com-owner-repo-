@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider, useApp } from '../AppContext';
+import { REALTIME_ENABLED } from '../../config/features';
 
 const makeCandles = (base = 100) => {
   const c = Array.from({ length: 90 }, (_, i) => base + i * 0.2);
@@ -169,8 +170,12 @@ describe('AppContext integration', () => {
     });
 
     await waitFor(() => {
-      expect(getLatest().state.wsStatus).toBe('auth_error');
-      expect(getLatest().state.uiErrors.some((e) => e.module === 'WebSocket')).toBe(true);
+      if (REALTIME_ENABLED) {
+        expect(getLatest().state.wsStatus).toBe('auth_error');
+        expect(getLatest().state.uiErrors.some((e) => e.module === 'WebSocket')).toBe(true);
+      } else {
+        expect(getLatest().state.wsStatus).toBe('disabled');
+      }
     });
   });
 
