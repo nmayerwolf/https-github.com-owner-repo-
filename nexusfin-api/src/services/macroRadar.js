@@ -1,4 +1,5 @@
 const { env } = require('../config/env');
+const { logAiUsage } = require('./aiUsageLogger');
 
 const toFinite = (value) => {
   const out = Number(value);
@@ -259,6 +260,9 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
 
     let insight = null;
     let model = null;
+    let usage = null;
+    let durationMs = 0;
+    const startedAt = Date.now();
 
     if (aiAgent?.configured && env.aiAgentEnabled && env.anthropicApiKey) {
       try {
@@ -269,6 +273,7 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
           systemPrompt: 'Sos un estratega macro del equipo de Horsai. Responde solo JSON.',
           userPrompt: buildPrompt({ market, headlines: safeArray(news), userContext })
         });
+        usage = response?.raw?.usage || null;
         const parsed = extractJsonBlock(response.text);
         if (parsed) {
           insight = {
@@ -289,6 +294,16 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
     }
 
     const row = await persistInsight({ userId, insight, model });
+    durationMs = Date.now() - startedAt;
+    await logAiUsage({
+      query,
+      userId,
+      feature: 'macro_radar',
+      model: model || env.aiAgentModel,
+      usage,
+      success: Boolean(model),
+      durationMs
+    });
     return {
       ...row,
       source: model ? 'ai' : 'fallback'

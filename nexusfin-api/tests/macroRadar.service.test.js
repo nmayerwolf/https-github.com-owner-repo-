@@ -22,7 +22,7 @@ describe('macroRadar service', () => {
     const out = await service.generateForUser('u1');
 
     expect(out).toHaveProperty('id', 'm1');
-    expect(query).toHaveBeenCalledTimes(5);
+    expect(query).toHaveBeenCalledTimes(6);
     expect(finnhub.generalNews).toHaveBeenCalled();
     expect(alpha.commodity).toHaveBeenCalled();
   });

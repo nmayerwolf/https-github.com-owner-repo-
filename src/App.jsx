@@ -111,6 +111,56 @@ const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushErr
   </div>
 );
 
+const AdminDashboardModal = ({ open, loading, error, data, onClose, onRefresh }) => {
+  if (!open) return null;
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="modal-card" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div className="row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3>Admin Dashboard</h3>
+          <button type="button" className="icon-btn" aria-label="Cerrar panel admin" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        {loading ? <p className="muted" style={{ marginTop: 8 }}>Cargando métricas...</p> : null}
+        {error ? <div className="card" style={{ marginTop: 8, borderColor: '#FF4757AA' }}>{error}</div> : null}
+        {!loading && !error && data ? (
+          <>
+            <div className="grid" style={{ marginTop: 8, gap: 8 }}>
+              <div className="row"><span>Users</span><strong>{data.total_users}</strong></div>
+              <div className="row"><span>Active today</span><strong>{data.active_today}</strong></div>
+              <div className="row"><span>Cost today</span><strong>${Number(data.cost_today_usd || 0).toFixed(4)}</strong></div>
+              <div className="row"><span>Month</span><strong>${Number(data.cost_this_month_usd || 0).toFixed(4)}</strong></div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <strong>Top users today</strong>
+              <div className="grid" style={{ marginTop: 6, gap: 6 }}>
+                {Array.isArray(data.top_users_today) && data.top_users_today.length ? (
+                  data.top_users_today.map((row) => (
+                    <div key={row.email} className="row">
+                      <span className="mono" style={{ fontSize: 12 }}>{row.email}</span>
+                      <strong>${Number(row.cost_usd || 0).toFixed(4)} · {Number(row.calls || 0)} calls</strong>
+                    </div>
+                  ))
+                ) : (
+                  <div className="muted">Sin actividad registrada hoy.</div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : null}
+        <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+          <button type="button" className="inline-link-btn" onClick={onRefresh} disabled={loading}>
+            Actualizar
+          </button>
+          <button type="button" onClick={onClose}>Cerrar</button>
+        </div>
+      </section>
+    </div>
+  );
+};
+
 const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -129,6 +179,10 @@ const App = () => {
   const [onboardingPushLoading, setOnboardingPushLoading] = useState(false);
   const [onboardingPushMessage, setOnboardingPushMessage] = useState('');
   const [onboardingPushError, setOnboardingPushError] = useState('');
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [adminDashboard, setAdminDashboard] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -398,6 +452,26 @@ const App = () => {
     if (item?.route) navigate(item.route);
   };
 
+  const isSuperadmin = String(user?.role || '').toLowerCase() === 'superadmin';
+
+  const loadAdminDashboard = async () => {
+    setAdminLoading(true);
+    setAdminError('');
+    try {
+      const out = await api.getAdminDashboard();
+      setAdminDashboard(out || null);
+    } catch {
+      setAdminError('No se pudo cargar el dashboard admin.');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const openAdmin = async () => {
+    setAdminOpen(true);
+    await loadAdminDashboard();
+  };
+
   const finishOnboarding = async () => {
     setOnboardingSaving(true);
     try {
@@ -465,6 +539,15 @@ const App = () => {
         />
       )}
 
+      <AdminDashboardModal
+        open={adminOpen}
+        loading={adminLoading}
+        error={adminError}
+        data={adminDashboard}
+        onClose={() => setAdminOpen(false)}
+        onRefresh={loadAdminDashboard}
+      />
+
       {showNewsHeader ? (
       <header className="header">
         <div className="top-header card">
@@ -475,6 +558,11 @@ const App = () => {
             <h1 className="brand-title">Horsai</h1>
           </div>
           <div className="header-actions">
+            {isSuperadmin ? (
+              <button type="button" className="icon-btn" aria-label="Admin dashboard" onClick={openAdmin}>
+                🛡️
+              </button>
+            ) : null}
             <div className="notif-menu-wrap" ref={notifMenuRef}>
               <button
                 type="button"
@@ -536,7 +624,15 @@ const App = () => {
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
               >
-                {String(user?.email || 'U').slice(0, 1).toUpperCase()}
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt=""
+                    style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  String(user?.email || 'U').slice(0, 1).toUpperCase()
+                )}
               </button>
               {userMenuOpen ? (
                 <div className="user-menu card">

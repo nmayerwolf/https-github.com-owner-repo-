@@ -6,8 +6,16 @@ const helmet = require('helmet');
 const { env } = require('./config/env');
 const { query } = require('./config/db');
 const { authRequired, requireCsrf } = require('./middleware/auth');
+const { requireAdmin } = require('./middleware/requireAdmin');
 const { errorHandler } = require('./middleware/errorHandler');
-const { authLimiter, marketLimiter, adminJobsLimiter } = require('./middleware/rateLimiter');
+const {
+  apiLimiter,
+  authLimiter,
+  authLoginLimiter,
+  authRegisterLimiter,
+  marketLimiter,
+  adminJobsLimiter
+} = require('./middleware/rateLimiter');
 const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
@@ -40,6 +48,7 @@ const recoRoutes = require('./routes/reco');
 const crisisRoutes = require('./routes/crisis');
 const portfoliosRoutes = require('./routes/portfolios');
 const adminJobsRoutes = require('./routes/adminJobs');
+const adminRoutes = require('./routes/admin');
 const horsaiRoutes = require('./routes/horsai');
 const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
@@ -71,6 +80,7 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
+app.use('/api', apiLimiter);
 app.locals.getWsPriceStatus = () => ({ enabled: false, intervalMs: 0, metrics: {} });
 app.locals.getCronStatus = () => ({
   enabled: false,
@@ -302,6 +312,8 @@ app.get('/api/health/engines', async (_req, res, next) => {
   }
 });
 
+app.use('/api/auth/login', authLoginLimiter);
+app.use('/api/auth/register', authRegisterLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/market', authRequired, marketLimiter, marketRoutes);
 app.use('/api/portfolio', authRequired, requireCsrf, portfolioRoutes);
@@ -318,6 +330,7 @@ app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
 app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
 app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
 app.use('/api/admin/jobs', authRequired, requireCsrf, adminJobsLimiter, adminJobsRoutes);
+app.use('/api/admin', authRequired, requireCsrf, requireAdmin, adminRoutes);
 app.use('/api/horsai', authRequired, requireCsrf, horsaiRoutes);
 
 app.use(errorHandler);
