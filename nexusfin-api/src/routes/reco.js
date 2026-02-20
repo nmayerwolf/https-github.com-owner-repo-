@@ -44,20 +44,28 @@ const toRegime = (row = {}) => ({
   confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null
 });
 
-const normalizeItem = (row = {}) => ({
-  ideaId: String(row.ideaId || row.idea_id || ''),
-  symbol: row.symbol || null,
-  action: row.action || 'WATCH',
-  confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : 0,
-  timeframe: row.timeframe || 'weeks',
-  invalidation: row.invalidation || null,
-  rationale: Array.isArray(row.rationale) ? row.rationale.slice(0, 3) : [],
-  risks: Array.isArray(row.risks) ? row.risks.slice(0, 3) : [],
-  tags: Array.isArray(row.tags) ? row.tags : [],
-  category: row.category || 'strategic',
-  opportunisticType: row.opportunisticType || row.opportunistic_type || null,
-  severity: row.severity || null
-});
+const normalizeItem = (row = {}) => {
+  const category = row.category || 'strategic';
+  const out = {
+    ideaId: String(row.ideaId || row.idea_id || ''),
+    symbol: row.symbol || null,
+    action: row.action || 'WATCH',
+    confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : 0,
+    timeframe: row.timeframe || 'weeks',
+    invalidation: row.invalidation || null,
+    rationale: Array.isArray(row.rationale) ? row.rationale.slice(0, 3) : [],
+    risks: Array.isArray(row.risks) ? row.risks.slice(0, 2) : [],
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    category,
+    severity: row.severity || null
+  };
+
+  if (category === 'opportunistic') {
+    out.opportunisticType = row.opportunisticType || row.opportunistic_type || null;
+  }
+
+  return out;
+};
 
 const splitSections = (items = [], isCrisis = false) => {
   const normalized = items.map(normalizeItem).filter((item) => item.ideaId || item.symbol);

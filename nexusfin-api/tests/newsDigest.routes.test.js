@@ -49,4 +49,30 @@ describe('news digest routes', () => {
     expect(Array.isArray(res.body.bullets)).toBe(true);
     expect(res.body.regime.regime).toBe('risk_on');
   });
+
+  it('injects mandatory regime/leadership/risk bullets when missing', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ bullets: ['Macro: CPI below expectations.'], themes: ['mega_cap_tech'], risk_flags: ['vol_up'] }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            regime: 'risk_off',
+            volatility_regime: 'elevated',
+            leadership: ['defensives'],
+            macro_drivers: ['growth slowdown'],
+            risk_flags: ['credit stress', 'vol_up'],
+            confidence: '0.66'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ is_active: true, triggers: ['volatility_regime=elevated'], summary: 'alert', learn_more: {} }] });
+
+    const res = await request(makeApp()).get('/api/news/digest/2026-02-20');
+
+    expect(res.status).toBe(200);
+    expect(res.body.bullets[0]).toContain('Regime Today:');
+    expect(res.body.bullets.some((x) => x.startsWith('Leadership/themes:'))).toBe(true);
+    expect(res.body.bullets.some((x) => x.startsWith('Key risks:'))).toBe(true);
+    expect(res.body.bullets.length).toBeLessThanOrEqual(10);
+  });
 });

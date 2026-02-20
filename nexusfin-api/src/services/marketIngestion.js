@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { FinnhubProvider } = require('../providers/FinnhubProvider');
+const { withTrackedJobRun } = require('./jobRunTracker');
 
 const DAY_SEC = 24 * 60 * 60;
 
@@ -167,8 +168,12 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
     return out.rows.map((row) => String(row.symbol || '').toUpperCase()).filter(Boolean);
   };
 
-  const runMarketSnapshotDaily = async ({ date = null, lookbackDays = 370 } = {}) => {
-    const runDate = asDate(date || new Date());
+  const runMarketSnapshotDaily = async ({ date = null, lookbackDays = 370 } = {}) =>
+    withTrackedJobRun({
+      query,
+      jobName: 'market_snapshot_daily',
+      date,
+      run: async (runDate) => {
     const toTs = dateToUnix(runDate) + DAY_SEC - 1;
     const fromTs = toTs - Math.max(90, Number(lookbackDays || 370)) * DAY_SEC;
 
@@ -249,17 +254,22 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
 
     logger.log('[marketIngestion] snapshot daily done', { runDate, symbols: symbols.length, barsUpserted, metricsUpserted });
 
-    return {
-      generated: metricsUpserted,
-      date: runDate,
-      symbolsScanned: symbols.length,
-      barsUpserted,
-      metricsUpserted
-    };
-  };
+        return {
+          generated: metricsUpserted,
+          date: runDate,
+          symbolsScanned: symbols.length,
+          barsUpserted,
+          metricsUpserted
+        };
+      }
+    });
 
-  const runFundamentalsWeekly = async ({ date = null } = {}) => {
-    const runDate = asDate(date || new Date());
+  const runFundamentalsWeekly = async ({ date = null } = {}) =>
+    withTrackedJobRun({
+      query,
+      jobName: 'fundamentals_weekly',
+      date,
+      run: async (runDate) => {
 
     const recent = await query(
       `SELECT MAX(asof_date)::text AS max_date
@@ -340,17 +350,22 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
 
     logger.log('[marketIngestion] fundamentals weekly done', { runDate, symbols: symbols.length, snapshotsUpserted, derivedUpserted });
 
-    return {
-      generated: snapshotsUpserted + derivedUpserted,
-      date: runDate,
-      symbolsScanned: symbols.length,
-      snapshotsUpserted,
-      derivedUpserted
-    };
-  };
+        return {
+          generated: snapshotsUpserted + derivedUpserted,
+          date: runDate,
+          symbolsScanned: symbols.length,
+          snapshotsUpserted,
+          derivedUpserted
+        };
+      }
+    });
 
-  const runNewsIngestDaily = async ({ date = null } = {}) => {
-    const runDate = asDate(date || new Date());
+  const runNewsIngestDaily = async ({ date = null } = {}) =>
+    withTrackedJobRun({
+      query,
+      jobName: 'news_ingest_daily',
+      date,
+      run: async (runDate) => {
     const fromDate = asDate(new Date(new Date(`${runDate}T00:00:00Z`).getTime() - DAY_SEC * 1000));
 
     const sourceRows = await provider.getNews(fromDate, runDate, []);
@@ -386,14 +401,15 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
       upserted += 1;
     }
 
-    logger.log('[marketIngestion] news ingest daily done', { runDate, fromDate, upserted });
-    return {
-      generated: upserted,
-      date: runDate,
-      fromDate,
-      upserted
-    };
-  };
+        logger.log('[marketIngestion] news ingest daily done', { runDate, fromDate, upserted });
+        return {
+          generated: upserted,
+          date: runDate,
+          fromDate,
+          upserted
+        };
+      }
+    });
 
   return {
     runMarketSnapshotDaily,
