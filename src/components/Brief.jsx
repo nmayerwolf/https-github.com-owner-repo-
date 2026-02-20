@@ -4,8 +4,7 @@ import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
 import { useLanguage } from '../store/LanguageContext';
 import { formatPct, formatUSD } from '../utils/format';
-
-const BRIEF_HISTORY_KEY = 'horsai_brief_history_v1';
+import GlobalContext from './GlobalContext';
 
 const CHANGE_TAG_BY_CATEGORY = {
   equity: 'Equity',
@@ -90,44 +89,26 @@ const timeAgo = (value, isSpanish = false) => {
   return isSpanish ? `hace ${Math.floor(hours / 24)}d` : `${Math.floor(hours / 24)}d ago`;
 };
 
-const loadBriefHistory = () => {
-  try {
-    const raw = localStorage.getItem(BRIEF_HISTORY_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+const inferImpactFromText = (text = '') => {
+  const raw = String(text || '').toLowerCase();
+  if (/(risk|cae|fall|reces|tensión|stress|shock|widen|volatilidad alta|hawkish)/i.test(raw)) return 'RED';
+  if (/(estable|mejora|sube|supportive|bull|upside|optimismo|compressing)/i.test(raw)) return 'GREEN';
+  return 'YELLOW';
 };
 
-const saveBriefHistory = (items = []) => {
-  try {
-    localStorage.setItem(BRIEF_HISTORY_KEY, JSON.stringify(items));
-  } catch {
-    // noop
-  }
-};
-
-const normalizePoint = (value) => String(value || '').trim().toLowerCase();
-
-const buildReplayDiff = (current = null, previous = null) => {
-  if (!current || !previous) return null;
-  const currentChanged = new Set((current.changed || []).map(normalizePoint));
-  const previousChanged = new Set((previous.changed || []).map(normalizePoint));
-  const currentActions = new Set((current.actions || []).map(normalizePoint));
-  const previousActions = new Set((previous.actions || []).map(normalizePoint));
-
-  const addedChanges = (current.changed || []).filter((item) => !previousChanged.has(normalizePoint(item))).slice(0, 3);
-  const droppedChanges = (previous.changed || []).filter((item) => !currentChanged.has(normalizePoint(item))).slice(0, 3);
-  const addedActions = (current.actions || []).filter((item) => !previousActions.has(normalizePoint(item))).slice(0, 3);
-  const droppedActions = (previous.actions || []).filter((item) => !currentActions.has(normalizePoint(item))).slice(0, 3);
-
-  return {
-    addedChanges,
-    droppedChanges,
-    addedActions,
-    droppedActions
-  };
+const inferCategoryFromText = (text = '') => {
+  const raw = String(text || '').toLowerCase();
+  if (/(war|guerra|taiwan|sanc|red sea|geopolit)/i.test(raw)) return 'GEOPOLITICS';
+  if (/(tariff|arancel|trade|comercio)/i.test(raw)) return 'TARIFFS';
+  if (/(fed|ecb|boj|rates|tasas|central bank)/i.test(raw)) return 'CENTRAL_BANKS';
+  if (/(oil|wti|opec|gas|energy|energía)/i.test(raw)) return 'ENERGY';
+  if (/(gold|copper|silver|xau|metal)/i.test(raw)) return 'METALS';
+  if (/(commodit|grain|agro)/i.test(raw)) return 'COMMODITIES';
+  if (/(inflation|cpi|pmi|nfp|jobs|macro|gdp)/i.test(raw)) return 'MACRO_DATA';
+  if (/(bitcoin|btc|eth|crypto)/i.test(raw)) return 'CRYPTO';
+  if (/(ai|semiconductor|nvda|hyperscaler)/i.test(raw)) return 'AI';
+  if (/(earnings|m&a|corporat)/i.test(raw)) return 'CORPORATE';
+  return 'EQUITIES';
 };
 
 const Brief = () => {
@@ -137,7 +118,9 @@ const Brief = () => {
   const t = isSpanish
     ? {
         title: 'Tu resumen de hoy',
-        updated: 'Actualizado',
+        globalContext: '🌍 Global Context',
+        loadingContext: 'Armando contexto global...',
+        pendingContext: 'Global context estará disponible después del cierre.',
         marketMovers: 'Movimientos del mercado',
         waitingMarketData: 'Esperando datos del mercado...',
         noQuoteYet: 'Sin datos',
@@ -154,31 +137,6 @@ const Brief = () => {
         whyItMatters: 'Por qué importa',
         related: 'Relacionado',
         openSource: 'Ver fuente',
-        history: 'Historial',
-        all: 'Todos',
-        normal: 'Normal',
-        crisis: 'Crisis',
-        hide: 'Ocultar',
-        view: 'Ver',
-        noActions: 'Sin acciones registradas.',
-        noHistory: 'Sin historial de briefs para este filtro.',
-        page: 'Página',
-        of: 'de',
-        prev: 'Anterior',
-        next: 'Siguiente',
-        detail: 'Detalle',
-        replayVsPrevious: 'Comparación vs resumen previo',
-        newChanges: 'Nuevos cambios',
-        droppedChanges: 'Cambios que salieron',
-        newActions: 'Nuevas acciones',
-        removedActions: 'Acciones removidas',
-        noNewChanges: 'Sin cambios nuevos',
-        noDropped: 'Sin salidas',
-        noNewActions: 'Sin acciones nuevas',
-        noRemovedActions: 'Sin acciones removidas',
-        noPrevious: 'No hay brief previo para comparar.',
-        changedLabel: 'Qué cambió',
-        doLabel: 'Qué haría',
         favorable: 'Favorable',
         defensive: 'Defensivo',
         calm: 'Calma',
@@ -196,7 +154,9 @@ const Brief = () => {
       }
     : {
         title: 'Your daily brief',
-        updated: 'Updated',
+        globalContext: '🌍 Global Context',
+        loadingContext: 'Building global context...',
+        pendingContext: 'Global context will be available after market close.',
         marketMovers: 'Market Movers',
         waitingMarketData: 'Waiting for market data...',
         noQuoteYet: 'No quote',
@@ -213,31 +173,6 @@ const Brief = () => {
         whyItMatters: 'Why it matters',
         related: 'Related',
         openSource: 'Read more',
-        history: 'History',
-        all: 'All',
-        normal: 'Normal',
-        crisis: 'Crisis',
-        hide: 'Hide',
-        view: 'View',
-        noActions: 'No actions logged.',
-        noHistory: 'No brief history for this filter.',
-        page: 'Page',
-        of: 'of',
-        prev: 'Previous',
-        next: 'Next',
-        detail: 'Detail',
-        replayVsPrevious: 'Replay vs previous brief',
-        newChanges: 'New changes',
-        droppedChanges: 'Dropped changes',
-        newActions: 'New actions',
-        removedActions: 'Removed actions',
-        noNewChanges: 'No new changes',
-        noDropped: 'No dropped changes',
-        noNewActions: 'No new actions',
-        noRemovedActions: 'No removed actions',
-        noPrevious: 'No previous brief to compare.',
-        changedLabel: 'What changed',
-        doLabel: 'What I would do',
         favorable: 'Favorable',
         defensive: 'Defensive',
         calm: 'Calm',
@@ -255,15 +190,9 @@ const Brief = () => {
       };
   const [newsItems, setNewsItems] = useState([]);
   const [newsError, setNewsError] = useState('');
-  const [briefHistory, setBriefHistory] = useState(() => loadBriefHistory());
-  const [selectedHistoryId, setSelectedHistoryId] = useState('');
-  const [historyModeFilter, setHistoryModeFilter] = useState('all');
-  const [historyPage, setHistoryPage] = useState(1);
-
-  const assetsBySymbol = useMemo(
-    () => Object.fromEntries((state.assets || []).map((asset) => [String(asset.symbol || '').toUpperCase(), asset])),
-    [state.assets]
-  );
+  const [globalContextItems, setGlobalContextItems] = useState([]);
+  const [globalContextLoading, setGlobalContextLoading] = useState(false);
+  const [globalContextError, setGlobalContextError] = useState('');
 
   const changed = useMemo(() => {
     const rows = (state.assets || [])
@@ -353,36 +282,58 @@ const Brief = () => {
     ];
   }, [state.alerts, isSpanish]);
 
-  const watchlist = useMemo(
-    () =>
-      (state.watchlistSymbols || [])
-        .slice(0, 5)
-        .map((symbol) => String(symbol || '').toUpperCase())
-        .map((symbol) => {
-          const asset = assetsBySymbol[symbol];
-          return {
-            symbol,
-            price: Number(asset?.price),
-            change: Number(asset?.changePercent)
-          };
-        }),
-    [state.watchlistSymbols, assetsBySymbol]
-  );
+  const watchlistSymbols = useMemo(() => (state.watchlistSymbols || []).slice(0, 8), [state.watchlistSymbols]);
 
-  const triggers = useMemo(
-    () =>
-      actions
-        .slice(0, 5)
-        .map((card) => {
-          if (card.action === 'BUY') return isSpanish ? `Si ${card.asset} confirma continuidad de momentum -> Construir exposición` : `If ${card.asset} confirms momentum continuation -> Build exposure`;
-          if (card.action === 'SELL') return isSpanish ? `Si ${card.asset} pierde soporte otra vez -> Cortar riesgo rápido` : `If ${card.asset} loses support again -> Cut risk quickly`;
-          if (card.action === 'REDUCE') return isSpanish ? `Si sube volatilidad en ${card.asset} -> Reducir tamaño` : `If volatility spikes in ${card.asset} -> Reduce position size`;
-          if (card.action === 'HEDGE') return isSpanish ? 'Si sube el estrés cross-asset -> Agregar cobertura' : 'If cross-asset stress rises -> Add hedge';
-          return isSpanish ? `Si baja la calidad de señal en ${card.asset} -> Mantener selectividad` : `If signal quality degrades in ${card.asset} -> Stay selective`;
-        })
-        .slice(0, 5),
-    [actions, isSpanish]
-  );
+  useEffect(() => {
+    let active = true;
+    const fetchGlobalContext = async () => {
+      setGlobalContextLoading(true);
+      setGlobalContextError('');
+      try {
+        const digest = typeof api.getNewsDigestToday === 'function' ? await api.getNewsDigestToday() : null;
+        if (!active) return;
+        const raw = Array.isArray(digest?.global_context) ? digest.global_context : [];
+        if (raw.length) {
+          setGlobalContextItems(
+            raw
+              .map((item) => ({
+                category: String(item?.category || '').toUpperCase(),
+                impact: String(item?.impact || '').toUpperCase(),
+                text: String(item?.text || '').trim()
+              }))
+              .filter((item) => item.text)
+              .slice(0, 8)
+          );
+          return;
+        }
+
+        const fallbackBullets = (Array.isArray(digest?.bullets) ? digest.bullets : [])
+          .map((line) => String(line || '').replace(/\[|\]/g, ''))
+          .map((line) => line.split(/\s*(?:->|→)\s*/).map((part) => part.trim()).filter(Boolean))
+          .filter((parts) => parts.length > 0)
+          .map((parts) => {
+            const text = parts.join('. ');
+            return {
+              category: inferCategoryFromText(text),
+              impact: inferImpactFromText(text),
+              text
+            };
+          })
+          .slice(0, 8);
+        setGlobalContextItems(fallbackBullets);
+      } catch {
+        if (!active) return;
+        setGlobalContextItems([]);
+        setGlobalContextError(isSpanish ? 'No se pudo cargar el contexto global.' : 'Could not load global context.');
+      } finally {
+        if (active) setGlobalContextLoading(false);
+      }
+    };
+    fetchGlobalContext();
+    return () => {
+      active = false;
+    };
+  }, [isSpanish]);
 
   useEffect(() => {
     let active = true;
@@ -390,7 +341,7 @@ const Brief = () => {
       setNewsError('');
       try {
         const out = await api.marketNewsRecommended({
-          symbols: (state.watchlistSymbols || []).slice(0, 8),
+          symbols: watchlistSymbols,
           category: 'general',
           minScore: 10,
           limit: 5,
@@ -409,20 +360,8 @@ const Brief = () => {
     return () => {
       active = false;
     };
-  }, [state.watchlistSymbols, isSpanish]);
+  }, [watchlistSymbols, isSpanish]);
 
-  const updatedLabel = state.lastUpdated
-    ? new Date(state.lastUpdated).toLocaleString(t.syncLocale, { dateStyle: 'medium', timeStyle: 'short' })
-    : isSpanish ? 'Sin sincronización reciente' : 'No recent sync';
-  const currentRegime = useMemo(() => {
-    const rows = (state.assets || []).filter((asset) => Number.isFinite(Number(asset.changePercent)));
-    const advancers = rows.filter((asset) => Number(asset.changePercent) > 0).length;
-    const breadth = rows.length ? (advancers / rows.length) * 100 : 50;
-    const avg = rows.length ? rows.reduce((acc, asset) => acc + Number(asset.changePercent || 0), 0) / rows.length : 0;
-    if (breadth >= 56 && avg > 0.2) return t.riskOn;
-    if (breadth <= 44 && avg < -0.2) return t.riskOff;
-    return t.mixed;
-  }, [state.assets, t.riskOn, t.riskOff, t.mixed]);
   const regimeState = useMemo(() => {
     const rows = (state.assets || []).filter((asset) => Number.isFinite(Number(asset.changePercent)));
     const avg = rows.length ? rows.reduce((acc, asset) => acc + Number(asset.changePercent || 0), 0) / rows.length : 0;
@@ -443,66 +382,9 @@ const Brief = () => {
     if (avg >= 0.58) return 'medium';
     return 'low';
   }, [actions]);
-  const mode = regimeState === 'defensive' || volatilityState === 'high' ? 'crisis' : 'normal';
   const regimeToneLabel = regimeState === 'favorable' ? t.favorable : regimeState === 'defensive' ? t.defensive : t.mixed;
   const volatilityLabel = volatilityState === 'calm' ? t.calm : volatilityState === 'rising' ? t.rising : t.highUncertainty;
   const confidenceLabel = confidenceState === 'high' ? t.confidenceHigh : confidenceState === 'medium' ? t.confidenceMedium : t.confidenceLow;
-
-  useEffect(() => {
-    const dateKey = new Date().toISOString().slice(0, 10);
-    const snapshot = {
-      id: `${dateKey}-${mode}`,
-      dateKey,
-      mode,
-      regime: currentRegime,
-      createdAt: new Date().toISOString(),
-      changed: changed.slice(0, 3).map((item) => `${item.symbol} ${formatPct(item.change)}`),
-      actions: actions.slice(0, 3).map((item) => `${item.action} ${item.asset} · ${item.confidence}`),
-      triggers: triggers.slice(0, 3),
-      headlines: newsItems.slice(0, 3).map((item) => item.headline || 'Market headline')
-    };
-
-    setBriefHistory((prev) => {
-      const withoutCurrent = prev.filter((item) => item.id !== snapshot.id);
-      const next = [snapshot, ...withoutCurrent].slice(0, 20);
-      saveBriefHistory(next);
-      return next;
-    });
-  }, [mode, currentRegime, changed, actions, triggers, newsItems]);
-
-  const selectedHistory = useMemo(
-    () => briefHistory.find((item) => item.id === selectedHistoryId) || null,
-    [briefHistory, selectedHistoryId]
-  );
-  const selectedHistoryPrevious = useMemo(() => {
-    if (!selectedHistory) return null;
-    const idx = briefHistory.findIndex((item) => item.id === selectedHistory.id);
-    if (idx < 0) return null;
-    return briefHistory[idx + 1] || null;
-  }, [briefHistory, selectedHistory]);
-  const selectedHistoryDiff = useMemo(
-    () => buildReplayDiff(selectedHistory, selectedHistoryPrevious),
-    [selectedHistory, selectedHistoryPrevious]
-  );
-  const filteredHistory = useMemo(
-    () => briefHistory.filter((item) => historyModeFilter === 'all' || String(item.mode || '') === historyModeFilter),
-    [briefHistory, historyModeFilter]
-  );
-  const historyPageSize = 5;
-  const totalHistoryPages = Math.max(1, Math.ceil(filteredHistory.length / historyPageSize));
-  const visibleHistory = useMemo(
-    () => filteredHistory.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize),
-    [filteredHistory, historyPage]
-  );
-
-  useEffect(() => {
-    setHistoryPage(1);
-    setSelectedHistoryId('');
-  }, [historyModeFilter]);
-
-  useEffect(() => {
-    setHistoryPage((prev) => Math.min(prev, totalHistoryPages));
-  }, [totalHistoryPages]);
 
   return (
     <div className="grid brief-page">
@@ -517,37 +399,17 @@ const Brief = () => {
           <span className={`brief-regime-pill ${volatilityState === 'calm' ? 'positive' : volatilityState === 'rising' ? 'warning' : 'negative'}`}>{volatilityLabel}</span>
           <span className={`brief-regime-pill ${confidenceState === 'high' ? 'positive' : confidenceState === 'medium' ? 'warning' : 'negative'}`}>{confidenceLabel}</span>
         </div>
-        <div className="muted" style={{ marginTop: 8 }}>{t.updated}: {updatedLabel}</div>
       </section>
 
-      <section className="card">
-        <div className="section-header-inline">
-          <h3 className="section-title">{t.marketMovers}</h3>
-          <span className="badge">{changed.length}/6</span>
-        </div>
-        <div className="grid" style={{ marginTop: 8 }}>
-          {!changed.length ? <div className="muted">{t.waitingMarketData}</div> : null}
-          {changed.slice(0, 6).map((item) => (
-            <article key={item.id} className="brief-change-row">
-              <div className="row">
-                <strong className="brief-mover-symbol mono">{item.symbol}</strong>
-                <span className={`brief-mover-change mono ${item.change >= 0 ? 'up' : 'down'}`}>{formatPct(item.change)}</span>
-              </div>
-              <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
-                <span className="muted mono">{Number.isFinite(item.price) && item.price > 0 ? formatUSD(item.price) : t.noQuoteYet}</span>
-                {showCategoryInMovers ? <span className="badge">{item.tag}</span> : null}
-              </div>
-              <div className="brief-mover-bar" aria-label={`Confidence ${item.confidence}`}>
-                <span
-                  style={{
-                    width: `${Math.round(((Math.abs(item.change) || 0) / Math.max(moversMaxAbs, 0.01)) * 100)}%`
-                  }}
-                />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <GlobalContext
+        title={t.globalContext}
+        loadingLabel={t.loadingContext}
+        pendingLabel={t.pendingContext}
+        items={globalContextItems}
+        loading={globalContextLoading}
+        error={globalContextError}
+        isSpanish={isSpanish}
+      />
 
       <section className="card">
         <div className="section-header-inline">
@@ -582,31 +444,30 @@ const Brief = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">{t.watchlistTriggers}</h3>
+          <h3 className="section-title">{t.marketMovers}</h3>
+          <span className="badge">{changed.length}/6</span>
         </div>
         <div className="grid" style={{ marginTop: 8 }}>
-          <div className="brief-watchlist-grid">
-            {watchlist.length ? (
-              watchlist.map((item) => (
-                <article key={item.symbol} className="brief-watch-item">
-                  <strong>{item.symbol}</strong>
-                  <div className="muted mono">{Number.isFinite(item.price) && item.price > 0 ? formatUSD(item.price) : t.noQuoteCompact}</div>
-                  <div className={`mono ${Number.isFinite(item.change) && item.change !== 0 ? (Number(item.change || 0) >= 0 ? 'up' : 'down') : ''}`}>
-                    {Number.isFinite(item.change) && item.change !== 0 ? formatPct(item.change || 0) : t.noQuoteCompact}
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="muted">{t.noWatchlist}</div>
-            )}
-          </div>
-          <div className="grid" style={{ gap: 6 }}>
-            {triggers.map((trigger, idx) => (
-              <div key={`trigger-${idx}`} className="brief-trigger-row">
-                {trigger}
+          {!changed.length ? <div className="muted">{t.waitingMarketData}</div> : null}
+          {changed.slice(0, 6).map((item) => (
+            <article key={item.id} className="brief-change-row">
+              <div className="row">
+                <strong className="brief-mover-symbol mono">{item.symbol}</strong>
+                <span className={`brief-mover-change mono ${item.change >= 0 ? 'up' : 'down'}`}>{formatPct(item.change)}</span>
               </div>
-            ))}
-          </div>
+              <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+                <span className="muted mono">{Number.isFinite(item.price) && item.price > 0 ? formatUSD(item.price) : t.noQuoteYet}</span>
+                {showCategoryInMovers ? <span className="badge">{item.tag}</span> : null}
+              </div>
+              <div className="brief-mover-bar" aria-label={`Confidence ${item.confidence}`}>
+                <span
+                  style={{
+                    width: `${Math.round(((Math.abs(item.change) || 0) / Math.max(moversMaxAbs, 0.01)) * 100)}%`
+                  }}
+                />
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -646,102 +507,6 @@ const Brief = () => {
         </div>
       </section>
 
-      <section className="card">
-        <div className="section-header-inline">
-          <h3 className="section-title">{t.history}</h3>
-          <span className="badge">{Math.min(filteredHistory.length, 20)}/20</span>
-        </div>
-        <div className="row" style={{ justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-          <button type="button" className={`ai-filter-chip ${historyModeFilter === 'all' ? 'is-active is-main' : ''}`} onClick={() => setHistoryModeFilter('all')}>
-            {t.all}
-          </button>
-          <button
-            type="button"
-            className={`ai-filter-chip ${historyModeFilter === 'normal' ? 'is-active is-main' : ''}`}
-            onClick={() => setHistoryModeFilter('normal')}
-          >
-            {t.normal}
-          </button>
-          <button
-            type="button"
-            className={`ai-filter-chip ${historyModeFilter === 'crisis' ? 'is-active is-main' : ''}`}
-            onClick={() => setHistoryModeFilter('crisis')}
-          >
-            {t.crisis}
-          </button>
-        </div>
-        <div className="grid" style={{ marginTop: 8, gap: 6 }}>
-          {visibleHistory.map((item) => (
-            <article key={item.id} className="brief-history-item">
-              <div className="row">
-                <strong>{new Date(item.createdAt || item.dateKey).toLocaleDateString(t.syncLocale, { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
-                <div className="row" style={{ gap: 6 }}>
-                  <span className={`brief-tone-pill ${String(item.regime || '').toLowerCase().includes('risk') && String(item.regime || '').toLowerCase().includes('off') ? 'negative' : String(item.regime || '').toLowerCase().includes('risk') && String(item.regime || '').toLowerCase().includes('on') ? 'positive' : 'warning'}`}>
-                    {item.regime || t.mixed}
-                  </span>
-                  <span className="brief-tone-pill neutral">{item.mode}</span>
-                  <button type="button" className="inline-link-btn brief-link-btn" onClick={() => setSelectedHistoryId((prev) => (prev === item.id ? '' : item.id))}>
-                    {selectedHistoryId === item.id ? t.hide : '->'}
-                  </button>
-                </div>
-              </div>
-              <div className="muted">
-                {String(item.actions?.[0] || t.noActions).replace(/^ACTION\s+/i, '')}
-              </div>
-            </article>
-          ))}
-          {!filteredHistory.length ? <div className="muted">{t.noHistory}</div> : null}
-        </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <span className="muted">
-            {t.page} {historyPage} {t.of} {totalHistoryPages}
-          </span>
-          <div className="row" style={{ gap: 6 }}>
-            <button type="button" onClick={() => setHistoryPage((prev) => Math.max(1, prev - 1))} disabled={historyPage <= 1}>
-              {t.prev}
-            </button>
-            <button type="button" onClick={() => setHistoryPage((prev) => Math.min(totalHistoryPages, prev + 1))} disabled={historyPage >= totalHistoryPages}>
-              {t.next}
-            </button>
-          </div>
-        </div>
-        {selectedHistory ? (
-          <article className="brief-history-detail">
-            <strong>{t.detail} {selectedHistory.dateKey}</strong>
-            <div className="muted" style={{ marginTop: 6 }}>{t.changedLabel}:</div>
-            <ul className="brief-why-list">
-              {(selectedHistory.changed || []).slice(0, 3).map((point, idx) => (
-                <li key={`h-ch-${idx}`}>{point}</li>
-              ))}
-            </ul>
-            <div className="muted">{t.doLabel}:</div>
-            <ul className="brief-why-list">
-              {(selectedHistory.actions || []).slice(0, 3).map((point, idx) => (
-                <li key={`h-ac-${idx}`}>{point}</li>
-              ))}
-            </ul>
-            <div className="muted">{t.replayVsPrevious}:</div>
-            {selectedHistoryPrevious ? (
-              <div className="grid" style={{ gap: 6 }}>
-                <div className="brief-replay-row">
-                  <strong>{t.newChanges}:</strong> {selectedHistoryDiff?.addedChanges?.length ? selectedHistoryDiff.addedChanges.join(' · ') : t.noNewChanges}
-                </div>
-                <div className="brief-replay-row">
-                  <strong>{t.droppedChanges}:</strong> {selectedHistoryDiff?.droppedChanges?.length ? selectedHistoryDiff.droppedChanges.join(' · ') : t.noDropped}
-                </div>
-                <div className="brief-replay-row">
-                  <strong>{t.newActions}:</strong> {selectedHistoryDiff?.addedActions?.length ? selectedHistoryDiff.addedActions.join(' · ') : t.noNewActions}
-                </div>
-                <div className="brief-replay-row">
-                  <strong>{t.removedActions}:</strong> {selectedHistoryDiff?.droppedActions?.length ? selectedHistoryDiff.droppedActions.join(' · ') : t.noRemovedActions}
-                </div>
-              </div>
-            ) : (
-              <div className="muted">{t.noPrevious}</div>
-            )}
-          </article>
-        ) : null}
-      </section>
     </div>
   );
 };

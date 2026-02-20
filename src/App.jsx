@@ -508,11 +508,6 @@ const App = () => {
     return <LoadingScreen loaded={state.progress.loaded} total={state.progress.total} />;
   }
 
-  const lastUpdatedLabel = state.lastUpdated
-    ? new Date(state.lastUpdated).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'medium' })
-    : isSpanish
-      ? 'sin datos'
-      : 'no data';
   const backendLastOkLabel = backendLastOkAt
     ? new Date(backendLastOkAt).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })
     : null;
@@ -546,7 +541,7 @@ const App = () => {
       />
 
       <header className="header">
-        <div className="top-header card">
+        <div className="top-header">
           <div className="brand-lockup" aria-label="Horsai">
             <div className="brand-mark-wrap">
               <HorsaiHorseIcon className="brand-mark" />
@@ -612,12 +607,6 @@ const App = () => {
                 </div>
               ) : null}
             </div>
-            <button type="button" className="icon-btn" aria-label={isSpanish ? 'Buscar' : 'Search'}>
-              <svg viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="7" />
-                <path d="M20 20l-3.8-3.8" />
-              </svg>
-            </button>
             <div className="user-menu-wrap" ref={userMenuRef}>
               <button
                 type="button"
@@ -665,12 +654,6 @@ const App = () => {
               ) : null}
             </div>
           </div>
-        </div>
-
-        <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-          <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
-            {isSpanish ? `Actualizado: ${lastUpdatedLabel}` : `Updated: ${lastUpdatedLabel}`}
-          </span>
         </div>
 
         {(backendOffline || networkOffline) && (
