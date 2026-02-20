@@ -2,6 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider } from '../../i18n/LanguageContext';
 
 const { apiMock, appCtxMock } = vi.hoisted(() => ({
   apiMock: {
@@ -57,6 +58,8 @@ afterEach(() => {
 });
 
 describe('Portfolio', () => {
+  const renderWithLanguage = (ui) => render(<LanguageProvider initialLanguage="en">{ui}</LanguageProvider>);
+
   beforeEach(() => {
     apiMock.exportPortfolioCsv.mockReset();
     apiMock.getPortfolioAdvice.mockReset();
@@ -105,10 +108,10 @@ describe('Portfolio', () => {
   });
 
   it('exports portfolio csv with selected filter', async () => {
-    render(<Portfolio />);
+    renderWithLanguage(<Portfolio />);
 
     fireEvent.change(screen.getByLabelText('Filtro exportación'), { target: { value: 'sold' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Exportar CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
     await waitFor(() => expect(apiMock.exportPortfolioCsv).toHaveBeenCalledWith('sold'));
   });
@@ -116,15 +119,15 @@ describe('Portfolio', () => {
   it('shows export error when api fails', async () => {
     apiMock.exportPortfolioCsv.mockRejectedValueOnce({ message: 'falló exportación' });
 
-    render(<Portfolio />);
+    renderWithLanguage(<Portfolio />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Exportar CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
 
     expect(await screen.findByText('falló exportación')).toBeTruthy();
   });
 
   it('renders portfolio metrics widgets', async () => {
-    render(<Portfolio />);
+    renderWithLanguage(<Portfolio />);
     expect(await screen.findByText('Performance vs SPY (20d)')).toBeTruthy();
     expect(await screen.findByText('High Concentration')).toBeTruthy();
     expect(apiMock.getPortfolioMetrics).toHaveBeenCalled();

@@ -2,6 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider } from '../../i18n/LanguageContext';
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -18,6 +19,8 @@ afterEach(() => {
 });
 
 describe('Ideas', () => {
+  const renderWithLanguage = (ui) => render(<LanguageProvider initialLanguage="en">{ui}</LanguageProvider>);
+
   beforeEach(() => {
     apiMock.getRecoToday.mockReset();
     apiMock.getRecoToday.mockResolvedValue({
@@ -29,7 +32,7 @@ describe('Ideas', () => {
   });
 
   it('renders sections from reco endpoint', async () => {
-    render(<Ideas />);
+    renderWithLanguage(<Ideas />);
 
     await waitFor(() => expect(apiMock.getRecoToday).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Strategic Ideas')).toBeTruthy();
@@ -39,7 +42,7 @@ describe('Ideas', () => {
   });
 
   it('supports section collapse', async () => {
-    render(<Ideas />);
+    renderWithLanguage(<Ideas />);
     await waitFor(() => expect(apiMock.getRecoToday).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('button', { name: /Strategic Ideas/i }));

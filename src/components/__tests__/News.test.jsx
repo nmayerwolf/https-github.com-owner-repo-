@@ -2,6 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider } from '../../i18n/LanguageContext';
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -19,6 +20,8 @@ afterEach(() => {
 });
 
 describe('NewsDigest', () => {
+  const renderWithLanguage = (ui) => render(<LanguageProvider initialLanguage="en">{ui}</LanguageProvider>);
+
   beforeEach(() => {
     apiMock.getDigestToday.mockReset();
     apiMock.getCrisisToday.mockReset();
@@ -36,7 +39,7 @@ describe('NewsDigest', () => {
   });
 
   it('renders digest, risks and pills', async () => {
-    render(<News />);
+    renderWithLanguage(<News />);
 
     await waitFor(() => expect(apiMock.getDigestToday).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Market Environment')).toBeTruthy();
@@ -49,7 +52,7 @@ describe('NewsDigest', () => {
   it('shows pending message when digest is pending', async () => {
     apiMock.getDigestToday.mockResolvedValueOnce({ pending: true });
 
-    render(<News />);
+    renderWithLanguage(<News />);
 
     expect(await screen.findByText(/Today's briefing will be available/i)).toBeTruthy();
   });
@@ -57,7 +60,7 @@ describe('NewsDigest', () => {
   it('shows retry on error', async () => {
     apiMock.getDigestToday.mockRejectedValueOnce(new Error('fail'));
 
-    render(<News />);
+    renderWithLanguage(<News />);
 
     expect(await screen.findByText(/Could not load data/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));

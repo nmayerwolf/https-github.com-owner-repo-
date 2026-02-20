@@ -105,7 +105,7 @@ test('login and add position in portfolio', async ({ page }) => {
       return json(200, { date: '2026-02-20', strategic: [], opportunistic: [], risk_alerts: [] });
     }
     if (isPath('/api/agent/profile') && method === 'GET') {
-      return json(200, { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5 });
+      return json(200, { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5, language: 'en' });
     }
     if (isPath('/api/agent/profile') && method === 'PUT') {
       return json(200, req.postDataJSON());

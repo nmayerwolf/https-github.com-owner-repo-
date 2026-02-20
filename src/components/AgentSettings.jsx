@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/apiClient';
 import { subscribeBrowserPush } from '../lib/notifications';
 import { useTheme } from '../store/ThemeContext';
 import { useAuth } from '../store/AuthContext';
+import { LanguageContext } from '../i18n/LanguageContext';
+import { useTranslation } from '../i18n/useTranslation';
 
 const hasStrongPasswordShape = (value) => value.length >= 8 && /[a-zA-Z]/.test(value) && /[0-9]/.test(value);
 
@@ -12,13 +14,15 @@ const PRESETS = {
   opportunistic: { risk_level: 0.7, horizon: 0.3, focus: 0.8 }
 };
 
-const PRESET_COPY = {
-  strategic_core: 'Focused on regime-aligned, high-conviction ideas. Fewer but stronger recommendations. Best for patient investors.',
-  balanced: 'Mix of strategic and opportunistic ideas. Moderate risk filters. Best for most investors.',
-  opportunistic: 'More short-term setups and tactical trades. Higher risk tolerance. Best for active investors.'
+const PRESET_COPY_KEY = {
+  strategic_core: 'agent_preset_desc_strategic',
+  balanced: 'agent_preset_desc_balanced',
+  opportunistic: 'agent_preset_desc_opportunistic'
 };
 
 const AgentSettings = () => {
+  const { t } = useTranslation();
+  const { language, setLanguage } = useContext(LanguageContext);
   const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const isGoogleAuth = String(user?.authProvider || '').toLowerCase() === 'google';
@@ -56,9 +60,11 @@ const AgentSettings = () => {
     setError('');
     try {
       const out = await api.getAgentProfile();
-      setProfile(out || { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5 });
+      const normalized = out || { preset_type: 'balanced', risk_level: 0.5, horizon: 0.5, focus: 0.5, language: 'es' };
+      setProfile({ ...normalized, language: normalized.language || 'es' });
+      setLanguage(normalized.language || 'es');
     } catch {
-      setError('Could not load data.');
+      setError(t('common_error'));
     } finally {
       setLoading(false);
     }
@@ -83,7 +89,7 @@ const AgentSettings = () => {
         });
       } catch {
         if (!mounted) return;
-        setNotifError('No se pudieron cargar preferencias de notificaciones.');
+      setNotifError('No se pudieron cargar preferencias de notificaciones.');
       } finally {
         if (mounted) setNotifLoading(false);
       }
@@ -216,26 +222,26 @@ const AgentSettings = () => {
   };
 
   const presetType = String(profile?.preset_type || 'balanced');
-  const presetDescription = PRESET_COPY[presetType] || PRESET_COPY.balanced;
+  const presetDescription = t(PRESET_COPY_KEY[presetType] || PRESET_COPY_KEY.balanced);
 
   return (
     <div className="grid settings-page">
       <section className="card">
-        <h2 className="screen-title">Your AI Agent</h2>
-        <p className="muted">Customize how Horsai analyzes markets for you</p>
+        <h2 className="screen-title">{t('agent_title')}</h2>
+        <p className="muted">{t('agent_subtitle')}</p>
       </section>
 
       {loading ? (
         <div className="loading-state">
           <div className="spinner" />
-          <span className="muted">Loading...</span>
+          <span className="muted">{t('common_loading')}</span>
         </div>
       ) : null}
 
       {!loading && error ? (
         <div className="error-state">
           <span className="muted">
-            {error} <button type="button" onClick={load}>Retry</button>
+            {error} <button type="button" onClick={load}>{t('common_retry')}</button>
           </span>
         </div>
       ) : null}
@@ -243,54 +249,82 @@ const AgentSettings = () => {
       {!loading && !error && profile ? (
         <>
           <section className="card">
-            <h3 className="section-title">Strategy Preset</h3>
+            <h3 className="section-title">{t('agent_preset')}</h3>
             <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', marginTop: 8 }}>
-              <button type="button" className={`agent-preset-pill ${presetType === 'strategic_core' ? 'active' : ''}`} onClick={() => handlePreset('strategic_core')}>Strategic Core</button>
-              <button type="button" className={`agent-preset-pill ${presetType === 'balanced' ? 'active' : ''}`} onClick={() => handlePreset('balanced')}>Balanced</button>
-              <button type="button" className={`agent-preset-pill ${presetType === 'opportunistic' ? 'active' : ''}`} onClick={() => handlePreset('opportunistic')}>Opportunistic</button>
+              <button type="button" className={`agent-preset-pill ${presetType === 'strategic_core' ? 'active' : ''}`} onClick={() => handlePreset('strategic_core')}>{t('agent_strategic_core')}</button>
+              <button type="button" className={`agent-preset-pill ${presetType === 'balanced' ? 'active' : ''}`} onClick={() => handlePreset('balanced')}>{t('agent_balanced')}</button>
+              <button type="button" className={`agent-preset-pill ${presetType === 'opportunistic' ? 'active' : ''}`} onClick={() => handlePreset('opportunistic')}>{t('agent_opportunistic')}</button>
             </div>
           </section>
 
           <section className="card">
             <label className="label slider-label">
-              <span>Risk Tolerance</span>
+              <span>{t('agent_risk')}</span>
               <input type="range" min="0" max="1" step="0.01" value={Number(profile.risk_level || 0)} onChange={(e) => handleSlider('risk_level', e.target.value)} />
-              <div className="slider-scale muted"><span>Conservative</span><span>Aggressive</span></div>
+              <div className="slider-scale muted"><span>{t('agent_risk_low')}</span><span>{t('agent_risk_high')}</span></div>
               <div className="mono muted">{Number(profile.risk_level || 0).toFixed(2)}</div>
             </label>
 
             <label className="label slider-label">
-              <span>Investment Horizon</span>
+              <span>{t('agent_horizon')}</span>
               <input type="range" min="0" max="1" step="0.01" value={Number(profile.horizon || 0)} onChange={(e) => handleSlider('horizon', e.target.value)} />
-              <div className="slider-scale muted"><span>Short-term</span><span>Long-term</span></div>
+              <div className="slider-scale muted"><span>{t('agent_horizon_low')}</span><span>{t('agent_horizon_high')}</span></div>
               <div className="mono muted">{Number(profile.horizon || 0).toFixed(2)}</div>
             </label>
 
             <label className="label slider-label">
-              <span>Idea Focus</span>
+              <span>{t('agent_focus')}</span>
               <input type="range" min="0" max="1" step="0.01" value={Number(profile.focus || 0)} onChange={(e) => handleSlider('focus', e.target.value)} />
-              <div className="slider-scale muted"><span>Strategic</span><span>Opportunistic</span></div>
+              <div className="slider-scale muted"><span>{t('agent_focus_low')}</span><span>{t('agent_focus_high')}</span></div>
               <div className="mono muted">{Number(profile.focus || 0).toFixed(2)}</div>
             </label>
 
             <div className="card agent-preset-explainer">{presetDescription}</div>
-            <button type="button" onClick={handleSave} disabled={!dirty || saving}>{saving ? 'Saving...' : 'Save'}</button>
+            <button type="button" onClick={handleSave} disabled={!dirty || saving}>{saving ? t('agent_saving') : t('agent_save')}</button>
           </section>
         </>
       ) : null}
 
       <section className="card">
-        <h3 className="section-title">Account</h3>
+        <h3 className="section-title">{t('agent_language')}</h3>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
-          <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>Oscuro</button>
-          <button type="button" onClick={() => setTheme('light')} style={{ borderColor: theme === 'light' ? '#00E08E' : undefined }}>Claro</button>
-          <button type="button" onClick={logout}>Cerrar sesión</button>
+          <button
+            type="button"
+            className={`agent-preset-pill ${language === 'es' ? 'active' : ''}`}
+            onClick={() => {
+              setLanguage('es');
+              setProfile((prev) => ({ ...(prev || {}), language: 'es' }));
+              setDirty(true);
+            }}
+          >
+            {t('agent_language_es')}
+          </button>
+          <button
+            type="button"
+            className={`agent-preset-pill ${language === 'en' ? 'active' : ''}`}
+            onClick={() => {
+              setLanguage('en');
+              setProfile((prev) => ({ ...(prev || {}), language: 'en' }));
+              setDirty(true);
+            }}
+          >
+            {t('agent_language_en')}
+          </button>
         </div>
       </section>
 
       <section className="card">
-        <h3 className="section-title">Notificaciones</h3>
-        {notifLoading ? <p className="muted">Loading...</p> : (
+        <h3 className="section-title">{t('settings_account')}</h3>
+        <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
+          <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>{t('settings_theme_dark')}</button>
+          <button type="button" onClick={() => setTheme('light')} style={{ borderColor: theme === 'light' ? '#00E08E' : undefined }}>{t('settings_theme_light')}</button>
+          <button type="button" onClick={logout}>{t('settings_logout')}</button>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3 className="section-title">{t('settings_notifications')}</h3>
+        {notifLoading ? <p className="muted">{t('common_loading')}</p> : (
           <>
             <div className="grid grid-2" style={{ marginTop: 10 }}>
               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -327,23 +361,23 @@ const AgentSettings = () => {
 
       {!isGoogleAuth ? (
         <section className="card">
-          <h3 className="section-title">Seguridad</h3>
+          <h3 className="section-title">{t('settings_security')}</h3>
           <form onSubmit={handlePasswordSubmit} className="grid" style={{ marginTop: 10 }}>
             <label className="label">
-              <span className="muted">Contraseña actual</span>
+              <span className="muted">{t('settings_current_password')}</span>
               <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="********" required />
             </label>
             <label className="label">
-              <span className="muted">Nueva contraseña</span>
+              <span className="muted">{t('settings_new_password')}</span>
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="********" required />
             </label>
             <label className="label">
-              <span className="muted">Confirmar nueva contraseña</span>
+              <span className="muted">{t('settings_confirm_password')}</span>
               <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="********" required />
             </label>
             {passwordError ? <div className="card" style={{ borderColor: '#FF4757AA' }}>{passwordError}</div> : null}
             {passwordSuccess ? <div className="card" style={{ borderColor: '#00E08E88' }}>{passwordSuccess}</div> : null}
-            <button type="submit" disabled={passwordLoading}>{passwordLoading ? 'Actualizando...' : 'Actualizar contraseña'}</button>
+            <button type="submit" disabled={passwordLoading}>{passwordLoading ? 'Actualizando...' : t('settings_change_password')}</button>
           </form>
         </section>
       ) : null}

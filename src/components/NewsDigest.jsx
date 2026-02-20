@@ -2,13 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
 import RegimeBadge from './RegimeBadge';
 import CrisisBanner from './CrisisBanner';
+import { useTranslation } from '../i18n/useTranslation';
 
-const friendlyDate = (isoDate) => {
+const friendlyDate = (isoDate, locale = 'en-US') => {
   const date = isoDate ? new Date(`${isoDate}T12:00:00`) : new Date();
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 };
 
 const NewsDigest = () => {
+  const { t, language } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [digest, setDigest] = useState(null);
@@ -37,6 +39,7 @@ const NewsDigest = () => {
   const leadership = useMemo(() => (Array.isArray(digest?.leadership) ? digest.leadership.slice(0, 6) : []), [digest]);
   const macroDrivers = useMemo(() => (Array.isArray(digest?.macro_drivers) ? digest.macro_drivers.slice(0, 6) : []), [digest]);
   const pending = Boolean(digest?.pending);
+  const locale = language === 'en' ? 'en-US' : 'es-AR';
 
   return (
     <div className="grid">
@@ -52,26 +55,26 @@ const NewsDigest = () => {
       {loading ? (
         <div className="loading-state">
           <div className="spinner" />
-          <span className="muted">Loading...</span>
+          <span className="muted">{t('common_loading')}</span>
         </div>
       ) : null}
 
       {!loading && error ? (
         <div className="error-state">
           <span className="muted">
-            Could not load data. <button type="button" onClick={load}>Retry</button>
+            {t('common_error')} <button type="button" onClick={load}>{t('common_retry')}</button>
           </span>
         </div>
       ) : null}
 
       {!loading && !error && pending ? (
-        <section className="news-pending-state">📰 Today's briefing will be available after market close (6:15 PM ET)</section>
+        <section className="news-pending-state">📰 {t('news_pending')}</section>
       ) : null}
 
       {!loading && !error && !pending ? (
         <>
           <section className="card">
-            <h2 className="screen-title">Today's Briefing · {friendlyDate(digest?.date)}</h2>
+            <h2 className="screen-title">{t('news_briefing')} · {friendlyDate(digest?.date, locale)}</h2>
             <ul className="digest-bullet-list">
               {bullets.map((line) => (
                 <li key={line}>{line}</li>
@@ -81,7 +84,7 @@ const NewsDigest = () => {
 
           {keyRisks.length ? (
             <section className="card key-risks-card">
-              <h3 className="section-title">Key Risks</h3>
+              <h3 className="section-title">{t('news_key_risks')}</h3>
               <ul className="digest-bullet-list risk-bullet-list">
                 {keyRisks.map((line) => (
                   <li key={line}>{line}</li>
@@ -91,13 +94,13 @@ const NewsDigest = () => {
           ) : null}
 
           <section className="card">
-            <div className="mini-section-title">Leadership</div>
+            <div className="mini-section-title">{t('news_leadership')}</div>
             <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-              {leadership.length ? leadership.map((item) => <span className="pill-muted" key={item}>{item}</span>) : <span className="muted">No leadership data.</span>}
+              {leadership.length ? leadership.map((item) => <span className="pill-muted" key={item}>{item}</span>) : <span className="muted">{t('news_no_leadership')}</span>}
             </div>
-            <div className="mini-section-title" style={{ marginTop: 10 }}>Macro Drivers</div>
+            <div className="mini-section-title" style={{ marginTop: 10 }}>{t('news_macro_drivers')}</div>
             <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-              {macroDrivers.length ? macroDrivers.map((item) => <span className="pill-muted" key={item}>{item}</span>) : <span className="muted">No macro drivers.</span>}
+              {macroDrivers.length ? macroDrivers.map((item) => <span className="pill-muted" key={item}>{item}</span>) : <span className="muted">{t('news_no_macro')}</span>}
             </div>
           </section>
         </>

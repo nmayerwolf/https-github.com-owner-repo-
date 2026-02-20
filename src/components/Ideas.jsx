@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/apiClient';
 import IdeaCard from './IdeaCard';
 import RiskCard from './RiskCard';
+import { useTranslation } from '../i18n/useTranslation';
 
-const fmtDate = (isoDate) => {
+const fmtDate = (isoDate, locale = 'en-US') => {
   const date = isoDate ? new Date(`${isoDate}T12:00:00`) : new Date();
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
 const Section = ({ title, subtitle, count, open, onToggle, children }) => (
@@ -24,6 +25,7 @@ const Section = ({ title, subtitle, count, open, onToggle, children }) => (
 );
 
 const Ideas = () => {
+  const { t, language } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reco, setReco] = useState(null);
@@ -50,61 +52,62 @@ const Ideas = () => {
   const opportunistic = useMemo(() => (Array.isArray(reco?.opportunistic) ? reco.opportunistic : []), [reco]);
   const riskAlerts = useMemo(() => (Array.isArray(reco?.risk_alerts) ? reco.risk_alerts : []), [reco]);
   const pending = Boolean(reco?.pending);
+  const locale = language === 'en' ? 'en-US' : 'es-AR';
 
   return (
     <div className="grid">
       <section className="card">
-        <h2 className="screen-title">Ideas</h2>
-        <div className="mono muted">{fmtDate(reco?.date)}</div>
+        <h2 className="screen-title">{t('ideas_title')}</h2>
+        <div className="mono muted">{fmtDate(reco?.date, locale)}</div>
       </section>
 
       {loading ? (
         <div className="loading-state">
           <div className="spinner" />
-          <span className="muted">Loading...</span>
+          <span className="muted">{t('common_loading')}</span>
         </div>
       ) : null}
 
       {!loading && error ? (
         <div className="error-state">
           <span className="muted">
-            Could not load data. <button type="button" onClick={load}>Retry</button>
+            {t('common_error')} <button type="button" onClick={load}>{t('common_retry')}</button>
           </span>
         </div>
       ) : null}
 
-      {!loading && !error && pending ? <section className="news-pending-state">Today's ideas will be available after market close.</section> : null}
+      {!loading && !error && pending ? <section className="news-pending-state">{t('ideas_pending')}</section> : null}
 
       {!loading && !error && !pending ? (
         <>
           <Section
-            title="Strategic Ideas"
-            subtitle="Aligned with current market regime"
+            title={t('ideas_strategic')}
+            subtitle={t('ideas_strategic_sub')}
             count={strategic.length}
             open={expanded.strategic}
             onToggle={() => setExpanded((prev) => ({ ...prev, strategic: !prev.strategic }))}
           >
-            {strategic.length ? strategic.map((item) => <IdeaCard key={item.ideaId || `${item.symbol}-${item.action}`} item={item} variant="strategic" />) : <div className="muted">No strategic ideas today.</div>}
+            {strategic.length ? strategic.map((item) => <IdeaCard key={item.ideaId || `${item.symbol}-${item.action}`} item={item} variant="strategic" />) : <div className="muted">{t('ideas_no_strategic')}</div>}
           </Section>
 
           <Section
-            title="Opportunistic"
-            subtitle="Short-term setups with clear triggers"
+            title={t('ideas_opportunistic')}
+            subtitle={t('ideas_opportunistic_sub')}
             count={opportunistic.length}
             open={expanded.opportunistic}
             onToggle={() => setExpanded((prev) => ({ ...prev, opportunistic: !prev.opportunistic }))}
           >
-            {opportunistic.length ? opportunistic.map((item) => <IdeaCard key={item.ideaId || `${item.symbol}-${item.action}`} item={item} variant="opportunistic" />) : <div className="muted">No opportunistic ideas today.</div>}
+            {opportunistic.length ? opportunistic.map((item) => <IdeaCard key={item.ideaId || `${item.symbol}-${item.action}`} item={item} variant="opportunistic" />) : <div className="muted">{t('ideas_no_opportunistic')}</div>}
           </Section>
 
           <Section
-            title="Risk Alerts"
-            subtitle="Active risks to monitor"
+            title={t('ideas_risk_alerts')}
+            subtitle={t('ideas_risk_alerts_sub')}
             count={riskAlerts.length}
             open={expanded.risk}
             onToggle={() => setExpanded((prev) => ({ ...prev, risk: !prev.risk }))}
           >
-            {riskAlerts.length ? riskAlerts.map((alert, idx) => <RiskCard key={`${alert.title || 'risk'}-${idx}`} alert={alert} />) : <div className="muted">No active risk alerts.</div>}
+            {riskAlerts.length ? riskAlerts.map((alert, idx) => <RiskCard key={`${alert.title || 'risk'}-${idx}`} alert={alert} />) : <div className="muted">{t('ideas_no_risk_alerts')}</div>}
           </Section>
         </>
       ) : null}
