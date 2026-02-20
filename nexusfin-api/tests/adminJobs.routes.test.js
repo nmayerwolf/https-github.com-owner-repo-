@@ -119,4 +119,91 @@ describe('admin jobs route', () => {
     expect(res.body.results.fundamentals_weekly.ok).toBe(true);
     expect(res.body.results.news_ingest_daily.ok).toBe(true);
   });
+
+  it('lists admin job runs with filters', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'run-2',
+          run_date: '2026-02-20',
+          requester_user_id: 'u1',
+          jobs: ['mvp_daily'],
+          status: 'success',
+          started_at: '2026-02-20T08:00:00.000Z',
+          completed_at: '2026-02-20T08:00:05.000Z',
+          summary: { totalJobs: 1, okJobs: 1, failedJobs: 0 }
+        }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/admin/jobs/runs?limit=10&job=mvp_daily&status=success&date_from=2026-02-01&date_to=2026-02-20')
+      .set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.runs).toHaveLength(1);
+    expect(res.body.runs[0].id).toBe('run-2');
+    expect(res.body.runs[0].jobs).toEqual(['mvp_daily']);
+    expect(res.body.filters.limit).toBe(10);
+  });
+
+  it('returns empty runs with warning when audit table is missing', async () => {
+    query.mockRejectedValueOnce(new Error('relation "admin_job_runs" does not exist'));
+    const app = makeApp();
+    const res = await request(app).get('/api/admin/jobs/runs').set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.runs).toEqual([]);
+    expect(res.body.warning).toBe('ADMIN_JOB_RUNS_TABLE_MISSING');
+  });
+
+  it('validates limit in runs endpoint', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/admin/jobs/runs?limit=0').set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('lists job status history from job_runs', async () => {
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'jr-1',
+          job_name: 'mvp_daily',
+          run_date: '2026-02-20',
+          status: 'success',
+          started_at: '2026-02-20T06:00:00.000Z',
+          finished_at: '2026-02-20T06:00:10.000Z',
+          error: null
+        }
+      ]
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/api/admin/jobs/status?job=mvp_daily&status=success&date_from=2026-02-01&date_to=2026-02-20&limit=5')
+      .set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.runs).toHaveLength(1);
+    expect(res.body.runs[0].job).toBe('mvp_daily');
+    expect(res.body.runs[0].status).toBe('success');
+    expect(res.body.filters.limit).toBe(5);
+  });
+
+  it('returns warning when job_runs table is missing', async () => {
+    query.mockRejectedValueOnce(new Error('relation "job_runs" does not exist'));
+    const app = makeApp();
+    const res = await request(app).get('/api/admin/jobs/status').set('x-admin-token', 'admin-secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.runs).toEqual([]);
+    expect(res.body.warning).toBe('JOB_RUNS_TABLE_MISSING');
+  });
 });
