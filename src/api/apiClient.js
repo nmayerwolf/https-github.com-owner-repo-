@@ -250,5 +250,15 @@ export const api = {
     return res.text();
   },
 
-  migrate: (data) => request('/migrate', { method: 'POST', body: JSON.stringify(data) })
+  migrate: (data) => request('/migrate', { method: 'POST', body: JSON.stringify(data) }),
+  getAdminDashboard: () => request('/admin/dashboard'),
+  getAdminUsers: (opts = {}) => {
+    const params = new URLSearchParams();
+    if (opts.sort) params.set('sort', String(opts.sort));
+    if (opts.order) params.set('order', String(opts.order));
+    if (opts.limit != null) params.set('limit', String(opts.limit));
+    if (opts.offset != null) params.set('offset', String(opts.offset));
+    return request(`/admin/users${params.toString() ? `?${params.toString()}` : ''}`);
+  },
+  getAdminCosts: (days = 30) => request(`/admin/costs?days=${encodeURIComponent(String(days))}`)
 };

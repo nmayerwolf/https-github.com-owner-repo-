@@ -294,7 +294,7 @@ router.get('/csrf', authRequired, async (req, res) => {
 
 router.get('/me', authRequired, async (req, res, next) => {
   try {
-    const out = await query('SELECT id, email, display_name, avatar_url, auth_provider, onboarding_completed FROM users WHERE id = $1', [
+    const out = await query('SELECT id, email, display_name, avatar_url, auth_provider, onboarding_completed, role FROM users WHERE id = $1', [
       req.user.id
     ]);
     const row = out.rows[0];
@@ -306,6 +306,7 @@ router.get('/me', authRequired, async (req, res, next) => {
       email: row.email,
       displayName: row.display_name || null,
       avatar: row.avatar_url || null,
+      role: row.role || 'user',
       authProvider: row.auth_provider || 'email',
       onboardingCompleted: !!row.onboarding_completed
     });
@@ -354,7 +355,7 @@ router.patch('/me', authRequired, requireCsrf, async (req, res, next) => {
        SET ${changes.join(', ')},
            updated_at = NOW()
        WHERE id = $${params.length}
-       RETURNING id, email, display_name, avatar_url, auth_provider, onboarding_completed`,
+       RETURNING id, email, display_name, avatar_url, auth_provider, onboarding_completed, role`,
       params
     );
 
@@ -366,6 +367,7 @@ router.patch('/me', authRequired, requireCsrf, async (req, res, next) => {
       email: row.email,
       displayName: row.display_name || null,
       avatar: row.avatar_url || null,
+      role: row.role || 'user',
       authProvider: row.auth_provider || 'email',
       onboardingCompleted: !!row.onboarding_completed
     });

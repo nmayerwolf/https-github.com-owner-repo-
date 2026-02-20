@@ -6,8 +6,16 @@ const helmet = require('helmet');
 const { env } = require('./config/env');
 const { query } = require('./config/db');
 const { authRequired, requireCsrf } = require('./middleware/auth');
+const { requireAdmin } = require('./middleware/requireAdmin');
 const { errorHandler } = require('./middleware/errorHandler');
-const { authLimiter, marketLimiter, adminJobsLimiter } = require('./middleware/rateLimiter');
+const {
+  apiLimiter,
+  authLimiter,
+  authLoginLimiter,
+  authRegisterLimiter,
+  marketLimiter,
+  adminJobsLimiter
+} = require('./middleware/rateLimiter');
 const { startWSHub } = require('./realtime/wsHub');
 const { startMarketCron, buildTasks } = require('./workers/marketCron');
 const finnhub = require('./services/finnhub');
@@ -40,6 +48,7 @@ const recoRoutes = require('./routes/reco');
 const crisisRoutes = require('./routes/crisis');
 const portfoliosRoutes = require('./routes/portfolios');
 const adminJobsRoutes = require('./routes/adminJobs');
+const adminRoutes = require('./routes/admin');
 const horsaiRoutes = require('./routes/horsai');
 const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
@@ -71,6 +80,7 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
+app.use('/api', apiLimiter);
 app.locals.getWsPriceStatus = () => ({ enabled: false, intervalMs: 0, metrics: {} });
 app.locals.getCronStatus = () => ({
   enabled: false,
@@ -233,6 +243,77 @@ app.get('/api/health/cron', (_req, res) => {
   );
 });
 
+app.get('/api/health/engines', async (_req, res, next) => {
+  try {
+    const [latestBars, latestMetrics, latestRegime, latestCrisis, runStats] = await Promise.all([
+      query(
+        `SELECT COALESCE(MAX(bar_date), MAX(date))::text AS date,
+                COUNT(*)::int AS symbols_ok
+         FROM market_daily_bars
+         WHERE COALESCE(bar_date, date) = (SELECT MAX(COALESCE(bar_date, date)) FROM market_daily_bars)`
+      ),
+      query(
+        `SELECT COALESCE(MAX(metric_date), MAX(date))::text AS date,
+                COUNT(*)::int AS symbols_computed
+         FROM market_metrics_daily
+         WHERE COALESCE(metric_date, date) = (SELECT MAX(COALESCE(metric_date, date)) FROM market_metrics_daily)`
+      ),
+      query(
+        `SELECT COALESCE(state_date, date)::text AS run_date, regime, confidence
+         FROM regime_state
+         ORDER BY COALESCE(state_date, date) DESC
+         LIMIT 1`
+      ),
+      query(
+        `SELECT COALESCE(state_date, date)::text AS run_date, is_active
+         FROM crisis_state
+         ORDER BY COALESCE(state_date, date) DESC
+         LIMIT 1`
+      ),
+      query(
+        `SELECT job_name, run_date::text AS run_date
+         FROM job_runs
+         WHERE status = 'success'
+           AND job_name = ANY($1::text[])`,
+        [['market_snapshot_daily', 'metrics_daily', 'regime_daily', 'crisis_check', 'portfolio_snapshot_daily']]
+      )
+    ]);
+
+    const runByJob = new Map((runStats.rows || []).map((row) => [String(row.job_name), row.run_date]));
+    const universe = await query('SELECT COUNT(*)::int AS total FROM universe_symbols WHERE COALESCE(active, is_active, true) = true');
+    const total = Number(universe.rows?.[0]?.total || 0);
+    const symbolsOk = Number(latestBars.rows?.[0]?.symbols_ok || 0);
+
+    return res.json({
+      market_snapshot: {
+        last_run: runByJob.get('market_snapshot_daily') || null,
+        symbols_ok: symbolsOk,
+        symbols_fail: Math.max(0, total - symbolsOk)
+      },
+      metrics: {
+        last_run: runByJob.get('metrics_daily') || null,
+        symbols_computed: Number(latestMetrics.rows?.[0]?.symbols_computed || 0)
+      },
+      regime: {
+        last_run: runByJob.get('regime_daily') || null,
+        regime: latestRegime.rows?.[0]?.regime || null,
+        confidence: latestRegime.rows?.[0]?.confidence != null ? Number(latestRegime.rows?.[0]?.confidence) : null
+      },
+      crisis: {
+        last_run: runByJob.get('crisis_check') || null,
+        is_active: Boolean(latestCrisis.rows?.[0]?.is_active)
+      },
+      portfolio_snapshot: {
+        last_run: runByJob.get('portfolio_snapshot_daily') || null
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.use('/api/auth/login', authLoginLimiter);
+app.use('/api/auth/register', authRegisterLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/market', authRequired, marketLimiter, marketRoutes);
 app.use('/api/portfolio', authRequired, requireCsrf, portfolioRoutes);
@@ -249,6 +330,7 @@ app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
 app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
 app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
 app.use('/api/admin/jobs', authRequired, requireCsrf, adminJobsLimiter, adminJobsRoutes);
+app.use('/api/admin', authRequired, requireCsrf, requireAdmin, adminRoutes);
 app.use('/api/horsai', authRequired, requireCsrf, horsaiRoutes);
 
 app.use(errorHandler);

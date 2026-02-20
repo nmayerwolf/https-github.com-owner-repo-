@@ -1,6 +1,7 @@
 const { env } = require('../config/env');
 const { computeRegime } = require('./regime');
 const { deriveFocusFromConfig, computeProfileMix, applyStrategyMixToRecommendations } = require('./profileFocus');
+const { logAiUsage } = require('./aiUsageLogger');
 
 const toFinite = (value) => {
   const out = Number(value);
@@ -298,6 +299,8 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
 
     let advice = fallback;
     let model = null;
+    let usage = null;
+    const startedAt = Date.now();
 
     if (aiAgent?.configured && env.aiAgentEnabled && env.anthropicApiKey) {
       try {
@@ -308,6 +311,7 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
           systemPrompt: 'Sos un asesor de portfolio institucional. Responde solo JSON.',
           userPrompt: buildPrompt({ positions, summary, config, macro, agentHistory })
         });
+        usage = response?.raw?.usage || null;
         const parsed = extractJsonBlock(response.text);
         if (parsed) {
           advice = normalizeAdvice(parsed, fallback);
@@ -334,6 +338,15 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
     };
 
     const row = await persistAdvice({ userId, advice, model });
+    await logAiUsage({
+      query,
+      userId,
+      feature: 'portfolio_advice',
+      model: model || env.aiAgentModel,
+      usage,
+      success: Boolean(model),
+      durationMs: Date.now() - startedAt
+    });
     return {
       ...row,
       source: model ? 'ai' : 'fallback'

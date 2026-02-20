@@ -3,6 +3,7 @@ const { query } = require('../config/db');
 const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
 const { createPushNotifier } = require('../services/push');
 const { ALERT_TYPES, normalizeAlertSummary } = require('../constants/contracts');
+const { aiLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 const pushNotifier = createPushNotifier({ query, logger: console });
@@ -35,7 +36,7 @@ router.get('/macro', async (req, res, next) => {
   }
 });
 
-router.post('/macro/refresh', async (req, res, next) => {
+router.post('/macro/refresh', aiLimiter, async (req, res, next) => {
   try {
     const macroRadar = req.app?.locals?.macroRadar;
     if (!macroRadar?.generateForUser) {
@@ -86,7 +87,7 @@ router.get('/portfolio-advice', async (req, res, next) => {
   }
 });
 
-router.post('/portfolio-advice/refresh', async (req, res, next) => {
+router.post('/portfolio-advice/refresh', aiLimiter, async (req, res, next) => {
   try {
     const portfolioAdvisor = req.app?.locals?.portfolioAdvisor;
     if (!portfolioAdvisor?.generateForUser) {
