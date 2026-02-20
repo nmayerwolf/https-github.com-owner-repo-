@@ -681,17 +681,25 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console, logRun: logCronRun });
   app.locals.getCronStatus = cronRuntime.getStatus;
   if (env.cronEnabled && env.cronRunDailyOnBoot) {
-    const macroDailyTask = cronTasks.find((task) => task.name === 'macro-daily');
-    if (macroDailyTask && typeof macroDailyTask.run === 'function') {
-      void macroDailyTask
-        .run()
-        .then((out) => {
-          console.log('[cron:macro-daily] boot run ok', out);
-        })
-        .catch((error) => {
-          console.error('[cron:macro-daily] boot run failed', error?.message || error);
-        });
-    }
+    const runTaskWithRetry = async (taskName, attempts = 3) => {
+      const task = cronTasks.find((entry) => entry.name === taskName);
+      if (!task || typeof task.run !== 'function') return;
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          const out = await task.run();
+          console.log(`[cron:${taskName}] boot run ok`, { attempt, out });
+          return;
+        } catch (error) {
+          console.error(`[cron:${taskName}] boot run failed`, { attempt, message: error?.message || error });
+          if (attempt < attempts) {
+            await new Promise((resolve) => setTimeout(resolve, attempt * 15000));
+          }
+        }
+      }
+    };
+
+    void runTaskWithRetry('macro-daily', 3);
+    void runTaskWithRetry('portfolio-daily', 2);
   }
   const wsPriceRuntime = env.realtimeEnabled
     ? startWsPriceRuntime({
