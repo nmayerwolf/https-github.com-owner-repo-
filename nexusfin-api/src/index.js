@@ -29,6 +29,11 @@ const migrateRoutes = require('./routes/migrate');
 const alertsRoutes = require('./routes/alerts');
 const notificationsRoutes = require('./routes/notifications');
 const exportRoutes = require('./routes/export');
+const agentRoutes = require('./routes/agent');
+const newsDigestRoutes = require('./routes/newsDigest');
+const recoRoutes = require('./routes/reco');
+const crisisRoutes = require('./routes/crisis');
+const portfoliosRoutes = require('./routes/portfolios');
 const { MARKET_UNIVERSE } = require('./constants/marketUniverse');
 const MACRO_SYMBOL_TO_REQUEST = {
   'AV:GOLD': { fn: 'GOLD' },
@@ -231,6 +236,11 @@ app.use('/api/alerts', authRequired, requireCsrf, alertsRoutes);
 app.use('/api/notifications', authRequired, requireCsrf, notificationsRoutes);
 app.use('/api/export', authRequired, requireCsrf, exportRoutes);
 app.use('/api/migrate', authRequired, requireCsrf, migrateRoutes);
+app.use('/api/agent', authRequired, requireCsrf, agentRoutes);
+app.use('/api/news/digest', authRequired, requireCsrf, newsDigestRoutes);
+app.use('/api/reco', authRequired, requireCsrf, recoRoutes);
+app.use('/api/crisis', authRequired, requireCsrf, crisisRoutes);
+app.use('/api/portfolios', authRequired, requireCsrf, portfoliosRoutes);
 
 app.use(errorHandler);
 
