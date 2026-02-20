@@ -19,6 +19,7 @@ const { createPushNotifier } = require('./services/push');
 const { createMacroRadar } = require('./services/macroRadar');
 const { createPortfolioAdvisor } = require('./services/portfolioAdvisor');
 const { createMvpDailyPipeline } = require('./services/mvpDailyPipeline');
+const { createPortfolioSnapshotsService } = require('./services/portfolioSnapshots');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -451,9 +452,11 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
   const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
   const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
+  const portfolioSnapshots = createPortfolioSnapshotsService({ query, logger: console });
   app.locals.macroRadar = macroRadar;
   app.locals.portfolioAdvisor = portfolioAdvisor;
   app.locals.mvpDailyPipeline = mvpDailyPipeline;
+  app.locals.portfolioSnapshots = portfolioSnapshots;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
@@ -484,7 +487,14 @@ const startHttpServer = ({ port = env.port } = {}) => {
         mvp: mvpOut
       };
     },
-    portfolioDaily: () => portfolioAdvisor.runGlobalDaily()
+    portfolioDaily: async () => {
+      const [snapshotsOut, advisorOut] = await Promise.all([portfolioSnapshots.runDaily(), portfolioAdvisor.runGlobalDaily()]);
+      return {
+        generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0),
+        snapshots: snapshotsOut,
+        advisor: advisorOut
+      };
+    }
   });
   const logCronRun = async ({
     event,
