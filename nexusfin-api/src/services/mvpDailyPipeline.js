@@ -1,5 +1,6 @@
 const { computeProfileMix } = require('./profileFocus');
 const { createMvpNarrativeService } = require('./mvpNarrative');
+const { withTrackedJobRun } = require('./jobRunTracker');
 
 const toNum = (value, fallback = 0) => {
   const out = Number(value);
@@ -576,36 +577,42 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
     return { users: usersOut.rows.length, sourceNews: newsRows.length };
   };
 
-  const runDaily = async ({ date = null } = {}) => {
-    const runDate = await resolveRunDate(date);
-    const regimeState = await runRegimeDaily(runDate);
-    const crisisState = await runCrisisModeCheck(runDate, regimeState);
-    const recommendations = await runRecommendationsDaily(runDate, regimeState, crisisState, regimeState.metricsRows || []);
-    const digest = await runNewsDigestDaily(runDate, regimeState, crisisState);
+  const runDaily = async ({ date = null } = {}) =>
+    withTrackedJobRun({
+      query,
+      jobName: 'mvp_daily',
+      date,
+      run: async (runDateInput) => {
+        const runDate = date ? String(runDateInput) : await resolveRunDate(null);
+        const regimeState = await runRegimeDaily(runDate);
+        const crisisState = await runCrisisModeCheck(runDate, regimeState);
+        const recommendations = await runRecommendationsDaily(runDate, regimeState, crisisState, regimeState.metricsRows || []);
+        const digest = await runNewsDigestDaily(runDate, regimeState, crisisState);
 
-    logger.log('[mvp-daily] complete', {
-      date: runDate,
-      regime: regimeState.regime,
-      volatility: regimeState.volatilityRegime,
-      crisis: crisisState.isActive,
-      baseIdeas: recommendations.baseIdeas,
-      recommendationUsers: recommendations.users,
-      digestUsers: digest.users,
-      sourceNews: digest.sourceNews
+        logger.log('[mvp-daily] complete', {
+          date: runDate,
+          regime: regimeState.regime,
+          volatility: regimeState.volatilityRegime,
+          crisis: crisisState.isActive,
+          baseIdeas: recommendations.baseIdeas,
+          recommendationUsers: recommendations.users,
+          digestUsers: digest.users,
+          sourceNews: digest.sourceNews
+        });
+
+        return {
+          generated: recommendations.users + digest.users,
+          date: runDate,
+          regime: regimeState.regime,
+          volatilityRegime: regimeState.volatilityRegime,
+          crisisActive: crisisState.isActive,
+          baseIdeas: recommendations.baseIdeas,
+          recommendationUsers: recommendations.users,
+          digestUsers: digest.users,
+          sourceNews: digest.sourceNews
+        };
+      }
     });
-
-    return {
-      generated: recommendations.users + digest.users,
-      date: runDate,
-      regime: regimeState.regime,
-      volatilityRegime: regimeState.volatilityRegime,
-      crisisActive: crisisState.isActive,
-      baseIdeas: recommendations.baseIdeas,
-      recommendationUsers: recommendations.users,
-      digestUsers: digest.users,
-      sourceNews: digest.sourceNews
-    };
-  };
 
   return {
     runDaily,

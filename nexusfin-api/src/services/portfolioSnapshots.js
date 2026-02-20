@@ -1,3 +1,5 @@
+const { withTrackedJobRun } = require('./jobRunTracker');
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const toNum = (value, fallback = 0) => {
@@ -201,8 +203,13 @@ const createPortfolioSnapshotsService = ({ query, logger = console }) => {
     );
   };
 
-  const runDaily = async ({ date = null } = {}) => {
-    const runDate = await resolveRunDate(date);
+  const runDaily = async ({ date = null } = {}) =>
+    withTrackedJobRun({
+      query,
+      jobName: 'portfolio_snapshots',
+      date,
+      run: async (runDateInput) => {
+        const runDate = date ? String(runDateInput) : await resolveRunDate(null);
     const [priceMap, regime, benchmarkRet, portfolios] = await Promise.all([
       loadMarkPrices(runDate),
       loadRegime(runDate),
@@ -304,15 +311,16 @@ const createPortfolioSnapshotsService = ({ query, logger = console }) => {
       }
     }
 
-    return {
-      generated,
-      portfoliosScanned: portfolios.length,
-      date: runDate,
-      benchmarkRet,
-      regime: regime.regime,
-      volatilityRegime: regime.volatility_regime
-    };
-  };
+        return {
+          generated,
+          portfoliosScanned: portfolios.length,
+          date: runDate,
+          benchmarkRet,
+          regime: regime.regime,
+          volatilityRegime: regime.volatility_regime
+        };
+      }
+    });
 
   return {
     runDaily,

@@ -1,3 +1,5 @@
+const { withTrackedJobRun } = require('./jobRunTracker');
+
 const toNum = (value, fallback = 0) => {
   const out = Number(value);
   return Number.isFinite(out) ? out : fallback;
@@ -184,74 +186,80 @@ const createNotificationPolicyService = ({ query, pushNotifier, logger = console
     };
   };
 
-  const runDaily = async ({ date = null } = {}) => {
-    if (!pushNotifier?.notifySystem) {
-      return { sent: 0, usersScanned: 0, skipped: 'PUSH_NOTIFIER_UNAVAILABLE' };
-    }
-
-    await ensureNotificationLog();
-
-    const runDate = isoDate(date || new Date());
-    const context = await loadDateContext(runDate);
-    const usersOut = await query('SELECT id FROM users ORDER BY created_at ASC');
-
-    let usersScanned = 0;
-    let sent = 0;
-
-    for (const user of usersOut.rows || []) {
-      usersScanned += 1;
-      try {
-        const [profileOut, recoOut] = await Promise.all([
-          query('SELECT notification_mode FROM user_agent_profile WHERE user_id = $1 LIMIT 1', [user.id]),
-          query('SELECT items FROM user_recommendations WHERE user_id = $1 AND date = $2 LIMIT 1', [user.id, runDate])
-        ]);
-
-        const notificationMode = String(profileOut.rows?.[0]?.notification_mode || 'normal').toLowerCase();
-        const items = parseItems(recoOut.rows?.[0] || {});
-
-        const events = selectPolicyEvents({
-          date: runDate,
-          crisisActive: context.crisisActive,
-          regime: context.regime,
-          prevRegime: context.prevRegime,
-          items,
-          notificationMode
-        });
-
-        for (const event of events) {
-          const lock = await query(
-            `INSERT INTO notification_events (user_id, event_date, event_key, payload)
-             VALUES ($1,$2,$3,$4::jsonb)
-             ON CONFLICT (user_id, event_key) DO NOTHING
-             RETURNING id`,
-            [user.id, runDate, event.eventKey, JSON.stringify(event)]
-          );
-
-          if (!lock.rows.length) continue;
-
-          const out = await pushNotifier.notifySystem({
-            userId: user.id,
-            title: event.title,
-            body: event.body,
-            data: event.data,
-            respectQuietHours: true
-          });
-
-          sent += Number(out?.sent || 0);
+  const runDaily = async ({ date = null } = {}) =>
+    withTrackedJobRun({
+      query,
+      jobName: 'notification_policy',
+      date,
+      run: async (runDate) => {
+        if (!pushNotifier?.notifySystem) {
+          return { sent: 0, usersScanned: 0, skipped: 'PUSH_NOTIFIER_UNAVAILABLE', date: isoDate(runDate) };
         }
-      } catch (error) {
-        logger.warn?.(`[notificationPolicy] failed for ${user.id}`, error?.message || error);
-      }
-    }
 
-    return {
-      date: runDate,
-      usersScanned,
-      sent,
-      crisisActive: context.crisisActive,
-      regime: context.regime
-    };
-  };
+        await ensureNotificationLog();
+
+        const safeDate = isoDate(runDate || new Date());
+        const context = await loadDateContext(safeDate);
+        const usersOut = await query('SELECT id FROM users ORDER BY created_at ASC');
+
+        let usersScanned = 0;
+        let sent = 0;
+
+        for (const user of usersOut.rows || []) {
+          usersScanned += 1;
+          try {
+            const [profileOut, recoOut] = await Promise.all([
+              query('SELECT notification_mode FROM user_agent_profile WHERE user_id = $1 LIMIT 1', [user.id]),
+              query('SELECT items FROM user_recommendations WHERE user_id = $1 AND date = $2 LIMIT 1', [user.id, safeDate])
+            ]);
+
+            const notificationMode = String(profileOut.rows?.[0]?.notification_mode || 'normal').toLowerCase();
+            const items = parseItems(recoOut.rows?.[0] || {});
+
+            const events = selectPolicyEvents({
+              date: safeDate,
+              crisisActive: context.crisisActive,
+              regime: context.regime,
+              prevRegime: context.prevRegime,
+              items,
+              notificationMode
+            });
+
+            for (const event of events) {
+              const lock = await query(
+                `INSERT INTO notification_events (user_id, event_date, event_key, payload)
+                 VALUES ($1,$2,$3,$4::jsonb)
+                 ON CONFLICT (user_id, event_key) DO NOTHING
+                 RETURNING id`,
+                [user.id, safeDate, event.eventKey, JSON.stringify(event)]
+              );
+
+              if (!lock.rows.length) continue;
+
+              const out = await pushNotifier.notifySystem({
+                userId: user.id,
+                title: event.title,
+                body: event.body,
+                data: event.data,
+                respectQuietHours: true
+              });
+
+              sent += Number(out?.sent || 0);
+            }
+          } catch (error) {
+            logger.warn?.(`[notificationPolicy] failed for ${user.id}`, error?.message || error);
+          }
+        }
+
+        return {
+          date: safeDate,
+          usersScanned,
+          sent,
+          crisisActive: context.crisisActive,
+          regime: context.regime
+        };
+      }
+    });
 
   return { runDaily };
 };
