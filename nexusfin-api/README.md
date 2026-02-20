@@ -90,6 +90,9 @@ MVP contract:
 - `GET /api/reco/:date`
 - `GET /api/crisis/today`
 - `GET|POST|PUT /api/portfolios*` (incluye invite/accept y holdings)
+- `GET /api/horsai/portfolio/:id/summary`
+- `GET /api/horsai/portfolio/:id/signal-review?days=90`
+- `POST /api/horsai/signals/:id/action` (`acknowledge|dismiss`)
 
 Market:
 - `GET /api/market/quote`
@@ -126,6 +129,17 @@ Admin jobs:
 - `POST /api/admin/jobs/run`
 - `GET /api/admin/jobs/runs`
 - `GET /api/admin/jobs/status`
+
+Admin jobs soportados (`jobs`):
+- `mvp_daily`
+- `portfolio_snapshots`
+- `notification_policy`
+- `market_snapshot_daily`
+- `fundamentals_weekly`
+- `news_ingest_daily`
+- `macro_radar`
+- `portfolio_advisor`
+- `horsai_daily`
 
 ## API Error Contract (v1.1)
 
@@ -190,6 +204,7 @@ Códigos mínimos usados en MVP:
 - `015_phase6_notification_events.sql`
 - `016_phase6_admin_job_runs_audit.sql`
 - `017_mvp_universe_expand.sql`
+- `018_horsai_agent_core.sql`
 
 ## Tests
 

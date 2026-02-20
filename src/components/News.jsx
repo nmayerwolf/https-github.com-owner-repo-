@@ -120,6 +120,18 @@ const normalizeRecommended = (item = {}) => ({
   impactLabel: impactLabel(item?.aiScore || 0)
 });
 
+const toMarketLabel = (regime) =>
+  regime === 'risk_on' ? 'Supportive' : regime === 'risk_off' ? 'Defensive' : 'Mixed';
+const toVolatilityLabel = (volatilityRegime) =>
+  volatilityRegime === 'crisis' ? 'High Uncertainty' : volatilityRegime === 'elevated' ? 'Increasing' : 'Calm';
+const toConfidenceLabel = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 'Limited';
+  if (n >= 0.75) return 'High';
+  if (n >= 0.55) return 'Moderate';
+  return 'Limited';
+};
+
 const News = () => {
   const { state } = useApp();
   const initialPrefs = loadNewsPrefs();
@@ -131,6 +143,11 @@ const News = () => {
   const [allQuery, setAllQuery] = useState(initialPrefs.allQuery);
   const [visibleRecommended, setVisibleRecommended] = useState(12);
   const [visibleAll, setVisibleAll] = useState(15);
+  const [marketEnv, setMarketEnv] = useState({
+    market: 'Mixed',
+    confidence: 'Limited',
+    volatility: 'Calm'
+  });
 
   const watchlistSymbols = state.watchlistSymbols || [];
 
@@ -166,7 +183,7 @@ const News = () => {
 
         const symbols = watchlistSymbols.slice(0, WATCHLIST_SYMBOL_LIMIT);
 
-        const [recommendedRes, allGeneralRes] = await Promise.all([
+        const [recommendedRes, allGeneralRes, digestOut] = await Promise.all([
           api.marketNewsRecommended({
             symbols,
             category: 'general',
@@ -175,7 +192,8 @@ const News = () => {
             maxAgeHours: WINDOW_HOURS,
             strictImpact: true
           }),
-          api.marketNews({ category: 'general', minId: 0 })
+          api.marketNews({ category: 'general', minId: 0 }),
+          typeof api.getNewsDigestToday === 'function' ? api.getNewsDigestToday().catch(() => null) : Promise.resolve(null)
         ]);
         if (!active) return;
 
@@ -193,6 +211,13 @@ const News = () => {
 
         setRecommendedItems(normalizedRecommended);
         setAllItems(allMerged);
+        if (digestOut?.regime) {
+          setMarketEnv({
+            market: toMarketLabel(digestOut.regime.regime),
+            confidence: toConfidenceLabel(digestOut.regime.confidence),
+            volatility: toVolatilityLabel(digestOut.regime.volatilityRegime)
+          });
+        }
         recordRecommendedImpressions(normalizedRecommended);
         api
           .trackNewsTelemetry({
@@ -237,7 +262,18 @@ const News = () => {
     <div className="grid">
       <section className="card">
         <div className="section-header-inline">
-          <h2 className="screen-title">Noticias</h2>
+          <h2 className="screen-title">News</h2>
+        </div>
+        <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+          <span className="badge" style={{ background: '#8CC8FF22', color: '#8CC8FF' }}>
+            Market Environment: {marketEnv.market}
+          </span>
+          <span className="badge" style={{ background: '#FBBF2422', color: '#FBBF24' }}>
+            Confidence: {marketEnv.confidence}
+          </span>
+          <span className="badge" style={{ background: '#A78BFA22', color: '#A78BFA' }}>
+            Volatility: {marketEnv.volatility}
+          </span>
         </div>
         <div className="muted">Cobertura global para mercados, filtrada en ventana de últimas {WINDOW_HOURS}h.</div>
       </section>

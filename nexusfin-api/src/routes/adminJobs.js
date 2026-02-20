@@ -13,7 +13,8 @@ const JOB_NAMES = new Set([
   'fundamentals_weekly',
   'news_ingest_daily',
   'macro_radar',
-  'portfolio_advisor'
+  'portfolio_advisor',
+  'horsai_daily'
 ]);
 const RUN_STATUS = new Set(['started', 'success', 'failed', 'partial_failed']);
 
@@ -132,7 +133,8 @@ router.post('/run', async (req, res, next) => {
       fundamentals_weekly: req.app?.locals?.marketIngestion?.runFundamentalsWeekly,
       news_ingest_daily: req.app?.locals?.marketIngestion?.runNewsIngestDaily,
       macro_radar: req.app?.locals?.macroRadar?.runGlobalDaily,
-      portfolio_advisor: req.app?.locals?.portfolioAdvisor?.runGlobalDaily
+      portfolio_advisor: req.app?.locals?.portfolioAdvisor?.runGlobalDaily,
+      horsai_daily: req.app?.locals?.horsaiDaily?.runGlobalDaily
     };
 
     const startedAt = new Date();

@@ -120,6 +120,28 @@ describe('admin jobs route', () => {
     expect(res.body.results.news_ingest_daily.ok).toBe(true);
   });
 
+  it('runs horsai_daily when requested', async () => {
+    const app = makeApp({
+      horsaiDaily: {
+        runGlobalDaily: jest.fn(async ({ date }) => ({
+          date: date || '2026-02-20',
+          portfoliosScanned: 4,
+          scored: 4,
+          generated: 2
+        }))
+      }
+    });
+
+    const res = await request(app)
+      .post('/api/admin/jobs/run')
+      .set('x-admin-token', 'admin-secret')
+      .send({ jobs: ['horsai_daily'], date: '2026-02-20' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results.horsai_daily.ok).toBe(true);
+    expect(res.body.results.horsai_daily.output.generated).toBe(2);
+  });
+
   it('lists admin job runs with filters', async () => {
     query.mockResolvedValueOnce({
       rows: [
