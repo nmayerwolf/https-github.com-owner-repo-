@@ -91,9 +91,15 @@ export const api = {
   resetPassword: (currentPassword, newPassword) =>
     request('/auth/reset-password/authenticated', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   health: () => request('/health'),
+  getDigestToday: () => request('/news/digest/today'),
+  getDigestByDate: (date) => request(`/news/digest/${encodeURIComponent(String(date || ''))}`),
   getNewsDigestToday: () => request('/news/digest/today'),
   getRecoToday: () => request('/reco/today'),
+  getRecoByDate: (date) => request(`/reco/${encodeURIComponent(String(date || ''))}`),
   getCrisisToday: () => request('/crisis/today'),
+  getAgentProfile: () => request('/agent/profile'),
+  updateAgentProfile: (data) => request('/agent/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  getEnginesHealth: () => request('/health/engines'),
   getHorsaiPortfolioSummary: (portfolioId) => request(`/horsai/portfolio/${encodeURIComponent(portfolioId)}/summary`),
   getHorsaiSignalReview: (portfolioId, days = 90) =>
     request(`/horsai/portfolio/${encodeURIComponent(portfolioId)}/signal-review?days=${encodeURIComponent(String(days))}`),

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
 import Navigation from './components/Navigation';
@@ -112,6 +112,7 @@ const OnboardingModal = ({ onComplete, saving, pushLoading, pushMessage, pushErr
 
 const App = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { state } = useApp();
   const { isAuthenticated, user, logout, loading: authLoading, completeOnboarding } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
@@ -356,7 +357,7 @@ const App = () => {
       title: 'Sesión de tiempo real expirada',
       message: 'Reingresá para reconectar WebSocket.',
       level: 'critical',
-      route: '/settings'
+      route: '/agent'
     });
   }, [state.wsStatus]);
 
@@ -367,7 +368,7 @@ const App = () => {
       title: networkOffline ? 'Sin conexión de red' : 'Sin conexión con backend',
       message: networkOffline ? 'Mostrando datos en cache.' : 'Modo degradado hasta recuperar conexión.',
       level: 'warning',
-      route: '/settings'
+      route: '/agent'
     });
   }, [backendOffline, networkOffline]);
 
@@ -426,6 +427,7 @@ const App = () => {
     ? new Date(backendLastOkAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : null;
   const unreadNotifCount = notifItems.filter((item) => !item.read).length;
+  const showNewsHeader = location.pathname === '/news' || location.pathname === '/';
 
   return (
     <div className="app">
@@ -443,6 +445,7 @@ const App = () => {
         />
       )}
 
+      {showNewsHeader ? (
       <header className="header">
         <div className="top-header card">
           <div className="brand-lockup" aria-label="Horsai">
@@ -505,12 +508,6 @@ const App = () => {
                 </div>
               ) : null}
             </div>
-            <button type="button" className="icon-btn" aria-label="Buscar">
-              <svg viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="7" />
-                <path d="M20 20l-3.8-3.8" />
-              </svg>
-            </button>
             <div className="user-menu-wrap" ref={userMenuRef}>
               <button
                 type="button"
@@ -567,6 +564,7 @@ const App = () => {
         )}
 
       </header>
+      ) : null}
       <Navigation />
       <main className="container">
         <Routes>
@@ -637,13 +635,14 @@ const App = () => {
             }
           />
           <Route
-            path="/settings"
+            path="/agent"
             element={
               <RouteBoundary moduleName="Your AI Agent">
                 <Settings />
               </RouteBoundary>
             }
           />
+          <Route path="/settings" element={<Navigate to="/agent" replace />} />
           <Route path="*" element={<Navigate to="/news" replace />} />
         </Routes>
       </main>
