@@ -92,7 +92,7 @@ const AuthScreen = () => {
         <div className="auth-brand">
           <h1 className="auth-logo-wordmark">Horsai</h1>
           <p className="auth-tagline">
-            Tu inteligencia de mercado <span className="tagline-highlight">en tiempo real</span>
+            Your market intelligence <span className="tagline-highlight">in real time</span>
           </p>
         </div>
 
