@@ -1,4 +1,5 @@
 const { computeProfileMix } = require('./profileFocus');
+const { createMvpNarrativeService } = require('./mvpNarrative');
 
 const toNum = (value, fallback = 0) => {
   const out = Number(value);
@@ -265,7 +266,7 @@ const toCrisisBanner = (crisisState = {}) => ({
   }
 });
 
-const createMvpDailyPipeline = ({ query, logger = console }) => {
+const createMvpDailyPipeline = ({ query, logger = console, narrativeService = createMvpNarrativeService() }) => {
   const resolveRunDate = async (requestedDate = null) => {
     if (requestedDate) return String(requestedDate);
     const out = await query('SELECT MAX(date)::text AS date FROM market_metrics_daily');
@@ -455,12 +456,19 @@ const createMvpDailyPipeline = ({ query, logger = console }) => {
         ? [...riskAlerts, ...strategic, ...opportunistic]
         : [...strategic, ...opportunistic, ...riskAlerts];
 
+      const narrative = await narrativeService.polishRecommendationItems({
+        profile,
+        regimeState,
+        crisisState,
+        items: ordered
+      });
+
       await query(
         `INSERT INTO user_recommendations (user_id, date, items, updated_at)
          VALUES ($1,$2,$3::jsonb,NOW())
          ON CONFLICT (user_id, date)
          DO UPDATE SET items = EXCLUDED.items, updated_at = NOW()`,
-        [user.id, date, JSON.stringify(ordered)]
+        [user.id, date, JSON.stringify(narrative.items)]
       );
 
       generatedUsers += 1;
@@ -531,7 +539,13 @@ const createMvpDailyPipeline = ({ query, logger = console }) => {
         if (bullets.length >= 10) break;
       }
 
-      const finalBullets = bullets.slice(0, 10);
+      const narrative = await narrativeService.polishDigestBullets({
+        profile,
+        regimeState,
+        crisisState,
+        bullets: bullets.slice(0, 10)
+      });
+      const finalBullets = Array.isArray(narrative.bullets) && narrative.bullets.length ? narrative.bullets.slice(0, 10) : bullets.slice(0, 10);
 
       await query(
         `INSERT INTO daily_digest (
@@ -554,7 +568,7 @@ const createMvpDailyPipeline = ({ query, logger = console }) => {
           JSON.stringify(toCrisisBanner(crisisState)),
           JSON.stringify(regimeState.leadership || []),
           JSON.stringify(regimeState.riskFlags || []),
-          JSON.stringify({ pickedNewsIds: ranked.map((x) => x.id), profile })
+          JSON.stringify({ pickedNewsIds: ranked.map((x) => x.id), profile, narrative: narrative.meta || { mode: 'fallback' } })
         ]
       );
     }
