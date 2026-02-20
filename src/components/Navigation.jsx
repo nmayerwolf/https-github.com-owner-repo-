@@ -18,11 +18,13 @@ const Navigation = () => {
     },
     {
       to: '/markets',
-      label: isSpanish ? 'Mercados' : 'Markets',
+      label: isSpanish ? 'Ideas' : 'Ideas',
       icon: (
         <svg viewBox="0 0 24 24">
-          <path d="M3 16l5-5 4 3 7-8" />
-          <path d="M17 6h2v2" />
+          <path d="M12 3v5" />
+          <path d="M8.5 8.5l3.5 3.5 3.5-3.5" />
+          <path d="M12 12v9" />
+          <path d="M8 21h8" />
         </svg>
       )
     },
