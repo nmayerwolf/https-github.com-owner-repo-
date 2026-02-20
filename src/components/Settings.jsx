@@ -308,7 +308,7 @@ const Settings = () => {
         <p className="muted">{t.subtitle}</p>
       </section>
 
-      <div className="card">
+      <div className="card" id="account">
         <h2>{t.account}</h2>
         <p className="muted" style={{ marginTop: 6 }}>
           {t.accountHelp}
@@ -323,7 +323,7 @@ const Settings = () => {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card" id="language">
         <h2>{t.language}</h2>
         <p className="muted" style={{ marginTop: 6 }}>{t.languageHelp}</p>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
@@ -336,7 +336,7 @@ const Settings = () => {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card" id="capital-style">
         <h2>{t.capitalStyle}</h2>
         <p className="muted" style={{ marginTop: 6 }}>{t.capitalStyleHelp}</p>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
@@ -353,7 +353,7 @@ const Settings = () => {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card" id="notifications">
         <h2>{t.notifications}</h2>
         <p className="muted" style={{ marginTop: 6 }}>
           {t.notificationsHelp} ({userTimezone}).
@@ -422,7 +422,7 @@ const Settings = () => {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="security">
         <h2>{t.security}</h2>
         <p className="muted" style={{ marginTop: 6 }}>
           {t.securityHelp}

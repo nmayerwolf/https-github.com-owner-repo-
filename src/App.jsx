@@ -512,6 +512,21 @@ const App = () => {
     ? new Date(backendLastOkAt).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })
     : null;
   const unreadNotifCount = notifItems.filter((item) => !item.read).length;
+  const settingsMenuItems = isSpanish
+    ? [
+        { key: 'account', label: 'Cuenta' },
+        { key: 'language', label: 'Idioma' },
+        { key: 'capital-style', label: 'Estilo de capital' },
+        { key: 'notifications', label: 'Notificaciones' },
+        { key: 'security', label: 'Seguridad' }
+      ]
+    : [
+        { key: 'account', label: 'Account' },
+        { key: 'language', label: 'Language' },
+        { key: 'capital-style', label: 'Capital style' },
+        { key: 'notifications', label: 'Notifications' },
+        { key: 'security', label: 'Security' }
+      ];
 
   return (
     <div className="app">
@@ -610,7 +625,7 @@ const App = () => {
             <div className="user-menu-wrap" ref={userMenuRef}>
               <button
                 type="button"
-                className="user-avatar"
+                className={`user-avatar ${user?.avatar ? 'has-image' : ''}`}
                 aria-label={isSpanish ? 'Menú de usuario' : 'User menu'}
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
@@ -619,7 +634,7 @@ const App = () => {
                   <img
                     src={user.avatar}
                     alt=""
-                    style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }}
+                    style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }}
                   />
                 ) : (
                   String(user?.email || 'U').slice(0, 1).toUpperCase()
@@ -628,17 +643,20 @@ const App = () => {
               {userMenuOpen ? (
                 <div className="user-menu card">
                   <div className="user-menu-email mono">{user?.email || 'usuario'}</div>
-                  <button
-                    type="button"
-                    className="logout-btn"
-                    aria-label={isSpanish ? 'Configuración' : 'Settings'}
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      navigate('/settings');
-                    }}
-                  >
-                    {isSpanish ? 'Configuración' : 'Settings'}
-                  </button>
+                  {settingsMenuItems.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className="logout-btn"
+                      aria-label={item.label}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        navigate(`/settings#${item.key}`);
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     className="logout-btn"
