@@ -47,7 +47,7 @@ vi.mock('../../store/AuthContext', () => ({
 
 vi.mock('../Navigation', () => ({ default: () => <div>Navigation</div> }));
 vi.mock('../Markets', () => ({ default: () => <div>Markets</div> }));
-vi.mock('../Alerts', () => ({ default: () => <div>Alerts</div> }));
+vi.mock('../Ideas', () => ({ default: () => <div>Ideas</div> }));
 vi.mock('../Portfolio', () => ({ default: () => <div>Portfolio</div> }));
 vi.mock('../Settings', () => ({ default: () => <div>Settings</div> }));
 vi.mock('../Screener', () => ({ default: () => <div>Screener</div> }));

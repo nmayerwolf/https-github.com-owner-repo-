@@ -46,7 +46,7 @@ vi.mock('../../store/AuthContext', () => ({
 }));
 
 vi.mock('../Navigation', () => ({ default: () => <div>Navigation</div> }));
-vi.mock('../Alerts', () => ({
+vi.mock('../Ideas', () => ({
   default: () => {
     throw new Error('alerts exploded');
   }

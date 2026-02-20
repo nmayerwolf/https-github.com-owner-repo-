@@ -472,6 +472,41 @@ const startHttpServer = ({ port = env.port } = {}) => {
   app.locals.horsaiDaily = horsaiDaily;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
+  const runPortfolioBatch = async () => {
+    const [snapshotsOut, advisorOut, horsaiOut] = await Promise.all([
+      portfolioSnapshots.runDaily(),
+      portfolioAdvisor.runGlobalDaily(),
+      horsaiDaily.runGlobalDaily()
+    ]);
+    return {
+      generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0) + Number(horsaiOut?.generated || 0),
+      snapshots: snapshotsOut,
+      advisor: advisorOut,
+      horsai: horsaiOut
+    };
+  };
+  const shouldTriggerExtraPortfolioRun = async () => {
+    const out = await query(
+      `SELECT date::text AS date, regime, volatility_regime
+       FROM regime_state
+       ORDER BY date DESC
+       LIMIT 2`
+    );
+    const latest = out.rows?.[0];
+    const previous = out.rows?.[1];
+    if (!latest || !previous) {
+      return { trigger: false, regimeShift: false, crisisActivated: false, latest, previous };
+    }
+    const regimeShift = String(latest.regime || '') !== String(previous.regime || '');
+    const crisisActivated = String(previous.volatility_regime || '') !== 'crisis' && String(latest.volatility_regime || '') === 'crisis';
+    return {
+      trigger: regimeShift || crisisActivated,
+      regimeShift,
+      crisisActivated,
+      latest,
+      previous
+    };
+  };
   const runMarketCycleWithOutcome = async (options) => {
     const cycle = await alertEngine.runGlobalCycle({
       ...options,
@@ -499,6 +534,19 @@ const startHttpServer = ({ port = env.port } = {}) => {
       const newsIngestOut = await marketIngestion.runNewsIngestDaily();
       const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
       const notifyOut = await notificationPolicy.runDaily({ date: mvpOut?.date });
+      let extraPortfolioRun = null;
+      try {
+        const trigger = await shouldTriggerExtraPortfolioRun();
+        if (trigger.trigger) {
+          const extraOut = await runPortfolioBatch();
+          extraPortfolioRun = {
+            ...trigger,
+            ...extraOut
+          };
+        }
+      } catch (error) {
+        console.warn('[macro-daily] extra portfolio run skipped', error?.message || error);
+      }
       return {
         generated:
           Number(marketSnapshotOut?.generated || 0) +
@@ -506,27 +554,17 @@ const startHttpServer = ({ port = env.port } = {}) => {
           Number(newsIngestOut?.generated || 0) +
           Number(macroOut?.generated || 0) +
           Number(mvpOut?.generated || 0) +
-          Number(notifyOut?.sent || 0),
+          Number(notifyOut?.sent || 0) +
+          Number(extraPortfolioRun?.generated || 0),
         marketSnapshot: marketSnapshotOut,
         fundamentals: fundamentalsOut,
         newsIngest: newsIngestOut,
         mvp: mvpOut,
-        notifications: notifyOut
+        notifications: notifyOut,
+        extraPortfolioRun
       };
     },
-    portfolioDaily: async () => {
-      const [snapshotsOut, advisorOut, horsaiOut] = await Promise.all([
-        portfolioSnapshots.runDaily(),
-        portfolioAdvisor.runGlobalDaily(),
-        horsaiDaily.runGlobalDaily()
-      ]);
-      return {
-        generated: Number(snapshotsOut?.generated || 0) + Number(advisorOut?.generated || 0) + Number(horsaiOut?.generated || 0),
-        snapshots: snapshotsOut,
-        advisor: advisorOut,
-        horsai: horsaiOut
-      };
-    }
+    portfolioDaily: runPortfolioBatch
   });
   const logCronRun = async ({
     event,

@@ -4,7 +4,7 @@ import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
 import Navigation from './components/Navigation';
 import Markets from './components/Markets';
-import Alerts from './components/Alerts';
+import Ideas from './components/Ideas';
 import Portfolio from './components/Portfolio';
 import News from './components/News';
 import Settings from './components/Settings';
@@ -599,7 +599,7 @@ const App = () => {
             path="/ideas"
             element={
               <RouteBoundary moduleName="Ideas">
-                <Alerts />
+                <Ideas />
               </RouteBoundary>
             }
           />
