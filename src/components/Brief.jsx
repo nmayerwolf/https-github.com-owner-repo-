@@ -283,6 +283,30 @@ const Brief = () => {
   }, [state.alerts, isSpanish]);
 
   const watchlistSymbols = useMemo(() => (state.watchlistSymbols || []).slice(0, 8), [state.watchlistSymbols]);
+  const inferredGlobalContextFromNews = useMemo(() => {
+    return (newsItems || [])
+      .slice(0, 6)
+      .map((item) => {
+        const headline = String(item?.headline || '').trim();
+        const reason = String(item?.aiReasons?.[0] || item?.summary || '').trim();
+        const text = [headline, reason].filter(Boolean).join('. ').slice(0, 220);
+        const score = Number(item?.aiScore || 0);
+        const impact = score >= 14 ? 'RED' : score >= 10 ? 'YELLOW' : 'GREEN';
+        const rawTheme = String(item?.aiTheme || '').toLowerCase();
+        let category = 'EQUITIES';
+        if (/policy|fed|ecb|boj|rates|macro/.test(rawTheme)) category = 'CENTRAL_BANKS';
+        else if (/crypto|bitcoin|eth/.test(rawTheme)) category = 'CRYPTO';
+        else if (/energy|oil|gas/.test(rawTheme)) category = 'ENERGY';
+        else if (/metal|gold|copper|silver/.test(rawTheme)) category = 'METALS';
+        else if (/commodity|agri|grain/.test(rawTheme)) category = 'COMMODITIES';
+        else if (/tariff|trade|china/.test(rawTheme)) category = 'TARIFFS';
+        else if (/geo|war|conflict/.test(rawTheme)) category = 'GEOPOLITICS';
+        else if (/ai|semiconductor|chip/.test(rawTheme)) category = 'AI';
+        else if (/earnings|corporate|m&a/.test(rawTheme)) category = 'CORPORATE';
+        return { category, impact, text };
+      })
+      .filter((item) => item.text);
+  }, [newsItems]);
 
   useEffect(() => {
     let active = true;
@@ -405,7 +429,7 @@ const Brief = () => {
         title={t.globalContext}
         loadingLabel={t.loadingContext}
         pendingLabel={t.pendingContext}
-        items={globalContextItems}
+        items={globalContextItems.length ? globalContextItems : inferredGlobalContextFromNews}
         loading={globalContextLoading}
         error={globalContextError}
         isSpanish={isSpanish}
