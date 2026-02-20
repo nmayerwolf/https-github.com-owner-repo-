@@ -94,4 +94,64 @@ describe('horsaiDaily service', () => {
     expect(out.generated).toBe(0);
     expect(out.skippedByCooldown).toBe(1);
   });
+
+  it('evaluates mature signal outcomes and refreshes conviction policy', async () => {
+    const query = jest.fn(async (sql) => {
+      if (sql.includes('FROM regime_state')) {
+        return { rows: [{ date: '2026-02-20', regime: 'transition', volatility_regime: 'normal', confidence: 0.7 }] };
+      }
+      if (sql.includes('FROM portfolios')) {
+        return { rows: [] };
+      }
+      if (sql.includes('FROM horsai_signals s') && sql.includes('NOT EXISTS')) {
+        return {
+          rows: [
+            {
+              id: 's-out-1',
+              user_id: 'u1',
+              portfolio_id: 'p1',
+              regime: 'risk_off',
+              volatility_regime: 'elevated',
+              confidence: 0.8,
+              adjustment: { focus: 'risk_reduction' },
+              shown_date: '2026-02-10'
+            }
+          ]
+        };
+      }
+      if (sql.includes('FROM portfolio_snapshots')) {
+        return {
+          rows: [
+            { date: '2026-02-10', total_value: 1000 },
+            { date: '2026-02-11', total_value: 995 },
+            { date: '2026-02-12', total_value: 980 },
+            { date: '2026-02-20', total_value: 1020 }
+          ]
+        };
+      }
+      if (sql.includes('FROM user_agent_profile')) {
+        return { rows: [{ risk_level: 0.6 }] };
+      }
+      if (sql.includes('INSERT INTO horsai_signal_outcomes')) {
+        return { rows: [{ id: 'o1' }] };
+      }
+      if (sql.includes('SELECT COALESCE(AVG(rai), 0) AS rai_mean_20')) {
+        return { rows: [{ rai_mean_20: 0.03 }] };
+      }
+      if (sql.includes('FROM horsai_user_conviction_policy')) {
+        return { rows: [{ confidence_threshold: 0.75 }] };
+      }
+      if (sql.includes('INSERT INTO horsai_user_conviction_policy')) {
+        return { rows: [{ user_id: 'u1', confidence_threshold: 0.75 }] };
+      }
+      return { rows: [] };
+    });
+
+    const service = createHorsaiDailyService({ query, logger: { warn: jest.fn() } });
+    const out = await service.runGlobalDaily();
+
+    expect(out.outcomesEvaluated).toBe(1);
+    expect(out.convictionUpdated).toBe(1);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO horsai_signal_outcomes'), expect.any(Array));
+  });
 });
