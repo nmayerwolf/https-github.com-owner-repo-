@@ -94,6 +94,12 @@ VITE_REALTIME_ENABLED=false
 8. Realtime desactivado para MVP strict (`REALTIME_ENABLED=false`).
 9. `/api/health` y `/api/health/cron` OK.
 
+Comando rápido (opcional):
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+JWT_TOKEN=<bearer> ADMIN_JOB_TOKEN=<admin-token> ./scripts/mvp_prod_smoke.sh https://api.horsai.app
+```
+
 ## 7. Seguridad mínima obligatoria
 - Nunca commitear `.env`.
 - `JWT_SECRET`/`CSRF_SECRET` aleatorios.
