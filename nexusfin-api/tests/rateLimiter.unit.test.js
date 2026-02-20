@@ -1,4 +1,4 @@
-const { keyFromUserOrIp } = require('../src/middleware/rateLimiter');
+const { keyFromUserOrIp, adminJobsLimiter } = require('../src/middleware/rateLimiter');
 
 describe('rateLimiter helpers', () => {
   test('uses user id key when authenticated user exists', () => {
@@ -9,5 +9,9 @@ describe('rateLimiter helpers', () => {
   test('falls back to ip key when user is missing', () => {
     const key = keyFromUserOrIp({ ip: '10.0.0.1' });
     expect(key).toBe('ip:10.0.0.1');
+  });
+
+  test('exposes admin jobs limiter middleware', () => {
+    expect(typeof adminJobsLimiter).toBe('function');
   });
 });

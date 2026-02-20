@@ -1,4 +1,5 @@
 const rateLimit = require('express-rate-limit');
+const { env } = require('../config/env');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -22,4 +23,12 @@ const marketLimiter = rateLimit({
   keyGenerator: keyFromUserOrIp
 });
 
-module.exports = { authLimiter, marketLimiter, keyFromUserOrIp };
+const adminJobsLimiter = rateLimit({
+  windowMs: env.adminJobsRateLimitWindowMs,
+  max: env.adminJobsRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyFromUserOrIp
+});
+
+module.exports = { authLimiter, marketLimiter, adminJobsLimiter, keyFromUserOrIp };
