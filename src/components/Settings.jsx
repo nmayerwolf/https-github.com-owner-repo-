@@ -10,6 +10,7 @@ const hasStrongPasswordShape = (value) => value.length >= 8 && /[a-zA-Z]/.test(v
 const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
 const CAPITAL_STYLE_KEY = 'horsai_capital_style_v1';
 const CAPITAL_STYLE_OPTIONS = ['defensive', 'balanced', 'strategic_aggressive', 'opportunistic', 'alpha_hunter'];
+const SHOW_ACCOUNT_NOTIFICATIONS_SECURITY = false;
 
 const readInitialCapitalStyle = () => {
   try {
@@ -172,6 +173,10 @@ const Settings = () => {
     quietHoursEnd: ''
   });
   useEffect(() => {
+    if (!SHOW_ACCOUNT_NOTIFICATIONS_SECURITY) {
+      setNotifLoading(false);
+      return;
+    }
     let mounted = true;
 
     const load = async () => {
@@ -311,7 +316,7 @@ const Settings = () => {
         <p className="muted">{t.subtitle}</p>
       </section>
 
-      {!isAccountUser ? (
+      {SHOW_ACCOUNT_NOTIFICATIONS_SECURITY && !isAccountUser ? (
         <div className="card" id="account">
           <h2>{t.account}</h2>
           <p className="muted" style={{ marginTop: 6 }}>
@@ -358,7 +363,7 @@ const Settings = () => {
         </div>
       </div>
 
-      {!isAccountUser ? (
+      {SHOW_ACCOUNT_NOTIFICATIONS_SECURITY && !isAccountUser ? (
         <>
           <div className="card" id="notifications">
             <h2>{t.notifications}</h2>

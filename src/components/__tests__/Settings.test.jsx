@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiMock, appCtxMock, subscribeBrowserPushMock, themeCtxMock } = vi.hoisted(() => ({
+const { apiMock, appCtxMock, subscribeBrowserPushMock, themeCtxMock, languageCtxMock } = vi.hoisted(() => ({
   apiMock: {
     resetPassword: vi.fn(),
     getNotificationPreferences: vi.fn(),
@@ -30,6 +30,11 @@ const { apiMock, appCtxMock, subscribeBrowserPushMock, themeCtxMock } = vi.hoist
   themeCtxMock: {
     theme: 'dark',
     setTheme: vi.fn()
+  },
+  languageCtxMock: {
+    language: 'es',
+    isSpanish: true,
+    setLanguage: vi.fn()
   }
 }));
 
@@ -49,6 +54,10 @@ vi.mock('../../store/ThemeContext', () => ({
   useTheme: () => themeCtxMock
 }));
 
+vi.mock('../../store/LanguageContext', () => ({
+  useLanguage: () => languageCtxMock
+}));
+
 import Settings from '../Settings';
 
 afterEach(() => {
@@ -65,6 +74,7 @@ describe('Settings', () => {
     appCtxMock.actions.setConfig.mockReset();
     subscribeBrowserPushMock.mockReset();
     themeCtxMock.setTheme.mockReset();
+    languageCtxMock.setLanguage.mockReset();
 
     apiMock.getNotificationPreferences.mockResolvedValue({
       stopLoss: true,
@@ -82,85 +92,28 @@ describe('Settings', () => {
     apiMock.resetNewsTelemetry.mockResolvedValue({ ok: true });
   });
 
-  it('switches theme to light', async () => {
+  it('hides Account, Notifications and Security sections', async () => {
     render(<Settings />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claro' }));
-
-    expect(themeCtxMock.setTheme).toHaveBeenCalledWith('light');
+    expect(screen.queryByRole('heading', { name: 'Cuenta' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Notificaciones' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Seguridad' })).toBeNull();
   });
 
-  it('updates password successfully', async () => {
-    apiMock.resetPassword.mockResolvedValueOnce({ ok: true });
-
+  it('switches language to English', async () => {
     render(<Settings />);
 
-    fireEvent.change(screen.getByLabelText('Contraseña actual'), { target: { value: 'abc12345' } });
-    fireEvent.change(screen.getByLabelText('Nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.change(screen.getByLabelText('Confirmar nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }));
-
-    expect(apiMock.resetPassword).toHaveBeenCalledWith('abc12345', 'newpass123');
-    expect(await screen.findByText('Contraseña actualizada correctamente.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Inglés' }));
+    expect(languageCtxMock.setLanguage).toHaveBeenCalledWith('en');
   });
 
-  it('validates password confirmation before calling api', async () => {
+  it('updates capital style in config', async () => {
     render(<Settings />);
 
-    fireEvent.change(screen.getByLabelText('Contraseña actual'), { target: { value: 'abc12345' } });
-    fireEvent.change(screen.getByLabelText('Nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.change(screen.getByLabelText('Confirmar nueva contraseña'), { target: { value: 'different123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }));
-
-    expect(apiMock.resetPassword).not.toHaveBeenCalled();
-    expect(await screen.findByText('La nueva contraseña y su confirmación no coinciden.')).toBeTruthy();
-  });
-
-  it('maps INVALID_CURRENT_PASSWORD from backend', async () => {
-    apiMock.resetPassword.mockRejectedValueOnce({ error: 'INVALID_CURRENT_PASSWORD' });
-
-    render(<Settings />);
-
-    fireEvent.change(screen.getByLabelText('Contraseña actual'), { target: { value: 'wrong' } });
-    fireEvent.change(screen.getByLabelText('Nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.change(screen.getByLabelText('Confirmar nueva contraseña'), { target: { value: 'newpass123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }));
-
-    expect(await screen.findByText('La contraseña actual es incorrecta.')).toBeTruthy();
-  });
-
-  it('saves notification preferences', async () => {
-    apiMock.updateNotificationPreferences.mockResolvedValueOnce({
-      stopLoss: false,
-      opportunities: true,
-      groupActivity: true,
-      quietHoursStart: '23:00',
-      quietHoursEnd: '08:00'
+    fireEvent.click(screen.getByRole('button', { name: 'Defensivo' }));
+    expect(appCtxMock.actions.setConfig).toHaveBeenCalled();
+    expect(appCtxMock.actions.setConfig.mock.calls[0][0]).toMatchObject({
+      capitalStyle: 'defensive'
     });
-
-    render(<Settings />);
-
-    await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
-
-    fireEvent.click(screen.getByLabelText(/Límite de pérdida/));
-    fireEvent.change(screen.getByLabelText(/Silencio desde/), { target: { value: '23:00' } });
-    fireEvent.change(screen.getByLabelText(/Silencio hasta/), { target: { value: '08:00' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar preferencias' }));
-
-    await waitFor(() => expect(apiMock.updateNotificationPreferences).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('Preferencias de notificación guardadas.')).toBeTruthy();
-  });
-
-  it('activates browser push from settings', async () => {
-    subscribeBrowserPushMock.mockResolvedValueOnce({ ok: true });
-
-    render(<Settings />);
-
-    await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Activar notificaciones' }));
-
-    await waitFor(() => expect(subscribeBrowserPushMock).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('Notificaciones activadas.')).toBeTruthy();
   });
 });
