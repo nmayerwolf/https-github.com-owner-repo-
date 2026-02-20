@@ -63,6 +63,16 @@ const splitWhy = (text = '') =>
     .filter(Boolean)
     .slice(0, 2);
 
+const toImpactMeta = (value = '') => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return { level: 'medium', topic: 'market' };
+  const [levelPart, topicPart] = raw.split(':');
+  return {
+    level: levelPart === 'high' || levelPart === 'low' ? levelPart : 'medium',
+    topic: topicPart || (levelPart === 'high' || levelPart === 'low' ? 'market' : levelPart) || 'market'
+  };
+};
+
 const toUnixSeconds = (value) => {
   const numeric = Number(value);
   if (Number.isFinite(numeric) && numeric > 0) return numeric > 1e12 ? Math.floor(numeric / 1000) : Math.floor(numeric);
@@ -127,24 +137,24 @@ const Brief = () => {
   const t = isSpanish
     ? {
         title: 'Tu resumen de hoy',
-        subtitle: 'Impulsando decisiones de mercado',
-        normalMode: 'Modo normal',
-        crisisMode: 'Modo crisis',
         updated: 'Actualizado',
-        changed: 'Qué cambió',
-        doToday: 'Qué haría hoy',
+        marketMovers: 'Movimientos del mercado',
+        waitingMarketData: 'Esperando datos del mercado...',
+        noQuoteYet: 'Sin datos',
+        noQuoteCompact: '–',
+        ideaOfDay: 'Idea del día',
         action: 'ACCIÓN',
         invalidation: 'Disparador de invalidación',
-        viewAnalysis: 'Ver análisis',
+        viewAnalysis: 'Ver análisis completo',
         watchlistTriggers: 'Lista de seguimiento y disparadores',
         noWatchlist: 'Todavía no hay símbolos en la lista de seguimiento.',
         highImpactNews: 'Noticias de alto impacto',
         loadingNews: 'Cargando noticias de alto impacto...',
         marketHeadline: 'Titular de mercado',
         whyItMatters: 'Por qué importa',
-        related: 'Activo/tema relacionado',
-        openSource: 'Abrir fuente',
-        history: 'Historial de resúmenes',
+        related: 'Relacionado',
+        openSource: 'Ver fuente',
+        history: 'Historial',
         all: 'Todos',
         normal: 'Normal',
         crisis: 'Crisis',
@@ -169,6 +179,16 @@ const Brief = () => {
         noPrevious: 'No hay brief previo para comparar.',
         changedLabel: 'Qué cambió',
         doLabel: 'Qué haría',
+        favorable: 'Favorable',
+        defensive: 'Defensivo',
+        calm: 'Calma',
+        rising: 'En aumento',
+        highUncertainty: 'Alta incertidumbre',
+        confidenceHigh: 'Alta',
+        confidenceMedium: 'Moderada',
+        confidenceLow: 'Limitada',
+        highImpact: 'Alto impacto',
+        mediumImpact: 'Impacto medio',
         riskOn: 'Riesgo activo',
         riskOff: 'Riesgo defensivo',
         mixed: 'Mixto',
@@ -176,24 +196,24 @@ const Brief = () => {
       }
     : {
         title: 'Your daily brief',
-        subtitle: 'Boosting market decisions',
-        normalMode: 'Normal mode',
-        crisisMode: 'Crisis mode',
         updated: 'Updated',
-        changed: 'What changed',
-        doToday: 'What I would do today',
+        marketMovers: 'Market Movers',
+        waitingMarketData: 'Waiting for market data...',
+        noQuoteYet: 'No quote',
+        noQuoteCompact: '–',
+        ideaOfDay: 'Idea of the day',
         action: 'ACTION',
         invalidation: 'Invalidation trigger',
-        viewAnalysis: 'View analysis',
+        viewAnalysis: 'View full analysis',
         watchlistTriggers: 'Watchlist & Triggers',
         noWatchlist: 'No watchlist symbols yet.',
         highImpactNews: 'High Impact News',
         loadingNews: 'Loading high-impact news...',
         marketHeadline: 'Market headline',
         whyItMatters: 'Why it matters',
-        related: 'Related asset/theme',
-        openSource: 'Open Source',
-        history: 'Brief history',
+        related: 'Related',
+        openSource: 'Read more',
+        history: 'History',
         all: 'All',
         normal: 'Normal',
         crisis: 'Crisis',
@@ -218,12 +238,21 @@ const Brief = () => {
         noPrevious: 'No previous brief to compare.',
         changedLabel: 'What changed',
         doLabel: 'What I would do',
+        favorable: 'Favorable',
+        defensive: 'Defensive',
+        calm: 'Calm',
+        rising: 'Rising',
+        highUncertainty: 'High uncertainty',
+        confidenceHigh: 'High',
+        confidenceMedium: 'Moderate',
+        confidenceLow: 'Limited',
+        highImpact: 'High impact',
+        mediumImpact: 'Medium impact',
         riskOn: 'Risk On',
         riskOff: 'Risk Off',
         mixed: 'Mixed',
         syncLocale: 'en-US'
       };
-  const [mode, setMode] = useState('normal');
   const [newsItems, setNewsItems] = useState([]);
   const [newsError, setNewsError] = useState('');
   const [briefHistory, setBriefHistory] = useState(() => loadBriefHistory());
@@ -238,31 +267,35 @@ const Brief = () => {
 
   const changed = useMemo(() => {
     const rows = (state.assets || [])
-      .filter((asset) => Number.isFinite(Number(asset.changePercent)))
+      .filter((asset) => {
+        const change = Number(asset.changePercent);
+        return Number.isFinite(change) && Math.abs(change) > 0;
+      })
       .map((asset) => ({ ...asset, absChange: Math.abs(Number(asset.changePercent || 0)) }))
       .sort((a, b) => b.absChange - a.absChange)
       .slice(0, 6)
       .map((asset) => {
         const tag = CHANGE_TAG_BY_CATEGORY[String(asset.category || '').toLowerCase()] || 'Macro';
         const raw = Number(asset.changePercent || 0);
-        const direction = raw >= 0 ? (isSpanish ? 'alcista' : 'rising') : isSpanish ? 'debilitándose' : 'weakening';
-        const confidenceScore = Math.min(0.9, 0.45 + Math.min(0.4, Math.abs(raw) / 6));
+        const confidenceScore = Math.min(0.9, 0.42 + Math.min(0.45, Math.abs(raw) / 5));
         return {
           id: asset.symbol,
           tag,
-          text: `${asset.symbol} ${isSpanish ? 'impulso' : 'momentum'} ${direction} (${formatPct(raw)})`,
+          symbol: asset.symbol,
+          change: raw,
+          price: Number(asset.price),
           confidenceScore,
           confidence: scoreToConfidence(confidenceScore, isSpanish)
         };
       });
-
-    if (rows.length) return rows;
-    return [
-      { id: 'fallback-1', tag: 'Macro', text: isSpanish ? 'Sube la volatilidad en acciones de EE.UU.' : 'Volatility rising in US equities', confidenceScore: 0.58, confidence: 'Medium' },
-      { id: 'fallback-2', tag: 'Rates', text: isSpanish ? 'Se endurece la liquidez en tasas cortas.' : 'Liquidity tightening in short-term rates', confidenceScore: 0.54, confidence: 'Low' },
-      { id: 'fallback-3', tag: 'Crypto', text: isSpanish ? 'BTC pierde impulso.' : 'BTC momentum weakening', confidenceScore: 0.64, confidence: 'Medium' }
-    ];
+    return rows;
   }, [state.assets, isSpanish]);
+
+  const showCategoryInMovers = useMemo(() => new Set(changed.map((item) => item.tag)).size > 1, [changed]);
+  const moversMaxAbs = useMemo(
+    () => changed.reduce((max, item) => Math.max(max, Math.abs(Number(item.change || 0))), 0),
+    [changed]
+  );
 
   const actions = useMemo(() => {
     const cards = (state.alerts || [])
@@ -390,6 +423,30 @@ const Brief = () => {
     if (breadth <= 44 && avg < -0.2) return t.riskOff;
     return t.mixed;
   }, [state.assets, t.riskOn, t.riskOff, t.mixed]);
+  const regimeState = useMemo(() => {
+    const rows = (state.assets || []).filter((asset) => Number.isFinite(Number(asset.changePercent)));
+    const avg = rows.length ? rows.reduce((acc, asset) => acc + Number(asset.changePercent || 0), 0) / rows.length : 0;
+    if (avg >= 0.28) return 'favorable';
+    if (avg <= -0.28) return 'defensive';
+    return 'mixed';
+  }, [state.assets]);
+  const volatilityState = useMemo(() => {
+    const rows = (state.assets || []).filter((asset) => Number.isFinite(Number(asset.changePercent)));
+    const absAvg = rows.length ? rows.reduce((acc, asset) => acc + Math.abs(Number(asset.changePercent || 0)), 0) / rows.length : 0;
+    if (absAvg >= 1.8) return 'high';
+    if (absAvg >= 0.9) return 'rising';
+    return 'calm';
+  }, [state.assets]);
+  const confidenceState = useMemo(() => {
+    const avg = actions.length ? actions.reduce((acc, item) => acc + (CONFIDENCE_WEIGHT[String(item.confidence || '').toLowerCase()] || 0.5), 0) / actions.length : 0.5;
+    if (avg >= 0.75) return 'high';
+    if (avg >= 0.58) return 'medium';
+    return 'low';
+  }, [actions]);
+  const mode = regimeState === 'defensive' || volatilityState === 'high' ? 'crisis' : 'normal';
+  const regimeToneLabel = regimeState === 'favorable' ? t.favorable : regimeState === 'defensive' ? t.defensive : t.mixed;
+  const volatilityLabel = volatilityState === 'calm' ? t.calm : volatilityState === 'rising' ? t.rising : t.highUncertainty;
+  const confidenceLabel = confidenceState === 'high' ? t.confidenceHigh : confidenceState === 'medium' ? t.confidenceMedium : t.confidenceLow;
 
   useEffect(() => {
     const dateKey = new Date().toISOString().slice(0, 10);
@@ -399,8 +456,8 @@ const Brief = () => {
       mode,
       regime: currentRegime,
       createdAt: new Date().toISOString(),
-      changed: changed.slice(0, 3).map((item) => item.text),
-      actions: actions.slice(0, 3).map((item) => `ACTION ${item.action} ${item.asset} · ${item.confidence}`),
+      changed: changed.slice(0, 3).map((item) => `${item.symbol} ${formatPct(item.change)}`),
+      actions: actions.slice(0, 3).map((item) => `${item.action} ${item.asset} · ${item.confidence}`),
       triggers: triggers.slice(0, 3),
       headlines: newsItems.slice(0, 3).map((item) => item.headline || 'Market headline')
     };
@@ -453,43 +510,40 @@ const Brief = () => {
         <div className="row" style={{ alignItems: 'flex-start' }}>
           <div>
             <h2 className="screen-title">{t.title}</h2>
-            <div className="muted">{t.subtitle}</div>
           </div>
-          <div className="brief-mode-toggle" role="tablist" aria-label="Mode">
-            <button
-              type="button"
-              className={`brief-mode-btn ${mode === 'normal' ? 'is-active' : ''}`}
-              onClick={() => setMode('normal')}
-            >
-              {t.normalMode}
-            </button>
-            <button
-              type="button"
-              className={`brief-mode-btn ${mode === 'crisis' ? 'is-active is-crisis' : ''}`}
-              onClick={() => setMode('crisis')}
-            >
-              {t.crisisMode}
-            </button>
-          </div>
+        </div>
+        <div className="brief-regime-pills">
+          <span className={`brief-regime-pill ${regimeState === 'favorable' ? 'positive' : regimeState === 'defensive' ? 'negative' : 'warning'}`}>{regimeToneLabel}</span>
+          <span className={`brief-regime-pill ${volatilityState === 'calm' ? 'positive' : volatilityState === 'rising' ? 'warning' : 'negative'}`}>{volatilityLabel}</span>
+          <span className={`brief-regime-pill ${confidenceState === 'high' ? 'positive' : confidenceState === 'medium' ? 'warning' : 'negative'}`}>{confidenceLabel}</span>
         </div>
         <div className="muted" style={{ marginTop: 8 }}>{t.updated}: {updatedLabel}</div>
       </section>
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">{t.changed}</h3>
+          <h3 className="section-title">{t.marketMovers}</h3>
           <span className="badge">{changed.length}/6</span>
         </div>
         <div className="grid" style={{ marginTop: 8 }}>
+          {!changed.length ? <div className="muted">{t.waitingMarketData}</div> : null}
           {changed.slice(0, 6).map((item) => (
             <article key={item.id} className="brief-change-row">
-              <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
-                <span className="badge">{item.tag}</span>
-                <div className="brief-confidence-mini" aria-label={`Confidence ${item.confidence}`}>
-                  <span style={{ width: `${Math.round(item.confidenceScore * 100)}%` }} />
-                </div>
+              <div className="row">
+                <strong className="brief-mover-symbol mono">{item.symbol}</strong>
+                <span className={`brief-mover-change mono ${item.change >= 0 ? 'up' : 'down'}`}>{formatPct(item.change)}</span>
               </div>
-              <div>{item.text}</div>
+              <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+                <span className="muted mono">{Number.isFinite(item.price) && item.price > 0 ? formatUSD(item.price) : t.noQuoteYet}</span>
+                {showCategoryInMovers ? <span className="badge">{item.tag}</span> : null}
+              </div>
+              <div className="brief-mover-bar" aria-label={`Confidence ${item.confidence}`}>
+                <span
+                  style={{
+                    width: `${Math.round(((Math.abs(item.change) || 0) / Math.max(moversMaxAbs, 0.01)) * 100)}%`
+                  }}
+                />
+              </div>
             </article>
           ))}
         </div>
@@ -497,19 +551,19 @@ const Brief = () => {
 
       <section className="card">
         <div className="section-header-inline">
-          <h3 className="section-title">{t.doToday}</h3>
-          <span className="badge">{actions.length}/5</span>
+          <h3 className="section-title">{t.ideaOfDay}</h3>
+          <span className="badge">1/1</span>
         </div>
         <div className="grid" style={{ marginTop: 8 }}>
-          {actions.slice(0, 5).map((card) => (
-            <article key={card.id} className="brief-action-card">
+          {actions.slice(0, 1).map((card) => (
+            <article key={card.id} className={`brief-action-card action-${String(card.action || '').toLowerCase()}`}>
               <div className="row">
-                <strong>
-                  {t.action}: {actionLabel(card.action, isSpanish)} {card.asset}
-                </strong>
+                <strong className="brief-action-head mono">{actionLabel(card.action, isSpanish)} {card.asset}</strong>
                 <div className="row" style={{ gap: 6 }}>
-                  <span className="badge">{card.confidence}</span>
-                  <span className="badge">{card.horizon}</span>
+                  <span className={`brief-tone-pill ${String(card.confidence || '').toLowerCase() === 'high' ? 'positive' : String(card.confidence || '').toLowerCase() === 'low' ? 'negative' : 'warning'}`}>
+                    {card.confidence}
+                  </span>
+                  <span className="brief-tone-pill neutral">{card.horizon}</span>
                 </div>
               </div>
               <ul className="brief-why-list">
@@ -520,9 +574,7 @@ const Brief = () => {
               <div className="brief-invalidation">
                 <strong>{t.invalidation}:</strong> {card.invalidation}
               </div>
-              <button type="button" onClick={() => navigate('/agent')}>
-                {t.viewAnalysis}
-              </button>
+              <button type="button" className="inline-link-btn brief-link-btn" onClick={() => navigate('/agent')}>{t.viewAnalysis} {'\u2192'}</button>
             </article>
           ))}
         </div>
@@ -538,8 +590,10 @@ const Brief = () => {
               watchlist.map((item) => (
                 <article key={item.symbol} className="brief-watch-item">
                   <strong>{item.symbol}</strong>
-                  <div className="muted">{Number.isFinite(item.price) ? formatUSD(item.price) : '-'}</div>
-                  <div className={`mono ${Number(item.change || 0) >= 0 ? 'up' : 'down'}`}>{formatPct(item.change || 0)}</div>
+                  <div className="muted mono">{Number.isFinite(item.price) && item.price > 0 ? formatUSD(item.price) : t.noQuoteCompact}</div>
+                  <div className={`mono ${Number.isFinite(item.change) && item.change !== 0 ? (Number(item.change || 0) >= 0 ? 'up' : 'down') : ''}`}>
+                    {Number.isFinite(item.change) && item.change !== 0 ? formatPct(item.change || 0) : t.noQuoteCompact}
+                  </div>
                 </article>
               ))
             ) : (
@@ -565,21 +619,27 @@ const Brief = () => {
         <div className="grid" style={{ marginTop: 8 }}>
           {!newsItems.length && !newsError ? <div className="muted">{t.loadingNews}</div> : null}
           {newsItems.slice(0, 5).map((item) => (
-            <article key={item.id || item.url} className="brief-news-item">
-              <div className="row">
-                <strong>{item.headline || t.marketHeadline}</strong>
-                <span className="muted">{timeAgo(item.datetime, isSpanish)}</span>
-              </div>
-              <div className="muted">
-                {t.whyItMatters}: {item.aiReasons?.[0] || item.summary || (isSpanish ? 'Posible impacto de repricing cross-asset.' : 'Potential cross-asset repricing impact.')}
-              </div>
-              <div className="muted">
-                {t.related}: {item.related || item.aiTheme || (isSpanish ? 'Macro global' : 'Global macro')}
-              </div>
+            <article key={item.id || item.url} className={`brief-news-item ${toImpactMeta(item.aiReasons?.[0]).level === 'high' ? 'impact-high' : 'impact-medium'}`}>
+              {(() => {
+                const impact = toImpactMeta(item.aiReasons?.[0]);
+                return (
+                  <>
+                    <div className="row">
+                      <strong className="brief-news-headline">{item.headline || t.marketHeadline}</strong>
+                      <span className="muted mono brief-news-time">{timeAgo(item.datetime, isSpanish)}</span>
+                    </div>
+                    <div className="brief-news-tags">
+                      <span className={`brief-tone-pill ${impact.level === 'high' ? 'negative' : 'warning'}`}>
+                        {impact.level === 'high' ? t.highImpact : t.mediumImpact}
+                      </span>
+                      <span className="brief-tone-pill neutral">{impact.topic}</span>
+                      <span className="brief-tone-pill neutral">{item.related || item.aiTheme || (isSpanish ? 'Macro global' : 'Global macro')}</span>
+                    </div>
+                  </>
+                );
+              })()}
               {item.url ? (
-                <button type="button" onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}>
-                  {t.openSource}
-                </button>
+                <button type="button" className="inline-link-btn brief-link-btn" onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}>{t.openSource} {'\u2192'}</button>
               ) : null}
             </article>
           ))}
@@ -614,19 +674,19 @@ const Brief = () => {
           {visibleHistory.map((item) => (
             <article key={item.id} className="brief-history-item">
               <div className="row">
-                <strong>{item.dateKey}</strong>
+                <strong>{new Date(item.createdAt || item.dateKey).toLocaleDateString(t.syncLocale, { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
                 <div className="row" style={{ gap: 6 }}>
-                  <span className="badge">{item.mode}</span>
-                  <button type="button" className="inline-link-btn" onClick={() => setSelectedHistoryId((prev) => (prev === item.id ? '' : item.id))}>
-                    {selectedHistoryId === item.id ? t.hide : t.view}
+                  <span className={`brief-tone-pill ${String(item.regime || '').toLowerCase().includes('risk') && String(item.regime || '').toLowerCase().includes('off') ? 'negative' : String(item.regime || '').toLowerCase().includes('risk') && String(item.regime || '').toLowerCase().includes('on') ? 'positive' : 'warning'}`}>
+                    {item.regime || t.mixed}
+                  </span>
+                  <span className="brief-tone-pill neutral">{item.mode}</span>
+                  <button type="button" className="inline-link-btn brief-link-btn" onClick={() => setSelectedHistoryId((prev) => (prev === item.id ? '' : item.id))}>
+                    {selectedHistoryId === item.id ? t.hide : '->'}
                   </button>
                 </div>
               </div>
-              <div className="row" style={{ justifyContent: 'flex-start', gap: 6 }}>
-                <span className="badge">{item.regime || t.mixed}</span>
-              </div>
               <div className="muted">
-                {item.actions?.[0] || t.noActions}
+                {String(item.actions?.[0] || t.noActions).replace(/^ACTION\s+/i, '')}
               </div>
             </article>
           ))}

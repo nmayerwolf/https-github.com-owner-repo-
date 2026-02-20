@@ -2002,60 +2002,104 @@ a:focus-visible {
   background: linear-gradient(145deg, rgba(96, 165, 250, 0.12), rgba(10, 14, 23, 0.6));
 }
 
-.brief-mode-toggle {
-  display: inline-flex;
-  gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 3px;
+.brief-regime-pills {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.brief-mode-btn {
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 0.72rem;
-  border-color: transparent;
+.brief-regime-pill,
+.brief-tone-pill {
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 5px 9px;
 }
 
-.brief-mode-btn.is-active {
-  background: rgba(96, 165, 250, 0.18);
-  border-color: rgba(96, 165, 250, 0.38);
+.brief-regime-pill.positive,
+.brief-tone-pill.positive {
+  background: rgba(0, 220, 130, 0.12);
+  color: #00dc82;
 }
 
-.brief-mode-btn.is-active.is-crisis {
-  background: rgba(255, 71, 87, 0.18);
-  border-color: rgba(255, 71, 87, 0.42);
+.brief-regime-pill.warning,
+.brief-tone-pill.warning {
+  background: rgba(255, 184, 0, 0.12);
+  color: #ffb800;
+}
+
+.brief-regime-pill.negative,
+.brief-tone-pill.negative {
+  background: rgba(255, 71, 87, 0.12);
+  color: #ff7180;
+}
+
+.brief-tone-pill.neutral {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-secondary);
 }
 
 .brief-change-row {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
+  border-radius: 12px;
+  padding: 12px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.01);
 }
 
-.brief-confidence-mini {
-  width: 52px;
-  height: 6px;
+.brief-mover-symbol {
+  font-size: 0.88rem;
+  letter-spacing: 0.03em;
+}
+
+.brief-mover-change {
+  font-size: 0.8rem;
+}
+
+.brief-mover-bar {
+  width: 100%;
+  height: 3px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
 
-.brief-confidence-mini span {
+.brief-mover-bar span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #fbbf24, #34d399);
+  background: linear-gradient(90deg, #3b82f6, #00dc82);
 }
 
 .brief-action-card {
   border: 1px solid var(--border);
-  border-radius: 11px;
-  padding: 10px;
+  border-left: 3px solid #3b82f6;
+  border-radius: 12px;
+  padding: 12px;
   display: grid;
-  gap: 7px;
+  gap: 8px;
+}
+
+.brief-action-card.action-sell,
+.brief-action-card.action-reduce {
+  border-left-color: #ff4757;
+}
+
+.brief-action-card.action-hold {
+  border-left-color: #3b82f6;
+}
+
+.brief-action-card.action-buy {
+  border-left-color: #00dc82;
+}
+
+.brief-action-head {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
 }
 
 .brief-why-list {
@@ -2068,11 +2112,12 @@ a:focus-visible {
 
 .brief-invalidation {
   font-size: 0.76rem;
-  color: #fecaca;
-  border: 1px solid rgba(255, 71, 87, 0.28);
+  color: #ffd2d8;
+  border: 1px solid rgba(255, 71, 87, 0.2);
+  border-left: 2px solid rgba(255, 71, 87, 0.55);
   border-radius: 8px;
-  padding: 7px;
-  background: rgba(255, 71, 87, 0.08);
+  padding: 8px;
+  background: rgba(255, 71, 87, 0.06);
 }
 
 .brief-watchlist-grid {
@@ -2083,10 +2128,11 @@ a:focus-visible {
 
 .brief-watch-item {
   border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 8px;
+  border-radius: 10px;
+  padding: 12px;
   display: grid;
-  gap: 4px;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.01);
 }
 
 .brief-trigger-row {
@@ -2098,18 +2144,43 @@ a:focus-visible {
 
 .brief-news-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
+  border-left: 3px solid rgba(255, 184, 0, 0.7);
+  border-radius: 12px;
+  padding: 10px;
   display: grid;
+  gap: 8px;
+}
+
+.brief-news-item.impact-high {
+  border-left-color: rgba(255, 71, 87, 0.86);
+}
+
+.brief-news-headline {
+  font-size: 0.88rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.brief-news-time {
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.brief-news-tags {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .brief-history-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
+  border-radius: 12px;
+  padding: 10px;
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .brief-history-detail {
@@ -2126,6 +2197,12 @@ a:focus-visible {
   padding: 7px;
   font-size: 0.78rem;
   color: var(--text-secondary);
+}
+
+.brief-link-btn {
+  border: 0;
+  padding: 0;
+  color: #8cbfff;
 }
 
 /* Markets v2 */
