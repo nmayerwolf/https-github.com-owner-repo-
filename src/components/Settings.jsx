@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/apiClient';
 import { subscribeBrowserPush } from '../lib/notifications';
-import { getNewsCtrSummary, resetNewsCtrStats } from '../store/newsAnalyticsStore';
 import { useTheme } from '../store/ThemeContext';
 
 const hasStrongPasswordShape = (value) => value.length >= 8 && /[a-zA-Z]/.test(value) && /[0-9]/.test(value);
+const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
 
 const Settings = () => {
   const { theme, setTheme } = useTheme();
@@ -24,13 +24,10 @@ const Settings = () => {
   const [notif, setNotif] = useState({
     stopLoss: true,
     opportunities: true,
-    groupActivity: true,
+    regimeChanges: true,
     quietHoursStart: '',
     quietHoursEnd: ''
   });
-  const [newsCtr, setNewsCtr] = useState(() => getNewsCtrSummary({ days: 7 }));
-  const [newsCtrSource, setNewsCtrSource] = useState('local');
-
   useEffect(() => {
     let mounted = true;
 
@@ -41,7 +38,7 @@ const Settings = () => {
         setNotif({
           stopLoss: prefs.stopLoss ?? true,
           opportunities: prefs.opportunities ?? true,
-          groupActivity: prefs.groupActivity ?? true,
+          regimeChanges: prefs.groupActivity ?? true,
           quietHoursStart: prefs.quietHoursStart || '',
           quietHoursEnd: prefs.quietHoursEnd || ''
         });
@@ -55,31 +52,6 @@ const Settings = () => {
 
     load();
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadCtr = async () => {
-      try {
-        const out = await api.getNewsTelemetrySummary(7);
-        if (!mounted) return;
-        setNewsCtr({
-          impressions: Number(out?.impressions || 0),
-          clicks: Number(out?.clicks || 0),
-          ctr: Number(out?.ctr || 0),
-          byTheme: Array.isArray(out?.byTheme) ? out.byTheme : []
-        });
-        setNewsCtrSource('backend');
-      } catch {
-        if (!mounted) return;
-        setNewsCtr(getNewsCtrSummary({ days: 7 }));
-        setNewsCtrSource('local');
-      }
-    };
-    loadCtr();
     return () => {
       mounted = false;
     };
@@ -129,7 +101,7 @@ const Settings = () => {
       const updated = await api.updateNotificationPreferences({
         stopLoss: notif.stopLoss,
         opportunities: notif.opportunities,
-        groupActivity: notif.groupActivity,
+        groupActivity: notif.regimeChanges,
         quietHoursStart: notif.quietHoursStart || null,
         quietHoursEnd: notif.quietHoursEnd || null
       });
@@ -137,7 +109,7 @@ const Settings = () => {
       setNotif({
         stopLoss: updated.stopLoss,
         opportunities: updated.opportunities,
-        groupActivity: updated.groupActivity,
+        regimeChanges: updated.groupActivity,
         quietHoursStart: updated.quietHoursStart || '',
         quietHoursEnd: updated.quietHoursEnd || ''
       });
@@ -177,14 +149,14 @@ const Settings = () => {
   return (
     <div className="grid settings-page" style={{ gap: 12 }}>
       <section className="card">
-        <h2 className="screen-title" style={{ marginBottom: 0 }}>Your AI Agent</h2>
-        <p className="muted">Agent preferences, notifications and account security.</p>
+        <h2 className="screen-title" style={{ marginBottom: 0 }}>Settings</h2>
+        <p className="muted">Tu espacio de cuenta: simple, claro y orientado a decisiones.</p>
       </section>
 
       <div className="card">
         <h2>Cuenta</h2>
         <p className="muted" style={{ marginTop: 6 }}>
-          Ajustes de visualización y sesión.
+          Elegí el modo visual que mejor te acompañe en el día a día.
         </p>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
           <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>
@@ -199,7 +171,7 @@ const Settings = () => {
       <div className="card">
         <h2>Notificaciones</h2>
         <p className="muted" style={{ marginTop: 6 }}>
-          Configurá alertas push y franjas de silencio (UTC).
+          Configurá alertas clave y ventanas de silencio en tu horario local ({userTimezone}).
         </p>
 
         {notifLoading ? (
@@ -213,7 +185,7 @@ const Settings = () => {
                   checked={notif.stopLoss}
                   onChange={(e) => setNotif((p) => ({ ...p, stopLoss: e.target.checked }))}
                 />
-                <span className="muted">Stop loss</span>
+                <span className="muted">Stop loss / risk breach</span>
               </label>
               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
@@ -226,14 +198,14 @@ const Settings = () => {
               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="checkbox"
-                  checked={notif.groupActivity}
-                  onChange={(e) => setNotif((p) => ({ ...p, groupActivity: e.target.checked }))}
+                  checked={notif.regimeChanges}
+                  onChange={(e) => setNotif((p) => ({ ...p, regimeChanges: e.target.checked }))}
                 />
-                <span className="muted">Actividad de grupos</span>
+                <span className="muted">Cambios de régimen</span>
               </label>
               <div />
               <label className="label">
-                <span className="muted">Silencio desde (UTC)</span>
+                <span className="muted">Silencio desde ({userTimezone})</span>
                 <input
                   type="time"
                   value={notif.quietHoursStart}
@@ -241,7 +213,7 @@ const Settings = () => {
                 />
               </label>
               <label className="label">
-                <span className="muted">Silencio hasta (UTC)</span>
+                <span className="muted">Silencio hasta ({userTimezone})</span>
                 <input
                   type="time"
                   value={notif.quietHoursEnd}
@@ -263,70 +235,6 @@ const Settings = () => {
             {notifSuccess && <div className="card" style={{ borderColor: '#00E08E88', marginTop: 10 }}>{notifSuccess}</div>}
           </>
         )}
-      </div>
-
-      <div className="card">
-        <h2>Insights de noticias IA</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          CTR de noticias recomendadas por IA (últimos 7 días). Fuente: {newsCtrSource === 'backend' ? 'backend' : 'local'}.
-        </p>
-        <div className="grid grid-2" style={{ marginTop: 10 }}>
-          <div className="card">
-            <div className="muted">Impresiones</div>
-            <div className="ind-val mono perf-val">{Number(newsCtr.impressions || 0)}</div>
-          </div>
-          <div className="card">
-            <div className="muted">Clicks</div>
-            <div className="ind-val mono perf-val">{Number(newsCtr.clicks || 0)}</div>
-          </div>
-          <div className="card">
-            <div className="muted">CTR total</div>
-            <div className="ind-val mono perf-val">{Number(newsCtr.ctr || 0).toFixed(2)}%</div>
-          </div>
-          <div className="card">
-            <div className="muted">Temas medidos</div>
-            <div className="ind-val mono perf-val">{Array.isArray(newsCtr.byTheme) ? newsCtr.byTheme.length : 0}</div>
-          </div>
-        </div>
-        <div className="grid" style={{ marginTop: 10 }}>
-          {(newsCtr.byTheme || []).slice(0, 5).map((row) => (
-            <div key={row.theme} className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
-              <span className="muted">{String(row.theme || 'global')}</span>
-              <span className="mono muted">
-                imp {Number(row.impressions || 0)} · click {Number(row.clicks || 0)} · ctr {Number(row.ctr || 0).toFixed(2)}%
-              </span>
-            </div>
-          ))}
-          {!(newsCtr.byTheme || []).length ? <div className="muted">Todavía no hay interacciones suficientes.</div> : null}
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await api.resetNewsTelemetry();
-              } catch {
-                // noop
-              }
-              resetNewsCtrStats();
-              try {
-                const out = await api.getNewsTelemetrySummary(7);
-                setNewsCtr({
-                  impressions: Number(out?.impressions || 0),
-                  clicks: Number(out?.clicks || 0),
-                  ctr: Number(out?.ctr || 0),
-                  byTheme: Array.isArray(out?.byTheme) ? out.byTheme : []
-                });
-                setNewsCtrSource('backend');
-              } catch {
-                setNewsCtr(getNewsCtrSummary({ days: 7 }));
-                setNewsCtrSource('local');
-              }
-            }}
-          >
-            Resetear métricas de noticias
-          </button>
-        </div>
       </div>
 
       <div className="card">

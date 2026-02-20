@@ -126,10 +126,10 @@ const toVolatilityLabel = (volatilityRegime) =>
   volatilityRegime === 'crisis' ? 'High Uncertainty' : volatilityRegime === 'elevated' ? 'Increasing' : 'Calm';
 const toConfidenceLabel = (value) => {
   const n = Number(value);
-  if (!Number.isFinite(n)) return 'Limited';
-  if (n >= 0.75) return 'High';
-  if (n >= 0.55) return 'Moderate';
-  return 'Limited';
+  if (!Number.isFinite(n)) return 'baja (faltan señales)';
+  if (n >= 0.75) return 'alta';
+  if (n >= 0.55) return 'media';
+  return 'baja (faltan señales)';
 };
 
 const News = () => {

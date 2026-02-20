@@ -142,9 +142,9 @@ describe('Settings', () => {
 
     await waitFor(() => expect(apiMock.getNotificationPreferences).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByLabelText('Stop loss'));
-    fireEvent.change(screen.getByLabelText('Silencio desde (UTC)'), { target: { value: '23:00' } });
-    fireEvent.change(screen.getByLabelText('Silencio hasta (UTC)'), { target: { value: '08:00' } });
+    fireEvent.click(screen.getByLabelText(/Stop loss/));
+    fireEvent.change(screen.getByLabelText(/Silencio desde/), { target: { value: '23:00' } });
+    fireEvent.change(screen.getByLabelText(/Silencio hasta/), { target: { value: '08:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar preferencias' }));
 
     await waitFor(() => expect(apiMock.updateNotificationPreferences).toHaveBeenCalledTimes(1));

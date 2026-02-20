@@ -46,9 +46,9 @@ vi.mock('../../store/AuthContext', () => ({
 }));
 
 vi.mock('../Navigation', () => ({ default: () => <div>Navigation</div> }));
-vi.mock('../Alerts', () => ({
+vi.mock('../Agent', () => ({
   default: () => {
-    throw new Error('alerts exploded');
+    throw new Error('agent exploded');
   }
 }));
 vi.mock('../Markets', () => ({ default: () => <div>Markets</div> }));
@@ -75,7 +75,7 @@ describe('App route error boundaries', () => {
     appCtxMock.actions.dismissUiError.mockReset();
   });
 
-  it('renders fallback when ideas module crashes', async () => {
+  it('renders fallback when agent module crashes', async () => {
     apiMock.health.mockResolvedValueOnce({ ok: true });
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -85,8 +85,8 @@ describe('App route error boundaries', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Error en Ideas')).toBeTruthy();
-    expect(await screen.findByText(/alerts exploded/i)).toBeTruthy();
+    expect(await screen.findByText('Error en Agent')).toBeTruthy();
+    expect(await screen.findByText(/agent exploded/i)).toBeTruthy();
     errSpy.mockRestore();
   });
 });

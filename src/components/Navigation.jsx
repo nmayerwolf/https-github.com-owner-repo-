@@ -3,25 +3,23 @@ import { NavLink } from 'react-router-dom';
 
 const links = [
   {
-    to: '/news',
-    label: 'News',
+    to: '/brief',
+    label: 'Resumen',
     icon: (
       <svg viewBox="0 0 24 24">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <path d="M7 8h10" />
-        <path d="M7 12h10" />
-        <path d="M7 16h6" />
+        <path d="M4 6h16" />
+        <path d="M4 12h16" />
+        <path d="M4 18h10" />
       </svg>
     )
   },
   {
-    to: '/ideas',
-    label: 'Ideas',
-    special: true,
+    to: '/markets',
+    label: 'Markets',
     icon: (
       <svg viewBox="0 0 24 24">
-        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
-        <path d="M12 3v18" />
+        <path d="M3 16l5-5 4 3 7-8" />
+        <path d="M17 6h2v2" />
       </svg>
     )
   },
@@ -36,8 +34,8 @@ const links = [
     )
   },
   {
-    to: '/settings',
-    label: 'Your AI Agent',
+    to: '/agent',
+    label: 'Agent',
     icon: (
       <svg viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="3" />

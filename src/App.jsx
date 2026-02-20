@@ -4,9 +4,9 @@ import { api } from './api/apiClient';
 import { subscribeBrowserPush } from './lib/notifications';
 import Navigation from './components/Navigation';
 import Markets from './components/Markets';
-import Alerts from './components/Alerts';
+import Agent from './components/Agent';
 import Portfolio from './components/Portfolio';
-import News from './components/News';
+import Brief from './components/Brief';
 import Settings from './components/Settings';
 import Screener from './components/Screener';
 import Groups from './components/Groups';
@@ -17,7 +17,6 @@ import AuthScreen from './components/AuthScreen';
 import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { useApp } from './store/AppContext';
 import { useAuth } from './store/AuthContext';
-import { MARKET_VISIBLE } from './config/features';
 
 const MIGRATION_DISMISSED_KEY = 'horsai_migration_prompt_dismissed_v1';
 const LEGACY_KEYS = {
@@ -623,6 +622,17 @@ const App = () => {
                   <button
                     type="button"
                     className="logout-btn"
+                    aria-label="Configuración"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate('/settings');
+                    }}
+                  >
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    className="logout-btn"
                     aria-label="Cerrar sesión"
                     onClick={() => {
                       setUserMenuOpen(false);
@@ -666,40 +676,41 @@ const App = () => {
       <Navigation />
       <main className="container">
         <Routes>
-          <Route path="/" element={<Navigate to="/news" replace />} />
+          <Route path="/" element={<Navigate to="/brief" replace />} />
           <Route
             path="/markets"
             element={
-              MARKET_VISIBLE ? (
-                <RouteBoundary moduleName="Mercados">
-                  <Markets />
-                </RouteBoundary>
-              ) : (
-                <Navigate to="/news" replace />
-              )
+              <RouteBoundary moduleName="Mercados">
+                <Markets />
+              </RouteBoundary>
             }
           />
           <Route
             path="/markets/:symbol"
             element={
-              MARKET_VISIBLE ? (
-                <RouteBoundary moduleName="Detalle de activo">
-                  <AssetDetail />
-                </RouteBoundary>
-              ) : (
-                <Navigate to="/news" replace />
-              )
-            }
-          />
-          <Route
-            path="/ideas"
-            element={
-              <RouteBoundary moduleName="Ideas">
-                <Alerts />
+              <RouteBoundary moduleName="Detalle de activo">
+                <AssetDetail />
               </RouteBoundary>
             }
           />
-          <Route path="/alerts" element={<Navigate to="/ideas" replace />} />
+          <Route
+            path="/brief"
+            element={
+              <RouteBoundary moduleName="Brief">
+                <Brief />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/agent"
+            element={
+              <RouteBoundary moduleName="Agent">
+                <Agent />
+              </RouteBoundary>
+            }
+          />
+          <Route path="/ideas" element={<Navigate to="/agent" replace />} />
+          <Route path="/alerts" element={<Navigate to="/agent" replace />} />
           <Route
             path="/portfolio"
             element={
@@ -711,9 +722,7 @@ const App = () => {
           <Route
             path="/news"
             element={
-              <RouteBoundary moduleName="News">
-                <News />
-              </RouteBoundary>
+              <Navigate to="/brief" replace />
             }
           />
           <Route
@@ -735,12 +744,12 @@ const App = () => {
           <Route
             path="/settings"
             element={
-              <RouteBoundary moduleName="Your AI Agent">
+              <RouteBoundary moduleName="Settings">
                 <Settings />
               </RouteBoundary>
             }
           />
-          <Route path="*" element={<Navigate to="/news" replace />} />
+          <Route path="*" element={<Navigate to="/brief" replace />} />
         </Routes>
       </main>
     </div>
