@@ -170,6 +170,11 @@ router.get('/google/callback', async (req, res) => {
     if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth: 'success', provider: 'google' }, token));
     return res.redirect(302, oauthRedirect({ oauth: 'success', provider: 'google', token }));
   } catch (error) {
+    if (String(error?.code || '') === 'GMAIL_ONLY') {
+      if (mobileRedirectUri) return res.redirect(302, oauthMobileRedirect(mobileRedirectUri, { oauth_error: 'gmail_only' }));
+      return res.redirect(302, oauthRedirect({ oauth_error: 'gmail_only' }));
+    }
+
     const oauthErrorDescription = String(error?.message || 'google_callback_failed').slice(0, 160);
     if (mobileRedirectUri) {
       return res.redirect(

@@ -24,6 +24,20 @@ const TAB_LABEL = {
   settings: 'Ajustes'
 };
 
+const OAUTH_ERROR_MAP = {
+  provider_disabled: 'Google OAuth no está disponible en este entorno.',
+  invalid_oauth_state: 'Sesión OAuth inválida. Reintentá el ingreso.',
+  google_callback_failed: 'No se pudo completar login con Google.',
+  gmail_only: 'Solo se permiten cuentas Gmail para ingresar.'
+};
+
+const formatOAuthError = (oauthError, oauthErrorDescription = '') => {
+  const normalized = String(oauthError || '').trim().toLowerCase();
+  const description = String(oauthErrorDescription || '').trim();
+  const base = OAUTH_ERROR_MAP[normalized] || 'Error de autenticación social.';
+  return description ? `${base} (${description})` : base;
+};
+
 const App = () => {
   const [booting, setBooting] = useState(true);
   const [authError, setAuthError] = useState('');
@@ -87,8 +101,9 @@ const App = () => {
         if (parsed.protocol !== 'nexusfin:' || parsed.hostname !== 'oauth') return;
 
         const oauthError = parsed.searchParams.get('oauth_error');
+        const oauthErrorDescription = parsed.searchParams.get('oauth_error_description');
         if (oauthError) {
-          setAuthError(`OAuth falló: ${oauthError}`);
+          setAuthError(formatOAuthError(oauthError, oauthErrorDescription));
           return;
         }
 

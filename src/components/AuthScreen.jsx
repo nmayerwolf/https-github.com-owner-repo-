@@ -9,6 +9,7 @@ const OAUTH_ERROR_MAP = {
   provider_disabled: 'Google OAuth no está configurado en backend.',
   invalid_oauth_state: 'Sesión OAuth inválida. Reintentá el ingreso.',
   google_callback_failed: 'No se pudo completar login con Google.',
+  gmail_only: 'Solo se permiten cuentas Gmail para ingresar.',
   oauth_email_required: 'No se pudo recuperar el email de tu cuenta Google.',
   invalid_client: 'El cliente OAuth de Google es inválido o no existe.',
   access_denied: 'Cancelaste el acceso con Google.',
