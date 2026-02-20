@@ -18,6 +18,7 @@ const { createAiAgent } = require('./services/aiAgent');
 const { createPushNotifier } = require('./services/push');
 const { createMacroRadar } = require('./services/macroRadar');
 const { createPortfolioAdvisor } = require('./services/portfolioAdvisor');
+const { createMvpDailyPipeline } = require('./services/mvpDailyPipeline');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -449,8 +450,10 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const aiAgent = createAiAgent();
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console });
   const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
+  const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
   app.locals.macroRadar = macroRadar;
   app.locals.portfolioAdvisor = portfolioAdvisor;
+  app.locals.mvpDailyPipeline = mvpDailyPipeline;
 
   const alertEngine = createAlertEngine({ query, finnhub, wsHub, pushNotifier, aiAgent, logger: console });
   const runMarketCycleWithOutcome = async (options) => {
@@ -474,7 +477,13 @@ const startHttpServer = ({ port = env.port } = {}) => {
     crypto: () => runMarketCycleWithOutcome({ categories: ['crypto'], includeStopLoss: false }),
     forex: () => runMarketCycleWithOutcome({ categories: ['fx'], includeStopLoss: false }),
     commodity: () => runMarketCycleWithOutcome({ categories: ['commodity', 'metal', 'bond'], includeStopLoss: false }),
-    macroDaily: () => macroRadar.runGlobalDaily(),
+    macroDaily: async () => {
+      const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
+      return {
+        generated: Number(macroOut?.generated || 0) + Number(mvpOut?.generated || 0),
+        mvp: mvpOut
+      };
+    },
     portfolioDaily: () => portfolioAdvisor.runGlobalDaily()
   });
   const logCronRun = async ({
