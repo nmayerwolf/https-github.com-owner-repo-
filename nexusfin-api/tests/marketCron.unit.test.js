@@ -29,9 +29,9 @@ describe('market cron scaffold', () => {
       'crisis-check',
       'recommendations-daily',
       'news-digest-daily',
+      'portfolio-snapshot-daily',
       'fundamentals-weekly',
-      'macro-daily',
-      'portfolio-daily'
+      'macro-daily'
     ]);
   });
 

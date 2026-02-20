@@ -19,10 +19,10 @@ const { createPushNotifier } = require('./services/push');
 const { createMacroRadar } = require('./services/macroRadar');
 const { createPortfolioAdvisor } = require('./services/portfolioAdvisor');
 const { createMvpDailyPipeline } = require('./services/mvpDailyPipeline');
-const { createPortfolioSnapshotsService } = require('./services/portfolioSnapshots');
 const { createNotificationPolicyService } = require('./services/notificationPolicy');
 const { createMarketIngestionService } = require('./services/marketIngestion');
 const { createHorsaiDailyService } = require('./services/horsaiDaily');
+const portfolioSnapshotDailyJob = require('./jobs/portfolioSnapshotDailyJob');
 
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolio');
@@ -265,7 +265,7 @@ app.get('/api/health/engines', async (_req, res, next) => {
          FROM job_runs
          WHERE status = 'success'
            AND job_name = ANY($1::text[])`,
-        [['market_snapshot_daily', 'metrics_daily', 'regime_daily', 'crisis_check']]
+        [['market_snapshot_daily', 'metrics_daily', 'regime_daily', 'crisis_check', 'portfolio_snapshot_daily']]
       )
     ]);
 
@@ -292,6 +292,9 @@ app.get('/api/health/engines', async (_req, res, next) => {
       crisis: {
         last_run: runByJob.get('crisis_check') || null,
         is_active: Boolean(latestCrisis.rows?.[0]?.is_active)
+      },
+      portfolio_snapshot: {
+        last_run: runByJob.get('portfolio_snapshot_daily') || null
       }
     });
   } catch (error) {
@@ -526,7 +529,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
   const marketIngestion = createMarketIngestionService({ query, logger: console });
   const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
-  const portfolioSnapshots = createPortfolioSnapshotsService({ query, logger: console });
+  const portfolioSnapshots = { runDaily: ({ date = null } = {}) => portfolioSnapshotDailyJob.run({ date }) };
   const notificationPolicy = createNotificationPolicyService({ query, pushNotifier, logger: console });
   const horsaiDaily = createHorsaiDailyService({ query, logger: console });
   app.locals.macroRadar = macroRadar;
@@ -630,7 +633,7 @@ const startHttpServer = ({ port = env.port } = {}) => {
         extraPortfolioRun
       };
     },
-    portfolioDaily: runPortfolioBatch
+    portfolioSnapshotDaily: () => portfolioSnapshots.runDaily()
   });
   const logCronRun = async ({
     event,

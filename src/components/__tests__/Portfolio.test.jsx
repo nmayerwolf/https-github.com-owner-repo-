@@ -7,7 +7,8 @@ const { apiMock, appCtxMock } = vi.hoisted(() => ({
   apiMock: {
     exportPortfolioCsv: vi.fn(),
     getPortfolioAdvice: vi.fn(),
-    refreshPortfolioAdvice: vi.fn()
+    refreshPortfolioAdvice: vi.fn(),
+    getPortfolioMetrics: vi.fn()
   },
   appCtxMock: {
     state: {
@@ -60,6 +61,7 @@ describe('Portfolio', () => {
     apiMock.exportPortfolioCsv.mockReset();
     apiMock.getPortfolioAdvice.mockReset();
     apiMock.refreshPortfolioAdvice.mockReset();
+    apiMock.getPortfolioMetrics.mockReset();
     appCtxMock.actions.addPosition.mockReset();
     appCtxMock.actions.sellPosition.mockReset();
     appCtxMock.actions.deletePosition.mockReset();
@@ -71,6 +73,13 @@ describe('Portfolio', () => {
     apiMock.exportPortfolioCsv.mockResolvedValue('Symbol,Name\nAAPL,Apple');
     apiMock.getPortfolioAdvice.mockResolvedValue({ advice: null, skipped: true, minimumPositions: 2 });
     apiMock.refreshPortfolioAdvice.mockResolvedValue({ advice: null, skipped: true, minimumPositions: 2 });
+    apiMock.getPortfolioMetrics.mockResolvedValue({
+      alignment_score: 72,
+      benchmark: { symbol: 'SPY', benchmark_pnl_pct: 1.25, portfolio_pnl_pct: 2.1, alpha: 0.85 },
+      exposure: { by_category: { equity: 62.5 }, by_sector: { Technology: 45.2 } },
+      concentration_top3_pct: 67.3,
+      ai_notes: ['note']
+    });
 
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:url'),
@@ -112,5 +121,12 @@ describe('Portfolio', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exportar CSV' }));
 
     expect(await screen.findByText('falló exportación')).toBeTruthy();
+  });
+
+  it('renders portfolio metrics widgets', async () => {
+    render(<Portfolio />);
+    expect(await screen.findByText('Performance vs SPY (20d)')).toBeTruthy();
+    expect(await screen.findByText('High Concentration')).toBeTruthy();
+    expect(apiMock.getPortfolioMetrics).toHaveBeenCalled();
   });
 });

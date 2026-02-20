@@ -104,6 +104,12 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
       run: runners.newsDigestDaily || (() => require('../jobs/newsDigestDailyJob').run())
     },
     {
+      name: 'portfolio-snapshot-daily',
+      schedule: '30 18 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.portfolioSnapshotDaily || (() => require('../jobs/portfolioSnapshotDailyJob').run())
+    },
+    {
       name: 'fundamentals-weekly',
       schedule: '0 18 * * 0',
       shouldRun: runIfRequestedDate,
@@ -114,12 +120,6 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
       schedule: String(config.cronMacroDailySchedule || '0 8 * * *'),
       shouldRun: runIfRequestedDate,
       run: runners.macroDaily || (async () => ({ generated: 0 }))
-    },
-    {
-      name: 'portfolio-daily',
-      schedule: String(config.cronPortfolioDailySchedule || '15 8 * * *'),
-      shouldRun: runIfRequestedDate,
-      run: runners.portfolioDaily || (async () => ({ generated: 0 }))
     }
   ];
 };
@@ -211,7 +211,7 @@ const startMarketCron = (options = {}) => {
           if (task.name === 'macro-daily') {
             status.macroRuns = Number(out?.generated || 0);
           }
-          if (task.name === 'portfolio-daily') {
+          if (task.name === 'portfolio-snapshot-daily') {
             status.portfolioRuns = Number(out?.generated || 0);
           }
           status.errors = [];

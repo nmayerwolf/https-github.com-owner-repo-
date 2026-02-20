@@ -9,6 +9,14 @@ const createEmptyForm = () => ({ symbol: '', name: '', category: 'equity', buyDa
 const emptySell = { id: '', symbol: '', sellPrice: '', sellDate: new Date().toISOString().slice(0, 10), sellQuantity: '', maxQuantity: 0 };
 const emptyRiskTargets = { id: '', symbol: '', stopLoss: '', takeProfit: '' };
 const allocColors = ['#3B82F6', '#00DC82', '#A78BFA', '#FFB800', '#F97316', '#22D3EE', '#EF4444', '#10B981'];
+const CATEGORY_BAR_COLORS = {
+  equity: '#3B82F6',
+  crypto: '#FFB800',
+  bond: '#00DC82',
+  commodity: '#A78BFA',
+  fx: '#8899AA',
+  other: '#8899AA'
+};
 const PORTFOLIO_PAGE_SIZE = 8;
 const normalizeSearchText = (value) =>
   String(value || '')
@@ -142,6 +150,9 @@ const Portfolio = () => {
   const [inviteError, setInviteError] = useState('');
   const [receivedInvites, setReceivedInvites] = useState([]);
   const [receivedInvitesLoading, setReceivedInvitesLoading] = useState(false);
+  const [portfolioMetrics, setPortfolioMetrics] = useState(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState('');
 
   const assetsBySymbol = useMemo(() => Object.fromEntries(state.assets.map((a) => [a.symbol, a])), [state.assets]);
   const positionsWithPortfolio = useMemo(
@@ -624,6 +635,33 @@ const Portfolio = () => {
     };
   }, [activePortfolioId]);
 
+  useEffect(() => {
+    if (!activePortfolioId || typeof api.getPortfolioMetrics !== 'function') {
+      setPortfolioMetrics(null);
+      return;
+    }
+    let active = true;
+    const loadMetrics = async () => {
+      setMetricsLoading(true);
+      setMetricsError('');
+      try {
+        const out = await api.getPortfolioMetrics(activePortfolioId);
+        if (!active) return;
+        setPortfolioMetrics(out || null);
+      } catch {
+        if (!active) return;
+        setPortfolioMetrics(null);
+        setMetricsError('No se pudieron cargar métricas del portfolio.');
+      } finally {
+        if (active) setMetricsLoading(false);
+      }
+    };
+    loadMetrics();
+    return () => {
+      active = false;
+    };
+  }, [activePortfolioId]);
+
   const actOnSuggestion = async (action) => {
     const signalId = horsaiSummary?.suggestion?.id;
     if (!signalId || typeof api.actOnHorsaiSignal !== 'function') return;
@@ -710,6 +748,24 @@ const Portfolio = () => {
     Array.isArray(suggestion?.specificAssets) &&
     suggestion.specificAssets.length > 0;
   const canActOnSuggestion = suggestion && !horsaiActionBusy && !suggestion?.action;
+  const alignmentScoreValue = Number.isFinite(Number(portfolioMetrics?.alignment_score)) ? Number(portfolioMetrics.alignment_score) : null;
+  const alignmentTone = alignmentScoreValue == null ? 'neutral' : alignmentScoreValue <= 30 ? 'bad' : alignmentScoreValue <= 60 ? 'mid' : 'good';
+  const alignmentLabel =
+    alignmentScoreValue == null
+      ? 'Alignment score no disponible todavía.'
+      : alignmentScoreValue >= 75
+        ? 'Well aligned with current market environment.'
+        : alignmentScoreValue >= 50
+          ? 'Mostly aligned. Some adjustments could help.'
+          : alignmentScoreValue >= 25
+            ? 'Partially misaligned with current regime.'
+            : 'Significant misalignment detected.';
+  const benchmark = portfolioMetrics?.benchmark || { symbol: 'SPY', benchmark_pnl_pct: 0, portfolio_pnl_pct: 0, alpha: 0 };
+  const benchmarkAlpha = toNum(benchmark?.alpha, 0);
+  const categoryExposureEntries = Object.entries(portfolioMetrics?.exposure?.by_category || {}).sort((a, b) => toNum(b[1]) - toNum(a[1]));
+  const sectorExposureEntries = Object.entries(portfolioMetrics?.exposure?.by_sector || {}).sort((a, b) => toNum(b[1]) - toNum(a[1]));
+  const aiNotes = Array.isArray(portfolioMetrics?.ai_notes) ? portfolioMetrics.ai_notes : [];
+  const concentrationTop3 = toNum(portfolioMetrics?.concentration_top3_pct, 0);
 
   return (
     <div className="grid portfolio-page">
@@ -902,7 +958,97 @@ const Portfolio = () => {
         <div className="section-header-inline">
           <h3 className="section-title">Market Alignment</h3>
         </div>
-        <div className="muted">Alignment score coming soon</div>
+        {metricsError ? <div className="muted">{metricsError}</div> : null}
+        {metricsLoading ? <div className="muted">Calculando métricas del portfolio...</div> : null}
+        {!metricsLoading ? (
+          <>
+            <div className="portfolio-metric-head">
+              <span className="muted">Market Alignment</span>
+              <span className="mono portfolio-metric-score">{alignmentScoreValue == null ? '--/100' : `${Math.round(alignmentScoreValue)}/100`}</span>
+            </div>
+            <div className="portfolio-alignment-track">
+              <span className={`portfolio-alignment-fill ${alignmentTone}`} style={{ width: `${Math.max(0, Math.min(100, alignmentScoreValue ?? 0))}%` }} />
+            </div>
+            <p className="muted portfolio-alignment-copy">{alignmentLabel}</p>
+          </>
+        ) : null}
+      </section>
+
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Performance vs SPY (20d)</h3>
+        </div>
+        <div className="portfolio-benchmark-grid mono">
+          <div>Your portfolio:</div>
+          <div className={toNum(benchmark?.portfolio_pnl_pct, 0) >= 0 ? 'up' : 'down'}>{pct(benchmark?.portfolio_pnl_pct)}</div>
+          <div>{String(benchmark?.symbol || 'SPY')} benchmark:</div>
+          <div className={toNum(benchmark?.benchmark_pnl_pct, 0) >= 0 ? 'up' : 'down'}>{pct(benchmark?.benchmark_pnl_pct)}</div>
+          <div>Alpha:</div>
+          <div className={benchmarkAlpha >= 0 ? 'up' : 'down'}>{pct(benchmarkAlpha)}</div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-header-inline">
+          <h3 className="section-title">Exposure</h3>
+        </div>
+        <div className="portfolio-exposure-wrap">
+          <div className="muted">By Asset Class</div>
+          {categoryExposureEntries.length ? (
+            categoryExposureEntries.map(([key, value]) => (
+              <div key={`cat-${key}`} className="portfolio-exp-row mono">
+                <span>{key}</span>
+                <div className="portfolio-exp-track">
+                  <span
+                    className="portfolio-exp-fill"
+                    style={{ width: `${Math.max(0, Math.min(100, toNum(value)))}%`, background: CATEGORY_BAR_COLORS[String(key).toLowerCase()] || CATEGORY_BAR_COLORS.other }}
+                  />
+                </div>
+                <span>{toNum(value).toFixed(1)}%</span>
+              </div>
+            ))
+          ) : (
+            <p className="muted">Sin datos de exposición por categoría.</p>
+          )}
+        </div>
+        <div className="portfolio-exposure-wrap" style={{ marginTop: 10 }}>
+          <div className="muted">By Sector</div>
+          {sectorExposureEntries.length ? (
+            sectorExposureEntries.slice(0, 8).map(([key, value]) => (
+              <div key={`sec-${key}`} className="portfolio-exp-row mono">
+                <span>{key}</span>
+                <div className="portfolio-exp-track">
+                  <span className="portfolio-exp-fill" style={{ width: `${Math.max(0, Math.min(100, toNum(value)))}%`, background: '#6AA6FF' }} />
+                </div>
+                <span>{toNum(value).toFixed(1)}%</span>
+              </div>
+            ))
+          ) : (
+            <p className="muted">Sin datos de exposición sectorial.</p>
+          )}
+        </div>
+      </section>
+
+      {concentrationTop3 > 60 ? (
+        <section className="card portfolio-concentration-warning">
+          <h3 className="section-title">High Concentration</h3>
+          <p className="muted">Top 3 holdings represent {concentrationTop3.toFixed(1)}% of your portfolio.</p>
+        </section>
+      ) : null}
+
+      <section className="card portfolio-ai-notes">
+        <div className="section-header-inline">
+          <h3 className="section-title">AI Notes</h3>
+        </div>
+        {aiNotes.length ? (
+          <ul className="portfolio-ai-notes-list">
+            {aiNotes.map((note, idx) => (
+              <li key={`${idx}-${note}`}>{note}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">Aún no hay notas AI para este portfolio.</p>
+        )}
       </section>
 
       <section className="card">

@@ -108,6 +108,9 @@ export const api = {
 
   getPortfolio: () => request('/portfolio'),
   getPortfolios: () => request('/portfolio/portfolios'),
+  getPortfolioMetrics: (id) => request(`/portfolios/${encodeURIComponent(id)}/metrics`),
+  getPortfolioSnapshots: (id, days = 30) => request(`/portfolios/${encodeURIComponent(id)}/snapshots?days=${encodeURIComponent(String(days || 30))}`),
+  getPortfolioHoldingsDetail: (id) => request(`/portfolios/${encodeURIComponent(id)}/holdings/detail`),
   createPortfolio: (name) => request('/portfolio/portfolios', { method: 'POST', body: JSON.stringify({ name }) }),
   renamePortfolio: (id, name) => request(`/portfolio/portfolios/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deletePortfolio: (id) => request(`/portfolio/portfolios/${id}`, { method: 'DELETE' }),

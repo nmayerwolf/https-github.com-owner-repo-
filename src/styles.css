@@ -926,6 +926,106 @@ a:focus-visible {
   grid-column: 1 / -1;
 }
 
+.portfolio-metric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-metric-score {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.portfolio-alignment-track {
+  margin-top: 8px;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.portfolio-alignment-fill {
+  display: block;
+  height: 100%;
+  transition: width 220ms ease;
+}
+
+.portfolio-alignment-fill.good {
+  background: linear-gradient(90deg, #00dc82, #34d399);
+}
+
+.portfolio-alignment-fill.mid {
+  background: linear-gradient(90deg, #ffb800, #f59e0b);
+}
+
+.portfolio-alignment-fill.bad {
+  background: linear-gradient(90deg, #ff4757, #f97316);
+}
+
+.portfolio-alignment-fill.neutral {
+  background: linear-gradient(90deg, #64748b, #94a3b8);
+}
+
+.portfolio-alignment-copy {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.portfolio-benchmark-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.portfolio-exposure-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.portfolio-exp-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.portfolio-exp-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.portfolio-exp-fill {
+  height: 100%;
+  display: block;
+}
+
+.portfolio-ai-notes {
+  border-left: 3px solid #3b82f6;
+}
+
+.portfolio-ai-notes-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.portfolio-ai-notes-list li {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.portfolio-concentration-warning {
+  border-left: 3px solid #ffb800;
+}
+
 .portfolio-row-chip {
   padding: 5px 10px;
   font-size: 0.72rem;
