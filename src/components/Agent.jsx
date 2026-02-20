@@ -2,14 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { askClaude } from '../api/claude';
 import { api } from '../api/apiClient';
 import { useApp } from '../store/AppContext';
+import { useLanguage } from '../store/LanguageContext';
 import { formatPct } from '../utils/format';
-
-const PROMPT_CHIPS = [
-  'What changed today?',
-  'Risk assessment',
-  'Opportunities in equities',
-  'Hedge suggestions'
-];
 
 const toNum = (value, fallback = 0) => {
   const n = Number(value);
@@ -65,7 +59,7 @@ const parseJsonLike = (text = '') => {
   return null;
 };
 
-const normalizeAgentResponse = (text = '', fallbackSources = []) => {
+const normalizeAgentResponse = (text = '', fallbackSources = [], isSpanish = false) => {
   const parsed = parseJsonLike(text);
   const summary = Array.isArray(parsed?.summary)
     ? parsed.summary.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3)
@@ -80,16 +74,16 @@ const normalizeAgentResponse = (text = '', fallbackSources = []) => {
   const confidenceLabelRaw = String(parsed?.confidence?.label || '').toLowerCase();
   const confidenceLabel =
     confidenceLabelRaw === 'high'
-      ? 'High'
+      ? isSpanish ? 'Alta' : 'High'
       : confidenceLabelRaw === 'low'
-        ? 'Low'
+        ? isSpanish ? 'Baja' : 'Low'
         : confidenceScore != null
           ? confidenceScore >= 0.75
-            ? 'High'
+            ? isSpanish ? 'Alta' : 'High'
             : confidenceScore >= 0.55
-              ? 'Medium'
-              : 'Low'
-          : 'Medium';
+              ? isSpanish ? 'Media' : 'Medium'
+              : isSpanish ? 'Baja' : 'Low'
+          : isSpanish ? 'Media' : 'Medium';
 
   const sourcesFromModel = Array.isArray(parsed?.sources)
     ? parsed.sources
@@ -103,9 +97,13 @@ const normalizeAgentResponse = (text = '', fallbackSources = []) => {
 
   return {
     rawText: String(text || '').trim(),
-    summary: summary.length ? summary : ['No structured summary returned by model.'],
-    actions: actions.length ? actions : ['Keep risk controlled and wait for higher-conviction setup.'],
-    assumptions: assumptions.length ? assumptions : ['Market context may change intraday; validate against live data.'],
+    summary: summary.length ? summary : [isSpanish ? 'El modelo no devolvió un resumen estructurado.' : 'No structured summary returned by model.'],
+    actions: actions.length
+      ? actions
+      : [isSpanish ? 'Mantener riesgo controlado y esperar setup de mayor convicción.' : 'Keep risk controlled and wait for higher-conviction setup.'],
+    assumptions: assumptions.length
+      ? assumptions
+      : [isSpanish ? 'El contexto puede cambiar intradiario; validar con datos en vivo.' : 'Market context may change intraday; validate against live data.'],
     confidence: {
       label: confidenceLabel,
       score: confidenceScore
@@ -116,6 +114,10 @@ const normalizeAgentResponse = (text = '', fallbackSources = []) => {
 
 const Agent = () => {
   const { state } = useApp();
+  const { isSpanish } = useLanguage();
+  const PROMPT_CHIPS = isSpanish
+    ? ['¿Qué cambió hoy?', 'Evaluación de riesgo', 'Oportunidades en acciones', 'Sugerencias de cobertura']
+    : ['What changed today?', 'Risk assessment', 'Opportunities in equities', 'Hedge suggestions'];
   const [messages, setMessages] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -270,7 +272,7 @@ const Agent = () => {
       ].join('\n');
 
       const out = await askClaude(prompt, 'You are a strategic market decision partner. Be concise and practical.');
-      const normalized = normalizeAgentResponse(out?.text || '', fallbackSources);
+      const normalized = normalizeAgentResponse(out?.text || '', fallbackSources, isSpanish);
       setMessages((prev) => [
         ...prev,
         {
@@ -282,7 +284,7 @@ const Agent = () => {
       ]);
     } catch {
       const fallbackSources = pickRelevantNewsSources(newsPool, text);
-      const fallback = normalizeAgentResponse('', fallbackSources);
+      const fallback = normalizeAgentResponse('', fallbackSources, isSpanish);
       setMessages((prev) => [
         ...prev,
         {
@@ -300,12 +302,12 @@ const Agent = () => {
   return (
     <div className="grid agent-v2-page">
       <section className="card">
-        <h2 className="screen-title">Agent</h2>
-        <div className="muted">AI decision partner with market + portfolio context.</div>
+        <h2 className="screen-title">{isSpanish ? 'Agente' : 'Agent'}</h2>
+        <div className="muted">{isSpanish ? 'Asistente de decisión con contexto de mercado y portafolio.' : 'AI decision partner with market + portfolio context.'}</div>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
-          <span className="badge">Regime: {marketContext.regime}</span>
-          <span className="badge">Win rate: {formatPct(performanceLearning.winRate)}</span>
-          <span className="badge">Closed trades: {performanceLearning.closedCount}</span>
+          <span className="badge">{isSpanish ? 'Régimen' : 'Regime'}: {marketContext.regime}</span>
+          <span className="badge">{isSpanish ? 'Tasa de acierto' : 'Win rate'}: {formatPct(performanceLearning.winRate)}</span>
+          <span className="badge">{isSpanish ? 'Trades cerrados' : 'Closed trades'}: {performanceLearning.closedCount}</span>
         </div>
         <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
           {PROMPT_CHIPS.map((chip) => (
@@ -318,7 +320,7 @@ const Agent = () => {
 
       <section className="card">
         <div className="agent-v2-chat">
-          {!messages.length ? <div className="muted">Ask the agent to start the conversation.</div> : null}
+          {!messages.length ? <div className="muted">{isSpanish ? 'Hacé una pregunta para iniciar la conversación.' : 'Ask the agent to start the conversation.'}</div> : null}
           {messages.map((message) => (
             <article key={message.id} className={`agent-v2-msg ${message.role === 'user' ? 'is-user' : 'is-assistant'}`}>
               {message.role === 'user' ? (
@@ -326,7 +328,7 @@ const Agent = () => {
               ) : (
                 <div className="grid" style={{ gap: 8 }}>
                   <div>
-                    <strong>Summary</strong>
+                    <strong>{isSpanish ? 'Resumen' : 'Summary'}</strong>
                     <ul className="agent-v2-list">
                       {(message.structured?.summary || []).map((item, idx) => (
                         <li key={`${message.id}-s-${idx}`}>{item}</li>
@@ -334,7 +336,7 @@ const Agent = () => {
                     </ul>
                   </div>
                   <div>
-                    <strong>Actions</strong>
+                    <strong>{isSpanish ? 'Acciones' : 'Actions'}</strong>
                     <ul className="agent-v2-list">
                       {(message.structured?.actions || []).map((item, idx) => (
                         <li key={`${message.id}-a-${idx}`}>{item}</li>
@@ -342,7 +344,7 @@ const Agent = () => {
                     </ul>
                   </div>
                   <div>
-                    <strong>Assumptions</strong>
+                    <strong>{isSpanish ? 'Supuestos' : 'Assumptions'}</strong>
                     <ul className="agent-v2-list">
                       {(message.structured?.assumptions || []).map((item, idx) => (
                         <li key={`${message.id}-as-${idx}`}>{item}</li>
@@ -351,7 +353,7 @@ const Agent = () => {
                   </div>
                   <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
                     <span className="badge">
-                      Confidence: {message.structured?.confidence?.label || 'Medium'}
+                      {isSpanish ? 'Convicción' : 'Confidence'}: {message.structured?.confidence?.label || (isSpanish ? 'Media' : 'Medium')}
                       {Number.isFinite(message.structured?.confidence?.score)
                         ? ` (${(Number(message.structured.confidence.score) * 100).toFixed(0)}%)`
                         : ''}
@@ -359,7 +361,7 @@ const Agent = () => {
                   </div>
                   {(message.structured?.sources || []).length ? (
                     <div>
-                      <strong>Sources</strong>
+                      <strong>{isSpanish ? 'Fuentes' : 'Sources'}</strong>
                       <div className="grid" style={{ marginTop: 6, gap: 4 }}>
                         {message.structured.sources.map((source, idx) => (
                           <a key={`${message.id}-src-${idx}`} href={source.url} target="_blank" rel="noopener noreferrer" className="inline-link-btn">
@@ -381,11 +383,11 @@ const Agent = () => {
             onKeyDown={(e) => {
               if (e.key === 'Enter') sendAgentQuery(query);
             }}
-            placeholder="Ask the agent..."
-            aria-label="Ask the agent"
+            placeholder={isSpanish ? 'Preguntale al agente...' : 'Ask the agent...'}
+            aria-label={isSpanish ? 'Preguntale al agente' : 'Ask the agent'}
           />
           <button type="button" onClick={() => sendAgentQuery(query)} disabled={loading}>
-            {loading ? 'Thinking...' : 'Send'}
+            {loading ? (isSpanish ? 'Pensando...' : 'Thinking...') : isSpanish ? 'Enviar' : 'Send'}
           </button>
         </div>
       </section>
