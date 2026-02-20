@@ -64,6 +64,31 @@ const normalizeAlertSummary = (row) => ({
   notified: !!row.notified
 });
 
+const HORSAI_MARKET_LABELS = {
+  risk_on: 'Supportive',
+  risk_off: 'Defensive',
+  transition: 'Mixed',
+  normal: 'Calm',
+  elevated: 'Increasing',
+  crisis: 'High Uncertainty'
+};
+
+const normalizeHorsaiSignalReview = (row = {}) => ({
+  signalsAffectingPortfolio: toNumberOrNull(row.signalsAffectingPortfolio) ?? 0,
+  riskReductionCases: toNumberOrNull(row.riskReductionCases) ?? 0,
+  avgVolatilityReductionPct: toNumberOrNull(row.avgVolatilityReductionPct) ?? 0,
+  performanceImprovementCases: toNumberOrNull(row.performanceImprovementCases) ?? 0,
+  avgRelativeImpactPct: toNumberOrNull(row.avgRelativeImpactPct) ?? 0,
+  outcomes:
+    row.outcomes && typeof row.outcomes === 'object'
+      ? {
+          favorable: toNumberOrNull(row.outcomes.favorable) ?? 0,
+          neutral: toNumberOrNull(row.outcomes.neutral) ?? 0,
+          adverse: toNumberOrNull(row.outcomes.adverse) ?? 0
+        }
+      : { favorable: 0, neutral: 0, adverse: 0 }
+});
+
 const validateUserConfigInput = (input = {}) => {
   if (input.riskProfile !== undefined && !RISK_PROFILES.includes(input.riskProfile)) return 'riskProfile inválido';
   if (input.horizon !== undefined && !HORIZONS.includes(input.horizon)) return 'horizon inválido';
@@ -95,5 +120,7 @@ module.exports = {
   normalizeConfidence,
   normalizeAlertOutcome,
   normalizeAlertSummary,
+  HORSAI_MARKET_LABELS,
+  normalizeHorsaiSignalReview,
   validateUserConfigInput
 };
