@@ -30,4 +30,33 @@ describe('mvpDailyPipeline buildRegimeFromMetrics', () => {
     expect(out.volatilityRegime).toBe('crisis');
     expect(Array.isArray(out.riskFlags)).toBe(true);
   });
+
+  it('uses strict z-score thresholds for volatility regime when provided', () => {
+    const elevated = buildRegimeFromMetrics(
+      [
+        { symbol: 'SPY', ret_1m: 0.01, ret_1d: -0.005, vol_20d: 0.02 },
+        { symbol: 'QQQ', ret_1m: 0.02 },
+        { symbol: 'IWM', ret_1m: 0.01 },
+        { symbol: 'HYG', ret_1m: 0.01 },
+        { symbol: 'IEF', ret_1m: 0.009 },
+        { symbol: 'TLT', ret_1m: 0.0 }
+      ],
+      { spyVol20dZ: 1.2 }
+    );
+
+    const crisis = buildRegimeFromMetrics(
+      [
+        { symbol: 'SPY', ret_1m: 0.01, ret_1d: -0.005, vol_20d: 0.02 },
+        { symbol: 'QQQ', ret_1m: 0.02 },
+        { symbol: 'IWM', ret_1m: 0.01 },
+        { symbol: 'HYG', ret_1m: 0.01 },
+        { symbol: 'IEF', ret_1m: 0.009 },
+        { symbol: 'TLT', ret_1m: 0.0 }
+      ],
+      { spyVol20dZ: 2.1 }
+    );
+
+    expect(elevated.volatilityRegime).toBe('elevated');
+    expect(crisis.volatilityRegime).toBe('crisis');
+  });
 });

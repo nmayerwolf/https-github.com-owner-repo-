@@ -11,6 +11,37 @@ const isoDate = (date = new Date()) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())).toISOString().slice(0, 10);
 
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+const SHOCK_EVENT_TAGS = new Set(['war', 'invasion', 'terror_attack', 'earthquake_major', 'bank_failure', 'default', 'sanctions_major']);
+
+const mean = (values = []) => {
+  if (!values.length) return null;
+  return values.reduce((acc, value) => acc + value, 0) / values.length;
+};
+
+const stdDevSample = (values = []) => {
+  if (values.length < 2) return null;
+  const m = mean(values);
+  if (!Number.isFinite(m)) return null;
+  const variance = values.reduce((acc, value) => acc + Math.pow(value - m, 2), 0) / (values.length - 1);
+  return Math.sqrt(Math.max(0, variance));
+};
+
+const computeVol20dZ = (history = []) => {
+  const rows = (Array.isArray(history) ? history : [])
+    .map((row) => ({ date: String(row.date || ''), vol20d: toNum(row.vol_20d, null) }))
+    .filter((row) => row.date && Number.isFinite(row.vol20d))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (rows.length < 25) return null;
+  const last = rows[rows.length - 1].vol20d;
+  const baseline = rows.slice(Math.max(0, rows.length - 61), rows.length - 1).map((x) => x.vol20d).filter(Number.isFinite);
+  if (baseline.length < 20) return null;
+  const sigma = stdDevSample(baseline);
+  if (!Number.isFinite(sigma) || sigma <= 0) return null;
+  const mu = mean(baseline);
+  if (!Number.isFinite(mu)) return null;
+  return Number(((last - mu) / sigma).toFixed(4));
+};
 
 const slugify = (value) =>
   String(value || '')
@@ -25,7 +56,7 @@ const summarizeRegime = (regime, confidence) => {
   return `Regime Today: Transition (${Math.round(confidence * 100)}% confidence).`;
 };
 
-const buildRegimeFromMetrics = (rows = []) => {
+const buildRegimeFromMetrics = (rows = [], inputs = {}) => {
   const bySymbol = new Map();
   for (const row of rows) bySymbol.set(String(row.symbol || '').toUpperCase(), row);
 
@@ -37,12 +68,14 @@ const buildRegimeFromMetrics = (rows = []) => {
   const tlt = bySymbol.get('TLT') || {};
 
   const spyRet1m = toNum(spy.ret_1m);
+  const spyRet1d = toNum(spy.ret_1d);
   const qqqRet1m = toNum(qqq.ret_1m);
   const iwmRet1m = toNum(iwm.ret_1m);
   const hygRet1m = toNum(hyg.ret_1m);
   const iefRet1m = toNum(ief.ret_1m);
   const tltRet1m = toNum(tlt.ret_1m);
   const spyVol20d = toNum(spy.vol_20d);
+  const spyVol20dZ = Number.isFinite(Number(inputs.spyVol20dZ)) ? Number(inputs.spyVol20dZ) : null;
 
   let riskOnVotes = 0;
   let riskOffVotes = 0;
@@ -78,8 +111,13 @@ const buildRegimeFromMetrics = (rows = []) => {
   }
 
   let volatilityRegime = 'normal';
-  if (spyVol20d >= 0.035 || toNum(spy.ret_1d) <= -0.03) volatilityRegime = 'crisis';
-  else if (spyVol20d >= 0.025) volatilityRegime = 'elevated';
+  if (Number.isFinite(spyVol20dZ)) {
+    if (spyVol20dZ >= 2.0 || spyRet1d <= -0.03) volatilityRegime = 'crisis';
+    else if (spyVol20dZ >= 1.0) volatilityRegime = 'elevated';
+  } else {
+    if (spyVol20d >= 0.035 || spyRet1d <= -0.03) volatilityRegime = 'crisis';
+    else if (spyVol20d >= 0.025) volatilityRegime = 'elevated';
+  }
 
   let regime = 'transition';
   if (volatilityRegime === 'crisis' || riskOffVotes >= 2) regime = 'risk_off';
@@ -104,7 +142,12 @@ const buildRegimeFromMetrics = (rows = []) => {
     leadership: leadershipCandidates,
     macroDrivers,
     riskFlags,
-    confidence
+    confidence,
+    indicators: {
+      spyRet1d,
+      spyVol20d,
+      spyVol20dZ
+    }
   };
 };
 
@@ -287,9 +330,26 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
     return out.rows;
   };
 
+  const loadSpyVolHistory = async (date) => {
+    const out = await query(
+      `SELECT date::text AS date, vol_20d
+       FROM market_metrics_daily
+       WHERE symbol = 'SPY'
+         AND date <= $1
+       ORDER BY date DESC
+       LIMIT 90`,
+      [date]
+    );
+    return out.rows || [];
+  };
+
   const runRegimeDaily = async (date) => {
-    const metricsRows = await loadMetricsUniverse(date);
-    const regime = buildRegimeFromMetrics(metricsRows);
+    const [metricsRows, spyVolHistory] = await Promise.all([loadMetricsUniverse(date), loadSpyVolHistory(date)]);
+    const spyVol20dZ = computeVol20dZ(spyVolHistory);
+    const regime = buildRegimeFromMetrics(metricsRows, { spyVol20dZ });
+
+    const macroDrivers = [...(regime.macroDrivers || [])];
+    if (Number.isFinite(spyVol20dZ)) macroDrivers.push(`SPY vol_20d_z=${spyVol20dZ}`);
 
     await query(
       `INSERT INTO regime_state (date, regime, volatility_regime, leadership, macro_drivers, risk_flags, confidence)
@@ -307,22 +367,37 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
         regime.regime,
         regime.volatilityRegime,
         JSON.stringify(regime.leadership),
-        JSON.stringify(regime.macroDrivers),
+        JSON.stringify(macroDrivers),
         JSON.stringify(regime.riskFlags),
         regime.confidence
       ]
     );
 
-    return { ...regime, metricsRows };
+    return { ...regime, macroDrivers, metricsRows };
   };
 
-  const runCrisisModeCheck = async (date, regimeState) => {
-    const highImpactFromFlags = (regimeState.riskFlags || []).some((flag) => /shock|stress|credit|crisis/i.test(String(flag)));
-    const isActive = regimeState.volatilityRegime === 'crisis' || (regimeState.volatilityRegime === 'elevated' && highImpactFromFlags);
+  const runCrisisModeCheck = async (date, regimeState, opts = {}) => {
+    let shockEventFlag = Boolean(opts.shockEventFlag);
+    if (!shockEventFlag) {
+      const newsOut = await query(
+        `SELECT tags
+         FROM news_items
+         WHERE ts >= ($1::date - INTERVAL '1 day')
+           AND ts < ($1::date + INTERVAL '1 day')
+         ORDER BY ts DESC
+         LIMIT 300`,
+        [date]
+      );
+      shockEventFlag = (newsOut.rows || []).some((row) =>
+        (Array.isArray(row.tags) ? row.tags : []).some((tag) => SHOCK_EVENT_TAGS.has(String(tag || '').toLowerCase()))
+      );
+    }
+
+    const isActive = regimeState.volatilityRegime === 'crisis' || (regimeState.volatilityRegime === 'elevated' && shockEventFlag);
     const triggers = [];
     if (regimeState.volatilityRegime === 'crisis') triggers.push('volatility_regime=crisis');
     if (regimeState.volatilityRegime === 'elevated') triggers.push('volatility_regime=elevated');
-    if (highImpactFromFlags) triggers.push('high_impact_event_flag');
+    if (shockEventFlag) triggers.push('high_impact_event_flag');
 
     const summary = isActive
       ? 'High volatility mode active. Confidence thresholds raised and risk alerts prioritized.'
@@ -347,11 +422,20 @@ const createMvpDailyPipeline = ({ query, logger = console, narrativeService = cr
         isActive,
         JSON.stringify(triggers),
         summary,
-        JSON.stringify({ triggers, changedPolicy: isActive })
+        JSON.stringify({
+          triggers,
+          changedPolicy: isActive,
+          inputs: {
+            spy_ret_1d: toNum(regimeState?.indicators?.spyRet1d, null),
+            spy_vol_20d: toNum(regimeState?.indicators?.spyVol20d, null),
+            spy_vol_20d_z: toNum(regimeState?.indicators?.spyVol20dZ, null),
+            shock_event_flag: shockEventFlag
+          }
+        })
       ]
     );
 
-    return { isActive, triggers, summary };
+    return { isActive, triggers, summary, shockEventFlag };
   };
 
   const runRecommendationsDaily = async (date, regimeState, crisisState, metricsRows) => {
