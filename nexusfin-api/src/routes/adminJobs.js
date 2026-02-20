@@ -15,6 +15,7 @@ const JOB_NAMES = new Set([
   'macro_radar',
   'portfolio_advisor'
 ]);
+const RUN_STATUS = new Set(['started', 'success', 'failed', 'partial_failed']);
 
 const parseJobs = (value) => {
   if (value == null) {
@@ -34,6 +35,40 @@ const parseJobs = (value) => {
   }
 
   return Array.from(new Set(jobs));
+};
+
+const parseLimit = (value) => {
+  if (value == null || value === '') return 20;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1 || n > 200) {
+    throw badRequest('limit inválido (1..200)', 'VALIDATION_ERROR');
+  }
+  return Math.trunc(n);
+};
+
+const parseStatus = (value) => {
+  if (value == null || value === '') return null;
+  const status = String(value).trim().toLowerCase();
+  if (!RUN_STATUS.has(status)) {
+    throw badRequest('status inválido', 'VALIDATION_ERROR');
+  }
+  return status;
+};
+
+const parseDate = (value, field) => {
+  if (value == null || value === '') return null;
+  const safe = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(safe)) {
+    throw badRequest(`${field} inválido (YYYY-MM-DD)`, 'VALIDATION_ERROR');
+  }
+  return safe;
+};
+
+const parseJobName = (value) => {
+  if (value == null || value === '') return null;
+  const job = String(value).trim().toLowerCase();
+  if (!JOB_NAMES.has(job)) throw badRequest('job inválido', 'VALIDATION_ERROR');
+  return job;
 };
 
 const ensureAuthorized = (req) => {
@@ -139,6 +174,69 @@ router.post('/run', async (req, res, next) => {
       results
     });
   } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/runs', async (req, res, next) => {
+  try {
+    ensureAuthorized(req);
+    const limit = parseLimit(req.query?.limit);
+    const dateFrom = parseDate(req.query?.date_from, 'date_from');
+    const dateTo = parseDate(req.query?.date_to, 'date_to');
+    const job = parseJobName(req.query?.job);
+    const status = parseStatus(req.query?.status);
+
+    const filters = [];
+    const params = [];
+
+    if (dateFrom) {
+      params.push(dateFrom);
+      filters.push(`run_date >= $${params.length}`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      filters.push(`run_date <= $${params.length}`);
+    }
+    if (job) {
+      params.push(job);
+      filters.push(`(job_name = $${params.length} OR (jobs ? $${params.length}))`);
+    }
+    if (status) {
+      params.push(status);
+      filters.push(`status = $${params.length}`);
+    }
+
+    params.push(limit);
+    const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const out = await query(
+      `SELECT id, run_date, requester_user_id, jobs, status, started_at, completed_at, summary
+       FROM admin_job_runs
+       ${whereSql}
+       ORDER BY run_date DESC, started_at DESC
+       LIMIT $${params.length}`,
+      params
+    );
+
+    return res.json({
+      ok: true,
+      filters: { limit, dateFrom, dateTo, job, status },
+      runs: (out.rows || []).map((row) => ({
+        id: row.id,
+        runDate: row.run_date,
+        requesterUserId: row.requester_user_id || null,
+        jobs: Array.isArray(row.jobs) ? row.jobs : [],
+        status: row.status,
+        startedAt: row.started_at || null,
+        completedAt: row.completed_at || null,
+        summary: row.summary && typeof row.summary === 'object' ? row.summary : {}
+      }))
+    });
+  } catch (error) {
+    if (/admin_job_runs/i.test(String(error?.message || '')) && /does not exist/i.test(String(error?.message || ''))) {
+      return res.json({ ok: true, filters: {}, runs: [], warning: 'ADMIN_JOB_RUNS_TABLE_MISSING' });
+    }
     return next(error);
   }
 });
