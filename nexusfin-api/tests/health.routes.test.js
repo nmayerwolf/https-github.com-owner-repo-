@@ -36,7 +36,9 @@ describe('health routes', () => {
     expect(typeof res.body.ws.intervalMs).toBe('number');
     expect(typeof res.body.push.expo).toBe('boolean');
     expect(typeof res.body.push.web).toBe('boolean');
+    expect(typeof res.body.auth.googleConfigured).toBe('boolean');
     expect(typeof res.body.auth.appleConfigured).toBe('boolean');
+    expect(res.body.auth.appleConfigured).toBe(false);
     expect(typeof res.body.ts).toBe('string');
   });
 

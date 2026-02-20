@@ -30,11 +30,8 @@ const mockTokenHash = jest.fn(() => 'hashed-old-token');
 const mockBuildCookieOptions = jest.fn(() => ({ path: '/api/auth' }));
 const mockVerifyOAuthState = jest.fn(() => true);
 const mockIsGoogleConfigured = jest.fn(() => true);
-const mockIsAppleConfigured = jest.fn(() => true);
 const mockBuildGoogleAuthUrl = jest.fn((state) => `https://accounts.google.com/o/oauth2/v2/auth?state=${state}`);
 const mockExchangeGoogleCode = jest.fn();
-const mockBuildAppleAuthUrl = jest.fn((state) => `https://appleid.apple.com/auth/authorize?state=${state}`);
-const mockExchangeAppleCode = jest.fn();
 
 jest.mock('../src/middleware/auth', () => ({
   authRequired: (...args) => mockAuthRequired(...args),
@@ -53,11 +50,8 @@ jest.mock('../src/services/oauth', () => ({
   makeOAuthState: jest.fn(() => 'oauth-state'),
   verifyOAuthState: (...args) => mockVerifyOAuthState(...args),
   isGoogleConfigured: (...args) => mockIsGoogleConfigured(...args),
-  isAppleConfigured: (...args) => mockIsAppleConfigured(...args),
   buildGoogleAuthUrl: (...args) => mockBuildGoogleAuthUrl(...args),
-  exchangeGoogleCode: (...args) => mockExchangeGoogleCode(...args),
-  buildAppleAuthUrl: (...args) => mockBuildAppleAuthUrl(...args),
-  exchangeAppleCode: (...args) => mockExchangeAppleCode(...args)
+  exchangeGoogleCode: (...args) => mockExchangeGoogleCode(...args)
 }));
 
 const { query } = require('../src/config/db');
@@ -91,11 +85,8 @@ describe('auth routes', () => {
     mockBuildCookieOptions.mockClear();
     mockVerifyOAuthState.mockClear();
     mockIsGoogleConfigured.mockClear();
-    mockIsAppleConfigured.mockClear();
     mockBuildGoogleAuthUrl.mockClear();
     mockExchangeGoogleCode.mockClear();
-    mockBuildAppleAuthUrl.mockClear();
-    mockExchangeAppleCode.mockClear();
   });
 
   it('blocks register endpoint and requires Google OAuth', async () => {
@@ -349,73 +340,22 @@ describe('auth routes', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('completes apple callback and redirects with oauth success', async () => {
-    mockExchangeAppleCode.mockResolvedValueOnce({
-      provider: 'apple',
-      oauthId: 'apple-uid-1',
-      email: 'user@mail.com',
-      displayName: null,
-      avatarUrl: null
-    });
-    query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
+  it('returns provider disabled for apple route', async () => {
+    const app = makeApp();
+    const res = await request(app).get('/api/auth/apple');
 
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('OAUTH_PROVIDER_DISABLED');
+  });
+
+  it('redirects with provider disabled on apple callback', async () => {
     const app = makeApp();
     const res = await request(app)
       .get('/api/auth/apple/callback')
-      .query({ state: 'valid-state', code: 'apple-code' })
-      .set('Cookie', ['nxf_oauth_state=valid-state']);
+      .query({ state: 'valid-state', code: 'apple-code' });
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:5173/?oauth=success');
-    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
-    expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code');
-    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
-    expect(mockSetAuthCookies).toHaveBeenCalled();
-  });
-
-  it('completes apple callback via POST form and redirects with oauth success', async () => {
-    mockExchangeAppleCode.mockResolvedValueOnce({
-      provider: 'apple',
-      oauthId: 'apple-uid-1',
-      email: 'user@mail.com',
-      displayName: null,
-      avatarUrl: null
-    });
-    query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
-
-    const app = makeApp();
-    const res = await request(app)
-      .post('/api/auth/apple/callback')
-      .type('form')
-      .send({ state: 'valid-state', code: 'apple-code-post' })
-      .set('Cookie', ['nxf_oauth_state=valid-state']);
-
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:5173/?oauth=success');
-    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
-    expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code-post');
-    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
-    expect(mockSetAuthCookies).toHaveBeenCalled();
-  });
-
-  it('rejects apple callback with invalid oauth state', async () => {
-    mockVerifyOAuthState.mockReturnValueOnce(false);
-
-    const app = makeApp();
-    const res = await request(app)
-      .get('/api/auth/apple/callback')
-      .query({ state: 'invalid-state', code: 'apple-code' })
-      .set('Cookie', ['nxf_oauth_state=invalid-state']);
-
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:5173/?oauth_error=invalid_oauth_state');
-    expect(mockExchangeAppleCode).not.toHaveBeenCalled();
+    expect(res.headers.location).toBe('http://localhost:5173/?oauth_error=provider_disabled');
   });
 
   it('completes google callback for mobile and redirects with token deep-link', async () => {
@@ -475,47 +415,27 @@ describe('auth routes', () => {
     expect(res.headers.location).toContain('oauth_error_description=boom');
   });
 
-  it('returns 400 when mobile oauth redirect_uri is invalid', async () => {
+  it('returns 400 when mobile oauth redirect_uri is invalid for google route', async () => {
     const app = makeApp();
-    const res = await request(app).get('/api/auth/apple').query({ platform: 'mobile', redirect_uri: 'https://evil.test/callback' });
+    const res = await request(app).get('/api/auth/google').query({ platform: 'mobile', redirect_uri: 'https://evil.test/callback' });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('completes apple callback for mobile and redirects with token deep-link', async () => {
-    mockExchangeAppleCode.mockResolvedValueOnce({
-      provider: 'apple',
-      oauthId: 'apple-uid-1',
-      email: 'user@mail.com',
-      displayName: null,
-      avatarUrl: null
-    });
-    query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] });
-
+  it('redirects with provider disabled on apple callback in mobile mode', async () => {
     const app = makeApp();
     const res = await request(app)
       .post('/api/auth/apple/callback')
       .type('form')
       .send({ state: 'valid-state', code: 'apple-code-mobile' })
-      .set('Cookie', ['nxf_oauth_state=valid-state', 'nxf_oauth_mobile_redirect=nexusfin://oauth']);
+      .set('Cookie', ['nxf_oauth_mobile_redirect=nexusfin://oauth']);
 
     expect(res.status).toBe(302);
-    expect(res.headers.location.startsWith('nexusfin://oauth?')).toBe(true);
-    expect(res.headers.location).toContain('oauth=success');
-    expect(res.headers.location).toContain('provider=apple');
-    expect(res.headers.location).toContain('token=jwt-token');
-    expect(mockVerifyOAuthState).toHaveBeenCalledWith('valid-state');
-    expect(mockExchangeAppleCode).toHaveBeenCalledWith('apple-code-mobile');
-    expect(mockStoreSession).toHaveBeenCalledWith('u1', 'jwt-token');
+    expect(res.headers.location).toBe('nexusfin://oauth?oauth_error=provider_disabled');
   });
 
-  it('redirects with apple callback failure when provider exchange fails', async () => {
-    mockExchangeAppleCode.mockRejectedValueOnce(new Error('boom'));
-
+  it('redirects with provider disabled on apple callback via GET', async () => {
     const app = makeApp();
     const res = await request(app)
       .get('/api/auth/apple/callback')
@@ -523,7 +443,7 @@ describe('auth routes', () => {
       .set('Cookie', ['nxf_oauth_state=valid-state']);
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:5173/?oauth_error=apple_callback_failed');
+    expect(res.headers.location).toBe('http://localhost:5173/?oauth_error=provider_disabled');
   });
 
 });

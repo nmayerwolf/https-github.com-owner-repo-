@@ -89,7 +89,8 @@ app.locals.getMobileHealthStatus = () => ({
     expo: Boolean(env.expoAccessToken)
   },
   auth: {
-    appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+    googleConfigured: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
+    appleConfigured: false
   },
   ts: new Date().toISOString()
 });
@@ -127,7 +128,8 @@ app.get('/api/health/mobile', (_req, res) => {
       ws: { enabled: Boolean(env.realtimeEnabled), intervalMs: Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000) },
       push: { web: false, expo: Boolean(env.expoAccessToken) },
       auth: {
-        appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+        googleConfigured: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
+        appleConfigured: false
       },
       ts: new Date().toISOString()
     }
@@ -137,7 +139,7 @@ app.get('/api/health/mobile', (_req, res) => {
 app.get('/api/health/phase3', (_req, res) => {
   const wsIntervalMs = Math.max(5000, Number(env.wsPriceIntervalSeconds || 20) * 1000);
   const check = {
-    mobileOAuth: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey),
+    mobileOAuth: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
     expoPush: Boolean(env.expoAccessToken),
     realtimeWs: Boolean(env.realtimeEnabled) && wsIntervalMs >= 5000,
     marketUniverse: Array.isArray(MARKET_UNIVERSE) && MARKET_UNIVERSE.length >= 30,
@@ -562,7 +564,8 @@ const startHttpServer = ({ port = env.port } = {}) => {
       expo: Boolean(env.expoAccessToken)
     },
     auth: {
-      appleConfigured: Boolean(env.appleClientId && env.appleCallbackUrl && env.appleTeamId && env.appleKeyId && env.applePrivateKey)
+      googleConfigured: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl),
+      appleConfigured: false
     },
     ts: new Date().toISOString()
   });

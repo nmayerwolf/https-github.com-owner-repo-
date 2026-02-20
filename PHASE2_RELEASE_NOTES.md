@@ -27,8 +27,10 @@ Fecha: 2026-02-13
 
 ## Endpoints críticos validados
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
+- `GET /api/auth/google` / `GET /api/auth/google/callback`
+- `GET|POST /api/auth/apple/callback` (retorna `oauth_error=provider_disabled`; Apple deshabilitado)
+- `POST /api/auth/register` (retorna `403 GOOGLE_OAUTH_ONLY` en modo OAuth-only)
+- `POST /api/auth/login` (retorna `403 GOOGLE_OAUTH_ONLY` en modo OAuth-only)
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - `POST /api/auth/reset-password`

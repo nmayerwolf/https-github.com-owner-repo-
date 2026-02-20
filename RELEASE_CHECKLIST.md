@@ -57,8 +57,10 @@ npm run build
 
 ## 5. Smoke tests (manual)
 
-- `GET /api/health` returns `{ "ok": true }`.
-- Register + login works.
+- `GET /api/health` returns `{ "ok": true }` (requires DB reachable from backend runtime).
+- Auth by provider works (`/api/auth/google` callback flow).
+- `GET|POST /api/auth/apple/callback` returns `oauth_error=provider_disabled` (expected).
+- `POST /api/auth/register` and `POST /api/auth/login` return `403 GOOGLE_OAUTH_ONLY` (expected).
 - Logout works and next protected call requires re-login.
 - Dashboard loads market data via backend.
 - Portfolio CRUD persists after reload.
