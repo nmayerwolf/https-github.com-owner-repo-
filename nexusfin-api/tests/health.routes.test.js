@@ -68,4 +68,29 @@ describe('health routes', () => {
     expect(res.body).toHaveProperty('nextRun');
     expect(Array.isArray(res.body.errors)).toBe(true);
   });
+
+  test('GET /api/health/engines returns engines payload', async () => {
+    query
+      .mockResolvedValueOnce({ rows: [{ date: '2026-02-20', symbols_ok: 92 }] })
+      .mockResolvedValueOnce({ rows: [{ date: '2026-02-20', symbols_computed: 92 }] })
+      .mockResolvedValueOnce({ rows: [{ run_date: '2026-02-20', regime: 'risk_on', confidence: 0.82 }] })
+      .mockResolvedValueOnce({ rows: [{ run_date: '2026-02-20', is_active: false }] })
+      .mockResolvedValueOnce({
+        rows: [
+          { job_name: 'market_snapshot_daily', run_date: '2026-02-20' },
+          { job_name: 'metrics_daily', run_date: '2026-02-20' },
+          { job_name: 'regime_daily', run_date: '2026-02-20' },
+          { job_name: 'crisis_check', run_date: '2026-02-20' }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [{ total: 98 }] });
+
+    const res = await request(app).get('/api/health/engines');
+
+    expect(res.status).toBe(200);
+    expect(res.body.market_snapshot.symbols_ok).toBe(92);
+    expect(res.body.metrics.symbols_computed).toBe(92);
+    expect(res.body.regime.regime).toBe('risk_on');
+    expect(res.body.crisis.is_active).toBe(false);
+  });
 });

@@ -55,6 +55,37 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
   void clock;
   return [
     {
+      name: 'market-snapshot-daily',
+      schedule: '0 17 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.marketSnapshotDaily || (() => require('../jobs/marketSnapshotDaily').run())
+    },
+    {
+      name: 'market-snapshot-crypto-fx',
+      schedule: '0 0 * * *',
+      timezone: 'UTC',
+      shouldRun: runIfRequestedDate,
+      run: runners.marketSnapshotCryptoFx || (() => require('../jobs/marketSnapshotDaily').runCryptoFx())
+    },
+    {
+      name: 'metrics-daily',
+      schedule: '30 17 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.metricsDaily || (() => require('../jobs/metricsDailyJob').run())
+    },
+    {
+      name: 'regime-daily',
+      schedule: '45 17 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.regimeDaily || (() => require('../jobs/regimeDailyJob').run())
+    },
+    {
+      name: 'crisis-check',
+      schedule: '50 17 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.crisisCheck || (() => require('../jobs/crisisDailyJob').run())
+    },
+    {
       name: 'macro-daily',
       schedule: String(config.cronMacroDailySchedule || '0 8 * * *'),
       shouldRun: runIfRequestedDate,
@@ -208,7 +239,7 @@ const startMarketCron = (options = {}) => {
           }
         }
       },
-      { timezone: ET_ZONE }
+      { timezone: task.timezone || ET_ZONE }
     );
     jobs.push(job);
   }

@@ -5,17 +5,13 @@ const { badRequest } = require('../utils/errors');
 const router = express.Router();
 
 const DEFAULT_PROFILE = {
-  presetType: 'balanced',
-  riskLevel: 0.5,
+  preset_type: 'balanced',
+  risk_level: 0.5,
   horizon: 0.5,
-  focus: 0.5,
-  preferredTags: [],
-  excludedTags: [],
-  notificationMode: 'normal'
+  focus: 0.5
 };
 
 const PRESET_VALUES = new Set(['strategic_core', 'balanced', 'opportunistic']);
-const NOTIFICATION_VALUES = new Set(['normal', 'digest_only']);
 
 const toRange01 = (value, field) => {
   const n = Number(value);
@@ -35,27 +31,36 @@ const toTags = (value, field) => {
 };
 
 const serialize = (row = {}) => ({
-  presetType: String(row.preset_type || DEFAULT_PROFILE.presetType),
-  riskLevel: Number(row.risk_level ?? DEFAULT_PROFILE.riskLevel),
+  preset_type: String(row.preset_type || DEFAULT_PROFILE.preset_type),
+  risk_level: Number(row.risk_level ?? DEFAULT_PROFILE.risk_level),
   horizon: Number(row.horizon ?? DEFAULT_PROFILE.horizon),
-  focus: Number(row.focus ?? DEFAULT_PROFILE.focus),
-  preferredTags: Array.isArray(row.preferred_tags) ? row.preferred_tags : DEFAULT_PROFILE.preferredTags,
-  excludedTags: Array.isArray(row.excluded_tags) ? row.excluded_tags : DEFAULT_PROFILE.excludedTags,
-  notificationMode: String(row.notification_mode || DEFAULT_PROFILE.notificationMode),
-  updatedAt: row.updated_at || null
+  focus: Number(row.focus ?? DEFAULT_PROFILE.focus)
 });
 
 router.get('/profile', async (req, res, next) => {
   try {
     const out = await query(
-      `SELECT preset_type, risk_level, horizon, focus, preferred_tags, excluded_tags, notification_mode, updated_at
+      `SELECT preset_type, risk_level, horizon, focus
        FROM user_agent_profile
        WHERE user_id = $1`,
       [req.user.id]
     );
 
     if (!out.rows.length) {
-      return res.json({ ...DEFAULT_PROFILE, updatedAt: null });
+      const inserted = await query(
+        `INSERT INTO user_agent_profile (user_id, preset_type, risk_level, horizon, focus, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW())
+         ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
+         RETURNING preset_type, risk_level, horizon, focus`,
+        [
+          req.user.id,
+          DEFAULT_PROFILE.preset_type,
+          DEFAULT_PROFILE.risk_level,
+          DEFAULT_PROFILE.horizon,
+          DEFAULT_PROFILE.focus
+        ]
+      );
+      return res.json(serialize(inserted.rows[0]));
     }
 
     return res.json(serialize(out.rows[0]));
@@ -66,50 +71,40 @@ router.get('/profile', async (req, res, next) => {
 
 router.put('/profile', async (req, res, next) => {
   try {
-    const presetType = req.body?.preset_type ?? req.body?.presetType ?? DEFAULT_PROFILE.presetType;
-    const notificationMode = req.body?.notification_mode ?? req.body?.notificationMode ?? DEFAULT_PROFILE.notificationMode;
+    const presetType = req.body?.preset_type ?? req.body?.presetType ?? DEFAULT_PROFILE.preset_type;
 
     if (!PRESET_VALUES.has(String(presetType))) {
       throw badRequest('preset_type inválido', 'VALIDATION_ERROR');
     }
-    if (!NOTIFICATION_VALUES.has(String(notificationMode))) {
-      throw badRequest('notification_mode inválido', 'VALIDATION_ERROR');
-    }
 
     const payload = {
       presetType: String(presetType),
-      riskLevel: toRange01(req.body?.risk_level ?? req.body?.riskLevel ?? DEFAULT_PROFILE.riskLevel, 'risk_level'),
+      riskLevel: toRange01(req.body?.risk_level ?? req.body?.riskLevel ?? DEFAULT_PROFILE.risk_level, 'risk_level'),
       horizon: toRange01(req.body?.horizon ?? DEFAULT_PROFILE.horizon, 'horizon'),
-      focus: toRange01(req.body?.focus ?? DEFAULT_PROFILE.focus, 'focus'),
-      preferredTags: toTags(req.body?.preferred_tags ?? req.body?.preferredTags, 'preferred_tags'),
-      excludedTags: toTags(req.body?.excluded_tags ?? req.body?.excludedTags, 'excluded_tags'),
-      notificationMode: String(notificationMode)
+      focus: toRange01(req.body?.focus ?? DEFAULT_PROFILE.focus, 'focus')
     };
 
     const out = await query(
       `INSERT INTO user_agent_profile (
         user_id, preset_type, risk_level, horizon, focus, preferred_tags, excluded_tags, notification_mode, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,NOW())
+      ) VALUES ($1,$2,$3,$4,$5,COALESCE($6::jsonb,'[]'::jsonb),COALESCE($7::jsonb,'[]'::jsonb),COALESCE($8,'normal'),NOW())
       ON CONFLICT (user_id)
       DO UPDATE SET
         preset_type = EXCLUDED.preset_type,
         risk_level = EXCLUDED.risk_level,
         horizon = EXCLUDED.horizon,
         focus = EXCLUDED.focus,
-        preferred_tags = EXCLUDED.preferred_tags,
-        excluded_tags = EXCLUDED.excluded_tags,
-        notification_mode = EXCLUDED.notification_mode,
         updated_at = NOW()
-      RETURNING preset_type, risk_level, horizon, focus, preferred_tags, excluded_tags, notification_mode, updated_at`,
+      RETURNING preset_type, risk_level, horizon, focus`,
       [
         req.user.id,
         payload.presetType,
         payload.riskLevel,
         payload.horizon,
         payload.focus,
-        JSON.stringify(payload.preferredTags),
-        JSON.stringify(payload.excludedTags),
-        payload.notificationMode
+        JSON.stringify(toTags(req.body?.preferred_tags ?? req.body?.preferredTags, 'preferred_tags')),
+        JSON.stringify(toTags(req.body?.excluded_tags ?? req.body?.excludedTags, 'excluded_tags')),
+        req.body?.notification_mode ?? req.body?.notificationMode ?? 'normal'
       ]
     );
 
