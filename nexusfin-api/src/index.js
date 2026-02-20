@@ -680,6 +680,19 @@ const startHttpServer = ({ port = env.port } = {}) => {
   };
   const cronRuntime = startMarketCron({ tasks: cronTasks, logger: console, logRun: logCronRun });
   app.locals.getCronStatus = cronRuntime.getStatus;
+  if (env.cronEnabled && env.cronRunDailyOnBoot) {
+    const macroDailyTask = cronTasks.find((task) => task.name === 'macro-daily');
+    if (macroDailyTask && typeof macroDailyTask.run === 'function') {
+      void macroDailyTask
+        .run()
+        .then((out) => {
+          console.log('[cron:macro-daily] boot run ok', out);
+        })
+        .catch((error) => {
+          console.error('[cron:macro-daily] boot run failed', error?.message || error);
+        });
+    }
+  }
   const wsPriceRuntime = env.realtimeEnabled
     ? startWsPriceRuntime({
         wsHub,

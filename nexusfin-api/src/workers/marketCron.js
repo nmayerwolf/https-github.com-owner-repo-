@@ -71,6 +71,7 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
 
 const startMarketCron = (options = {}) => {
   const enabled = options.enabled ?? env.cronEnabled;
+  const timezone = options.timezone || env.cronTimezone || 'America/Argentina/Buenos_Aires';
   const logger = options.logger ?? console;
   const now = options.now ?? (() => Date.now());
   const logRun = options.logRun;
@@ -208,7 +209,7 @@ const startMarketCron = (options = {}) => {
           }
         }
       },
-      { timezone: ET_ZONE }
+      { timezone }
     );
     jobs.push(job);
   }
