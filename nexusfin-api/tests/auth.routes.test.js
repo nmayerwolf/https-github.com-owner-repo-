@@ -167,137 +167,37 @@ describe('auth routes', () => {
     expect(mockClearAuthCookies).toHaveBeenCalled();
   });
 
-  it('resets password when current password is valid', async () => {
-    bcrypt.compare.mockResolvedValueOnce(true);
-    bcrypt.hash.mockResolvedValueOnce('newhash123');
-    query
-      .mockResolvedValueOnce({ rows: [{ password_hash: 'oldhash' }] })
-      .mockResolvedValueOnce({ rows: [] });
-
+  it('blocks authenticated password reset endpoint and requires Google OAuth', async () => {
     const app = makeApp();
     const res = await request(app)
       .post('/api/auth/reset-password/authenticated')
       .set('Authorization', 'Bearer old.token')
       .send({ currentPassword: 'abc12345', newPassword: 'newpass123' });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
-    expect(mockRequireCsrf).toHaveBeenCalled();
-    expect(query).toHaveBeenNthCalledWith(1, 'SELECT password_hash FROM users WHERE id = $1', ['u1']);
-    expect(query).toHaveBeenNthCalledWith(
-      2,
-      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
-      ['newhash123', 'u1']
-    );
-    expect(mockTokenHash).toHaveBeenCalledWith('old.token');
-    expect(query).toHaveBeenNthCalledWith(
-      3,
-      'DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2',
-      ['u1', 'hashed-old-token']
-    );
-  });
-
-  it('returns 401 when current password is invalid on reset-password', async () => {
-    bcrypt.compare.mockResolvedValueOnce(false);
-    query.mockResolvedValueOnce({ rows: [{ password_hash: 'oldhash' }] });
-
-    const app = makeApp();
-    const res = await request(app)
-      .post('/api/auth/reset-password/authenticated')
-      .set('Authorization', 'Bearer old.token')
-      .send({ currentPassword: 'wrong', newPassword: 'newpass123' });
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
-  });
-
-  it('returns 400 when new password is weak on reset-password', async () => {
-    const app = makeApp();
-    const res = await request(app)
-      .post('/api/auth/reset-password/authenticated')
-      .set('Authorization', 'Bearer old.token')
-      .send({ currentPassword: 'abc12345', newPassword: 'abc' });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('GOOGLE_OAUTH_ONLY');
     expect(query).not.toHaveBeenCalled();
   });
 
-  it('forgot-password always returns 200 and does not reveal email existence', async () => {
-    query
-      .mockResolvedValueOnce({ rows: [] });
-
+  it('blocks forgot-password endpoint and requires Google OAuth', async () => {
     const app = makeApp();
     const res = await request(app).post('/api/auth/forgot-password').send({ email: 'missing@mail.com' });
 
-    expect(res.status).toBe(200);
-    expect(res.body.message).toContain('Si existe una cuenta');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('GOOGLE_OAUTH_ONLY');
+    expect(query).not.toHaveBeenCalled();
   });
 
-  it('forgot-password stores reset token for existing user', async () => {
-    query
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', email: 'user@mail.com' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
-
-    const app = makeApp();
-    const res = await request(app).post('/api/auth/forgot-password').send({ email: 'user@mail.com' });
-
-    expect(res.status).toBe(200);
-    expect(query).toHaveBeenNthCalledWith(1, 'SELECT id, email FROM users WHERE email = $1 LIMIT 1', ['user@mail.com']);
-    expect(query).toHaveBeenNthCalledWith(
-      2,
-      'UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
-      ['u1']
-    );
-    expect(String(query.mock.calls[2][0])).toContain('INSERT INTO password_reset_tokens');
-  });
-
-  it('reset-password by token updates password and invalidates sessions', async () => {
-    bcrypt.hash.mockResolvedValueOnce('newhash123');
-    query
-      .mockResolvedValueOnce({ rows: [{ id: 'rt1', user_id: 'u1' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
-
-    const app = makeApp();
-    const res = await request(app).post('/api/auth/reset-password').send({
-      token: 'reset-token',
-      newPassword: 'newpass123'
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.message).toBe('Contraseña actualizada.');
-    expect(String(query.mock.calls[0][0])).toContain('FROM password_reset_tokens');
-    expect(query).toHaveBeenNthCalledWith(
-      2,
-      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
-      ['newhash123', 'u1']
-    );
-    expect(query).toHaveBeenNthCalledWith(
-      3,
-      'UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1',
-      ['rt1']
-    );
-    expect(query).toHaveBeenNthCalledWith(
-      4,
-      'DELETE FROM sessions WHERE user_id = $1',
-      ['u1']
-    );
-  });
-
-  it('reset-password by token returns INVALID_TOKEN when token is missing/expired', async () => {
-    query.mockResolvedValueOnce({ rows: [] });
-
+  it('blocks reset-password by token endpoint and requires Google OAuth', async () => {
     const app = makeApp();
     const res = await request(app).post('/api/auth/reset-password').send({
       token: 'bad-token',
       newPassword: 'newpass123'
     });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('INVALID_TOKEN');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('GOOGLE_OAUTH_ONLY');
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('updates onboardingCompleted via patch me', async () => {
