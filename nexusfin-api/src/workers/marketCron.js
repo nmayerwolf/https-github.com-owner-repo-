@@ -55,6 +55,12 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
   void clock;
   return [
     {
+      name: 'news-fetch-daily',
+      schedule: '30 16 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.newsFetchDaily || (() => require('../jobs/newsFetchDailyJob').run())
+    },
+    {
       name: 'market-snapshot-daily',
       schedule: '0 17 * * 1-5',
       shouldRun: runIfRequestedDate,
@@ -84,6 +90,24 @@ const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
       schedule: '50 17 * * 1-5',
       shouldRun: runIfRequestedDate,
       run: runners.crisisCheck || (() => require('../jobs/crisisDailyJob').run())
+    },
+    {
+      name: 'recommendations-daily',
+      schedule: '0 18 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.recommendationsDaily || (() => require('../jobs/recommendationsDailyJob').run())
+    },
+    {
+      name: 'news-digest-daily',
+      schedule: '15 18 * * 1-5',
+      shouldRun: runIfRequestedDate,
+      run: runners.newsDigestDaily || (() => require('../jobs/newsDigestDailyJob').run())
+    },
+    {
+      name: 'fundamentals-weekly',
+      schedule: '0 18 * * 0',
+      shouldRun: runIfRequestedDate,
+      run: runners.fundamentalsWeekly || (() => require('../jobs/fundamentalsWeeklyJob').run())
     },
     {
       name: 'macro-daily',

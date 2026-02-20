@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest } = require('../utils/errors');
+const { regimeLabel, volatilityLabel, confidenceLabel } = require('../utils/regimeLabels');
 
 const router = express.Router();
 
@@ -14,59 +15,17 @@ const toDate = (raw) => {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-const toCrisis = (row = {}) => {
-  const isActive = Boolean(row.is_active);
-  return {
-    isActive,
-    title: isActive ? 'High Volatility Environment' : 'Normal Market Environment',
-    summary: String(row.summary || (isActive ? 'Volatilidad elevada: postura más cauta y foco en riesgo.' : 'Sin crisis activa.')),
-    learnMore: row.learn_more && typeof row.learn_more === 'object'
-      ? row.learn_more
-      : {
-          triggers: Array.isArray(row.triggers) ? row.triggers : [],
-          changes: isActive
-            ? [
-                'Umbral de confianza más alto.',
-                'Menor cantidad de ideas tácticas.',
-                'Alertas de riesgo priorizadas.'
-              ]
-            : []
-        }
-  };
-};
-
 const toRegime = (row = {}) => ({
   regime: row.regime || null,
-  volatilityRegime: row.volatility_regime || null,
+  regime_label: regimeLabel(row.regime),
+  volatility_regime: row.volatility_regime || null,
+  volatility_label: volatilityLabel(row.volatility_regime),
   leadership: Array.isArray(row.leadership) ? row.leadership : [],
-  macroDrivers: Array.isArray(row.macro_drivers) ? row.macro_drivers : [],
-  riskFlags: Array.isArray(row.risk_flags) ? row.risk_flags : [],
-  confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null
+  macro_drivers: Array.isArray(row.macro_drivers) ? row.macro_drivers : [],
+  risk_flags: Array.isArray(row.risk_flags) ? row.risk_flags : [],
+  confidence: Number.isFinite(Number(row.confidence)) ? Number(row.confidence) : null,
+  confidence_label: confidenceLabel(row.confidence)
 });
-
-const summarizeRegimeLine = (regime = {}) => {
-  const confidencePct = Number.isFinite(Number(regime.confidence)) ? Math.round(Number(regime.confidence) * 100) : null;
-  const suffix = confidencePct == null ? '' : ` (${confidencePct}% confidence)`;
-  if (regime.regime === 'risk_on') return `Regime Today: Risk-on${suffix}.`;
-  if (regime.regime === 'risk_off') return `Regime Today: Risk-off${suffix}.`;
-  return `Regime Today: Transition${suffix}.`;
-};
-
-const leadershipLine = (regime = {}) => `Leadership/themes: ${Array.isArray(regime.leadership) && regime.leadership.length ? regime.leadership.join(', ') : 'sin liderazgo claro'}.`;
-const riskLine = (regime = {}) => `Key risks: ${Array.isArray(regime.riskFlags) && regime.riskFlags.length ? regime.riskFlags.slice(0, 2).join('; ') : 'sin flags críticos'}.`;
-
-const ensureMandatoryDigestBullets = (digestBullets = [], regime = {}) => {
-  const source = Array.isArray(digestBullets) ? digestBullets.map((x) => String(x || '').trim()).filter(Boolean) : [];
-  const hasRegime = source.some((line) => /^regime today:/i.test(line));
-  const hasLeadership = source.some((line) => /^leadership\/themes:/i.test(line));
-  const hasRisks = source.some((line) => /^key risks:/i.test(line));
-  const out = [...source];
-
-  if (!hasRegime) out.unshift(summarizeRegimeLine(regime));
-  if (!hasLeadership) out.splice(Math.min(1, out.length), 0, leadershipLine(regime));
-  if (!hasRisks) out.splice(Math.min(2, out.length), 0, riskLine(regime));
-  return out.slice(0, 10);
-};
 
 const handler = async (req, res, next, date) => {
   try {
@@ -89,17 +48,44 @@ const handler = async (req, res, next, date) => {
       )
     ]);
 
-    const digest = digestOut.rows[0] || {};
+    const digest = digestOut.rows[0] || null;
     const regime = toRegime(regimeOut.rows[0] || {});
-    const bullets = ensureMandatoryDigestBullets(Array.isArray(digest.bullets) ? digest.bullets : [], regime);
+    const crisisActive = Boolean(crisisOut.rows?.[0]?.is_active);
+
+    if (!digest) {
+      return res.json({
+        date,
+        pending: true,
+        message: "Today's digest will be available after market close."
+      });
+    }
+
+    const rawStructured = digest.raw_structured && typeof digest.raw_structured === 'object' ? digest.raw_structured : {};
+    const bullets = Array.isArray(digest.bullets) ? digest.bullets.slice(0, 10) : [];
+    const keyRisks = Array.isArray(rawStructured.key_risks)
+      ? rawStructured.key_risks.slice(0, 4)
+      : Array.isArray(digest.risk_flags)
+        ? digest.risk_flags.slice(0, 4)
+        : regime.risk_flags.slice(0, 4);
+    const macroDrivers = Array.isArray(rawStructured.macro_drivers)
+      ? rawStructured.macro_drivers.slice(0, 3)
+      : Array.isArray(regime.macro_drivers)
+        ? regime.macro_drivers.slice(0, 3)
+        : [];
 
     return res.json({
       date,
-      crisis: toCrisis(crisisOut.rows[0] || digest.crisis_banner || {}),
-      regime,
+      regime: regime.regime,
+      regime_label: regime.regime_label,
+      volatility_regime: regime.volatility_regime,
+      volatility_label: regime.volatility_label,
+      confidence: regime.confidence,
+      confidence_label: regime.confidence_label,
+      leadership: regime.leadership,
+      crisis_active: crisisActive,
       bullets,
-      themes: Array.isArray(digest.themes) ? digest.themes : regime.leadership,
-      riskFlags: Array.isArray(digest.risk_flags) ? digest.risk_flags : regime.riskFlags
+      key_risks: keyRisks,
+      macro_drivers: macroDrivers
     });
   } catch (error) {
     return next(error);
