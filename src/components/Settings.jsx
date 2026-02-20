@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/apiClient';
 import { subscribeBrowserPush } from '../lib/notifications';
 import { useApp } from '../store/AppContext';
+import { useAuth } from '../store/AuthContext';
 import { useLanguage } from '../store/LanguageContext';
 import { useTheme } from '../store/ThemeContext';
 
@@ -30,8 +31,10 @@ const saveCapitalStyle = (value) => {
 
 const Settings = () => {
   const { state, actions } = useApp();
+  const auth = useAuth();
   const { theme, setTheme } = useTheme();
   const { language, isSpanish, setLanguage } = useLanguage();
+  const isAccountUser = String(auth?.user?.role || '').toLowerCase() === 'account';
   const [capitalStyle, setCapitalStyle] = useState(readInitialCapitalStyle);
   const t = isSpanish
     ? {
@@ -308,20 +311,22 @@ const Settings = () => {
         <p className="muted">{t.subtitle}</p>
       </section>
 
-      <div className="card" id="account">
-        <h2>{t.account}</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          {t.accountHelp}
-        </p>
-        <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
-          <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>
-            {t.dark}
-          </button>
-          <button type="button" onClick={() => setTheme('light')} style={{ borderColor: theme === 'light' ? '#00E08E' : undefined }}>
-            {t.light}
-          </button>
+      {!isAccountUser ? (
+        <div className="card" id="account">
+          <h2>{t.account}</h2>
+          <p className="muted" style={{ marginTop: 6 }}>
+            {t.accountHelp}
+          </p>
+          <div className="row" style={{ marginTop: 8, justifyContent: 'flex-start', gap: 8 }}>
+            <button type="button" onClick={() => setTheme('dark')} style={{ borderColor: theme === 'dark' ? '#00E08E' : undefined }}>
+              {t.dark}
+            </button>
+            <button type="button" onClick={() => setTheme('light')} style={{ borderColor: theme === 'light' ? '#00E08E' : undefined }}>
+              {t.light}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="card" id="language">
         <h2>{t.language}</h2>
@@ -353,123 +358,127 @@ const Settings = () => {
         </div>
       </div>
 
-      <div className="card" id="notifications">
-        <h2>{t.notifications}</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          {t.notificationsHelp} ({userTimezone}).
-        </p>
+      {!isAccountUser ? (
+        <>
+          <div className="card" id="notifications">
+            <h2>{t.notifications}</h2>
+            <p className="muted" style={{ marginTop: 6 }}>
+              {t.notificationsHelp} ({userTimezone}).
+            </p>
 
-        {notifLoading ? (
-          <p className="muted" style={{ marginTop: 8 }}>{t.loadingPrefs}</p>
-        ) : (
-          <>
-            <div className="grid grid-2" style={{ marginTop: 10 }}>
-              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={notif.stopLoss}
-                  onChange={(e) => setNotif((p) => ({ ...p, stopLoss: e.target.checked }))}
-                />
-                <span className="muted">{t.stopLoss}</span>
-              </label>
-              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={notif.opportunities}
-                  onChange={(e) => setNotif((p) => ({ ...p, opportunities: e.target.checked }))}
-                />
-                <span className="muted">{t.opportunities}</span>
-              </label>
-              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={notif.regimeChanges}
-                  onChange={(e) => setNotif((p) => ({ ...p, regimeChanges: e.target.checked }))}
-                />
-                <span className="muted">{t.regimeChanges}</span>
-              </label>
-              <div />
+            {notifLoading ? (
+              <p className="muted" style={{ marginTop: 8 }}>{t.loadingPrefs}</p>
+            ) : (
+              <>
+                <div className="grid grid-2" style={{ marginTop: 10 }}>
+                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={notif.stopLoss}
+                      onChange={(e) => setNotif((p) => ({ ...p, stopLoss: e.target.checked }))}
+                    />
+                    <span className="muted">{t.stopLoss}</span>
+                  </label>
+                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={notif.opportunities}
+                      onChange={(e) => setNotif((p) => ({ ...p, opportunities: e.target.checked }))}
+                    />
+                    <span className="muted">{t.opportunities}</span>
+                  </label>
+                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={notif.regimeChanges}
+                      onChange={(e) => setNotif((p) => ({ ...p, regimeChanges: e.target.checked }))}
+                    />
+                    <span className="muted">{t.regimeChanges}</span>
+                  </label>
+                  <div />
+                  <label className="label">
+                    <span className="muted">{t.quietStart} ({userTimezone})</span>
+                    <input
+                      type="time"
+                      value={notif.quietHoursStart}
+                      onChange={(e) => setNotif((p) => ({ ...p, quietHoursStart: e.target.value }))}
+                    />
+                  </label>
+                  <label className="label">
+                    <span className="muted">{t.quietEnd} ({userTimezone})</span>
+                    <input
+                      type="time"
+                      value={notif.quietHoursEnd}
+                      onChange={(e) => setNotif((p) => ({ ...p, quietHoursEnd: e.target.value }))}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={handleSaveNotif} disabled={notifSaving}>
+                    {notifSaving ? t.savingPrefs : t.savePrefs}
+                  </button>
+                  <button type="button" onClick={handleEnablePush} disabled={notifSubscribing}>
+                    {notifSubscribing ? t.enablingPush : t.enablePush}
+                  </button>
+                </div>
+
+                {notifError && <div className="card" style={{ borderColor: '#FF4757AA', marginTop: 10 }}>{notifError}</div>}
+                {notifSuccess && <div className="card" style={{ borderColor: '#00E08E88', marginTop: 10 }}>{notifSuccess}</div>}
+              </>
+            )}
+          </div>
+
+          <div className="card" id="security">
+            <h2>{t.security}</h2>
+            <p className="muted" style={{ marginTop: 6 }}>
+              {t.securityHelp}
+            </p>
+
+            <form onSubmit={handlePasswordSubmit} className="grid" style={{ marginTop: 10 }}>
               <label className="label">
-                <span className="muted">{t.quietStart} ({userTimezone})</span>
+                <span className="muted">{t.currentPassword}</span>
                 <input
-                  type="time"
-                  value={notif.quietHoursStart}
-                  onChange={(e) => setNotif((p) => ({ ...p, quietHoursStart: e.target.value }))}
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="********"
+                  required
                 />
               </label>
+
               <label className="label">
-                <span className="muted">{t.quietEnd} ({userTimezone})</span>
+                <span className="muted">{t.newPassword}</span>
                 <input
-                  type="time"
-                  value={notif.quietHoursEnd}
-                  onChange={(e) => setNotif((p) => ({ ...p, quietHoursEnd: e.target.value }))}
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="********"
+                  required
                 />
               </label>
-            </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <button type="button" onClick={handleSaveNotif} disabled={notifSaving}>
-                {notifSaving ? t.savingPrefs : t.savePrefs}
+              <label className="label">
+                <span className="muted">{t.confirmPassword}</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="********"
+                  required
+                />
+              </label>
+
+              {passwordError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{passwordError}</div>}
+              {passwordSuccess && <div className="card" style={{ borderColor: '#00E08E88' }}>{passwordSuccess}</div>}
+
+              <button type="submit" disabled={passwordLoading}>
+                {passwordLoading ? t.updatingPassword : t.updatePassword}
               </button>
-              <button type="button" onClick={handleEnablePush} disabled={notifSubscribing}>
-                {notifSubscribing ? t.enablingPush : t.enablePush}
-              </button>
-            </div>
-
-            {notifError && <div className="card" style={{ borderColor: '#FF4757AA', marginTop: 10 }}>{notifError}</div>}
-            {notifSuccess && <div className="card" style={{ borderColor: '#00E08E88', marginTop: 10 }}>{notifSuccess}</div>}
-          </>
-        )}
-      </div>
-
-      <div className="card" id="security">
-        <h2>{t.security}</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          {t.securityHelp}
-        </p>
-
-        <form onSubmit={handlePasswordSubmit} className="grid" style={{ marginTop: 10 }}>
-          <label className="label">
-            <span className="muted">{t.currentPassword}</span>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="********"
-              required
-            />
-          </label>
-
-          <label className="label">
-            <span className="muted">{t.newPassword}</span>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="********"
-              required
-            />
-          </label>
-
-          <label className="label">
-            <span className="muted">{t.confirmPassword}</span>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="********"
-              required
-            />
-          </label>
-
-          {passwordError && <div className="card" style={{ borderColor: '#FF4757AA' }}>{passwordError}</div>}
-          {passwordSuccess && <div className="card" style={{ borderColor: '#00E08E88' }}>{passwordSuccess}</div>}
-
-          <button type="submit" disabled={passwordLoading}>
-            {passwordLoading ? t.updatingPassword : t.updatePassword}
-          </button>
-        </form>
-      </div>
+            </form>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 };

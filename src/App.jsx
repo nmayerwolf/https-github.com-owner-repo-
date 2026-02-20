@@ -445,6 +445,7 @@ const App = () => {
   };
 
   const isSuperadmin = String(user?.role || '').toLowerCase() === 'superadmin';
+  const isAccountUser = String(user?.role || '').toLowerCase() === 'account';
 
   const loadAdminDashboard = async () => {
     setAdminLoading(true);
@@ -512,7 +513,7 @@ const App = () => {
     ? new Date(backendLastOkAt).toLocaleString(isSpanish ? 'es-AR' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })
     : null;
   const unreadNotifCount = notifItems.filter((item) => !item.read).length;
-  const settingsMenuItems = isSpanish
+  const settingsMenuItems = (isSpanish
     ? [
         { key: 'account', label: 'Cuenta' },
         { key: 'language', label: 'Idioma' },
@@ -526,7 +527,10 @@ const App = () => {
         { key: 'capital-style', label: 'Capital style' },
         { key: 'notifications', label: 'Notifications' },
         { key: 'security', label: 'Security' }
-      ];
+      ]).filter((item) => {
+    if (!isAccountUser) return true;
+    return item.key !== 'account' && item.key !== 'notifications' && item.key !== 'security';
+  });
 
   return (
     <div className="app">

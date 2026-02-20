@@ -1,0 +1,1765 @@
+### nexusfin-api/src/services/twelvedata.js
+const { env } = require('../config/env');
+
+const BASE = 'https://api.twelvedata.com';
+
+const createTwelveDataService = (options = {}) => {
+  const base = options.base || BASE;
+  const fetchImpl = options.fetchImpl || fetch;
+  const keyProvider = options.keyProvider || (() => env.twelveDataKey);
+
+  const hasKey = () => String(keyProvider() || '').trim().length > 0;
+
+  const fetchTwelve = async (path, params = {}) => {
+    const apikey = String(keyProvider() || '').trim();
+    if (!apikey) {
+      const err = new Error('Missing TWELVE_DATA_KEY');
+      err.code = 'TWELVE_DATA_KEY_MISSING';
+      throw err;
+    }
+
+    const qs = new URLSearchParams({ ...params, apikey });
+    const res = await fetchImpl(`${base}${path}?${qs.toString()}`);
+    if (!res.ok) {
+      const err = new Error(`TwelveData HTTP ${res.status} ${path}`);
+      err.code = 'TWELVEDATA_HTTP_ERROR';
+      err.status = res.status;
+      throw err;
+    }
+
+    const body = await res.json();
+    const status = String(body?.status || '').toLowerCase();
+    if (status === 'error' || body?.code) {
+      const err = new Error(String(body?.message || body?.code || 'TwelveData error'));
+      err.code = 'TWELVEDATA_API_ERROR';
+      err.details = body;
+      throw err;
+    }
+
+    return body;
+  };
+
+  return {
+    hasKey,
+    quote: (symbol) => fetchTwelve('/quote', { symbol }),
+    symbolSearch: (q, outputsize = 20) => fetchTwelve('/symbol_search', { symbol: q, outputsize })
+  };
+};
+
+const service = createTwelveDataService();
+
+module.exports = { ...service, createTwelveDataService };
+
+### nexusfin-api/src/services/marketDataProvider.js
+const twelvedata = require('./twelvedata');
+
+const toFinite = (value) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : null;
+};
+
+const toTwelveDataSymbol = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.includes('_')) {
+    const [base, quote] = upper.split('_');
+    if (!base || !quote) return null;
+    return `${base}/${quote}`;
+  }
+  if (upper.endsWith('USDT')) {
+    const base = upper.replace(/USDT$/, '');
+    return base ? `${base}/USD` : null;
+  }
+  return upper;
+};
+
+const canonicalizeSymbol = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.includes('/')) {
+    const [base, quote] = upper.split('/');
+    if (!base || !quote) return upper;
+    return `${base}_${quote}`;
+  }
+  return upper;
+};
+
+const normalizeSearchCategory = (symbol, type = '') => {
+  const normalizedSymbol = String(symbol || '').toUpperCase();
+  const normalizedType = String(type || '').toLowerCase();
+  if (normalizedSymbol.endsWith('USDT') || normalizedType.includes('crypto')) return 'crypto';
+  if (normalizedSymbol.includes('_') || normalizedType.includes('forex') || normalizedType.includes('currency')) return 'fx';
+  if (normalizedType.includes('etf')) return 'etf';
+  if (normalizedType.includes('commodity') || normalizedType.includes('futures')) return 'commodity';
+  if (normalizedType.includes('metal')) return 'metal';
+  if (normalizedType.includes('bond') || normalizedType.includes('treasury')) return 'bond';
+  return 'equity';
+};
+
+const scoreSearchResult = (query, item) => {
+  const needle = String(query || '').trim().toLowerCase();
+  const symbol = String(item?.symbol || '').trim().toLowerCase();
+  const name = String(item?.name || '').trim().toLowerCase();
+
+  let score = 0;
+  if (symbol === needle) score += 120;
+  else if (symbol.startsWith(needle)) score += 80;
+  else if (symbol.includes(needle)) score += 55;
+
+  if (name === needle) score += 95;
+  else if (name.startsWith(needle)) score += 70;
+  else if (name.includes(needle)) score += 45;
+
+  const type = String(item?.type || '').toLowerCase();
+  if (type.includes('stock') || type.includes('adr') || type.includes('etf') || type.includes('index')) score += 20;
+  if (type.includes('right') || type.includes('warrant') || type.includes('preferred')) score -= 20;
+  if (symbol.includes(':')) score -= 8;
+  if (symbol.length > 12) score -= 5;
+
+  return score;
+};
+
+const makeLiveUnavailableError = (reason, symbol = '') => {
+  const error = new Error(
+    reason === 'TWELVE_DATA_KEY_MISSING'
+      ? 'Missing TWELVE_DATA_KEY'
+      : `No live quote available for ${symbol}`
+  );
+  error.code = 'NO_LIVE_DATA';
+  error.status = 503;
+  error.reason = reason;
+  error.symbol = symbol;
+  return error;
+};
+
+const resolveMarketQuote = async (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) throw makeLiveUnavailableError('SYMBOL_REQUIRED', upper);
+
+  if (!twelvedata.hasKey()) throw makeLiveUnavailableError('TWELVE_DATA_KEY_MISSING', upper);
+
+  const quoteSymbol = toTwelveDataSymbol(upper);
+  if (!quoteSymbol) throw makeLiveUnavailableError('INVALID_SYMBOL', upper);
+
+  let out;
+  try {
+    out = await twelvedata.quote(quoteSymbol);
+  } catch {
+    throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
+  }
+
+  const price = toFinite(out?.close ?? out?.price);
+  if (!Number.isFinite(price) || price <= 0) throw makeLiveUnavailableError('LIVE_SOURCE_UNAVAILABLE', upper);
+
+  const previousClose = toFinite(out?.previous_close);
+  const pct = toFinite(out?.percent_change ?? out?.change_percent);
+
+  return {
+    quote: {
+      c: price,
+      pc: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price,
+      dp: Number.isFinite(pct) ? pct : null
+    },
+    meta: {
+      source: 'twelvedata',
+      asOf: new Date().toISOString(),
+      stale: false,
+      fallbackLevel: 0
+    }
+  };
+};
+
+const resolveMarketSearch = async (query) => {
+  const q = String(query || '').trim();
+  if (!q || !twelvedata.hasKey()) return [];
+
+  const out = await twelvedata.symbolSearch(q, 20);
+  const rows = Array.isArray(out?.data) ? out.data : [];
+
+  return rows
+    .map((item) => ({
+      symbol: canonicalizeSymbol(item?.symbol),
+      name: String(item?.instrument_name || '').trim(),
+      type: String(item?.instrument_type || item?.type || '').trim()
+    }))
+    .filter((item) => item.symbol && item.name)
+    .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
+    .slice(0, 20)
+    .map((item) => {
+      const category = normalizeSearchCategory(item.symbol, item.type);
+      const sourceSuffix = category === 'crypto' ? 'crypto' : category === 'fx' ? 'fx' : 'stock';
+      return {
+        symbol: item.symbol,
+        name: item.name,
+        category,
+        source: `twelvedata_${sourceSuffix}`,
+        type: item.type
+      };
+    });
+};
+
+module.exports = {
+  resolveMarketQuote,
+  resolveMarketSearch,
+  syntheticQuote: () => null,
+  isFinnhubUnavailable: () => false
+};
+
+### nexusfin-api/src/routes/market.js
+const express = require('express');
+const { cache } = require('../config/cache');
+const { query } = require('../config/db');
+const { env } = require('../config/env');
+const av = require('../services/alphavantage');
+const finnhub = require('../services/finnhub');
+const { resolveMarketQuote, resolveMarketSearch, isFinnhubUnavailable } = require('../services/marketDataProvider');
+const { rankNews } = require('../services/newsRanker');
+const { badRequest } = require('../utils/errors');
+const { MARKET_UNIVERSE } = require('../constants/marketUniverse');
+
+const router = express.Router();
+let newsTelemetryReady = false;
+
+const getOrSet = async (key, ttlSec, fn) => {
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const value = await fn();
+  cache.set(key, value, ttlSec);
+  return value;
+};
+
+const ensureNewsTelemetryTable = async () => {
+  if (newsTelemetryReady) return;
+  await query(
+    `CREATE TABLE IF NOT EXISTS news_telemetry_events (
+      id SERIAL PRIMARY KEY,
+      user_id UUID NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('impression','click')),
+      item_key TEXT NOT NULL,
+      theme TEXT NOT NULL DEFAULT 'global',
+      score NUMERIC,
+      headline TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`
+  );
+  await query('CREATE INDEX IF NOT EXISTS idx_news_telemetry_user_created ON news_telemetry_events(user_id, created_at DESC)');
+  await query('CREATE INDEX IF NOT EXISTS idx_news_telemetry_user_theme ON news_telemetry_events(user_id, theme)');
+  newsTelemetryReady = true;
+};
+
+const getThemeCtrBoost = async (userId, days = 14) => {
+  try {
+    await ensureNewsTelemetryTable();
+    const out = await query(
+      `SELECT
+         theme,
+         COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+         COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks
+       FROM news_telemetry_events
+       WHERE user_id = $1
+         AND created_at >= NOW() - ($2::text || ' days')::interval
+       GROUP BY theme`,
+      [userId, String(days)]
+    );
+    const boosts = {};
+    for (const row of out.rows || []) {
+      const impressions = Number(row.impressions || 0);
+      const clicks = Number(row.clicks || 0);
+      if (impressions < 5) continue;
+      boosts[String(row.theme || 'global')] = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    }
+    return boosts;
+  } catch {
+    return {};
+  }
+};
+
+const toFinite = (value) => {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : null;
+};
+
+const normalizeSymbolList = (value) => {
+  const raw = String(value || '')
+    .split(',')
+    .map((s) => String(s || '').trim().toUpperCase())
+    .filter(Boolean);
+  return Array.from(new Set(raw)).slice(0, 60);
+};
+
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
+const buildSyntheticCandles = (price, previousClose = null, points = 90) => {
+  const current = toFinite(price);
+  const prev = toFinite(previousClose);
+  if (!current || current <= 0) return null;
+  const start = prev && prev > 0 ? prev : current;
+  const step = points > 1 ? (current - start) / (points - 1) : 0;
+  const c = Array.from({ length: points }, (_, idx) => Number((start + step * idx).toFixed(6)));
+  return {
+    s: 'ok',
+    c,
+    h: c.map((v) => Number((v * 1.002).toFixed(6))),
+    l: c.map((v) => Number((v * 0.998).toFixed(6))),
+    v: c.map(() => 0)
+  };
+};
+
+const symbolBasePrice = (symbol) => {
+  const normalized = String(symbol || '').toUpperCase();
+  if (!normalized) return 100;
+
+  if (normalized.endsWith('USDT')) {
+    if (normalized.startsWith('BTC')) return 60000;
+    if (normalized.startsWith('ETH')) return 3000;
+    if (normalized.startsWith('SOL')) return 150;
+    return 100;
+  }
+
+  if (normalized.includes('_')) {
+    if (normalized === 'USD_JPY') return 150;
+    if (normalized === 'USD_CHF') return 0.9;
+    if (normalized === 'USD_CAD') return 1.35;
+    return 1.1;
+  }
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  return 40 + (hash % 460);
+};
+
+const syntheticQuote = (symbol, retryAfterMs = 0) => {
+  const c = Number(symbolBasePrice(symbol).toFixed(6));
+  return {
+    c,
+    pc: c,
+    d: 0,
+    dp: 0,
+    h: c,
+    l: c,
+    o: c,
+    t: Math.floor(Date.now() / 1000),
+    fallback: true,
+    retryAfterMs: Number(retryAfterMs) || 0
+  };
+};
+
+router.get('/quote', async (req, res, next) => {
+  try {
+    if (!req.query.symbol) throw badRequest('symbol requerido');
+    const resolved = await resolveMarketQuote(req.query.symbol, { strictRealtime: env.marketStrictRealtime });
+    return res.json({ ...resolved.quote, source: resolved.meta.source, asOf: resolved.meta.asOf, stale: resolved.meta.stale });
+  } catch (error) {
+    if (error?.code === 'NO_LIVE_DATA') {
+      return res.status(503).json({
+        error: 'NO_LIVE_DATA',
+        message: error?.message || 'No live data available',
+        symbol: String(req.query.symbol || '').toUpperCase()
+      });
+    }
+    return next(error);
+  }
+});
+
+router.get('/candles', async (req, res, next) => {
+  try {
+    const { symbol, resolution = 'D', from, to } = req.query;
+    if (!symbol || !from || !to) throw badRequest('symbol/from/to requeridos');
+    const key = `candles:${symbol}:${resolution}:${from}:${to}`;
+    const data = await getOrSet(key, 300, async () => {
+      try {
+        return await finnhub.candles(symbol, resolution, from, to);
+      } catch (error) {
+        if (!isFinnhubUnavailable(error)) throw error;
+        const quote = syntheticQuote(symbol, error?.retryAfterMs);
+        return buildSyntheticCandles(quote.c, quote.pc);
+      }
+    });
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/crypto-candles', async (req, res, next) => {
+  try {
+    const { symbol, resolution = 'D', from, to } = req.query;
+    if (!symbol || !from || !to) throw badRequest('symbol/from/to requeridos');
+    const key = `crypto:${symbol}:${resolution}:${from}:${to}`;
+    const data = await getOrSet(key, 300, async () => {
+      try {
+        return await finnhub.cryptoCandles(symbol, resolution, from, to);
+      } catch (error) {
+        if (!isFinnhubUnavailable(error)) throw error;
+        const quote = syntheticQuote(symbol, error?.retryAfterMs);
+        return buildSyntheticCandles(quote.c, quote.pc);
+      }
+    });
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/forex-candles', async (req, res, next) => {
+  try {
+    const { from, to, resolution = 'D', fromTs, toTs } = req.query;
+    if (!from || !to || !fromTs || !toTs) throw badRequest('from/to/fromTs/toTs requeridos');
+    const key = `fx:${from}:${to}:${resolution}:${fromTs}:${toTs}`;
+    const pair = `${String(from).toUpperCase()}_${String(to).toUpperCase()}`;
+    const data = await getOrSet(key, 300, async () => {
+      try {
+        return await finnhub.forexCandles(from, to, resolution, fromTs, toTs);
+      } catch (error) {
+        if (!isFinnhubUnavailable(error)) throw error;
+        const quote = syntheticQuote(pair, error?.retryAfterMs);
+        return buildSyntheticCandles(quote.c, quote.pc);
+      }
+    });
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/snapshot', async (req, res, next) => {
+  try {
+    const symbols = normalizeSymbolList(req.query.symbols);
+    if (!symbols.length) throw badRequest('symbols requerido');
+
+    const items = [];
+    const errors = [];
+
+    for (const symbol of symbols) {
+      const cacheKey = `snapshot:${symbol}`;
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        items.push(cached);
+        continue;
+      }
+
+      try {
+        const resolved = await resolveMarketQuote(symbol, { strictRealtime: env.marketStrictRealtime });
+        const quote = resolved.quote;
+        const price = toFinite(quote?.c);
+        const previousClose = toFinite(quote?.pc);
+        if (!price || price <= 0) throw new Error('invalid quote');
+
+        const snapshot = {
+          symbol,
+          quote: {
+            c: price,
+            pc: previousClose ?? price,
+            dp: toFinite(quote?.dp) ?? 0
+          },
+          candles: buildSyntheticCandles(price, previousClose),
+          marketMeta: resolved.meta
+        };
+
+        cache.set(cacheKey, snapshot, 45);
+        items.push(snapshot);
+      } catch (error) {
+        errors.push({
+          symbol,
+          code: error?.code || 'SNAPSHOT_FAILED',
+          message: error?.message || 'snapshot failed'
+        });
+      }
+    }
+
+    return res.json({
+      items,
+      errors,
+      total: symbols.length,
+      count: items.length
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/commodity', async (req, res, next) => {
+  try {
+    const fn = req.query.function;
+    if (!fn) throw badRequest('function requerido');
+    const extraParams = Object.fromEntries(
+      Object.entries(req.query || {}).filter(([k]) => !['function'].includes(String(k || '').toLowerCase()))
+    );
+    const keySuffix = Object.entries(extraParams)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join('|');
+    const cacheKey = keySuffix ? `commodity:${fn}:${keySuffix}` : `commodity:${fn}`;
+    const raw = await getOrSet(cacheKey, 300, () => av.commodity(fn, extraParams));
+    const prices = Array.isArray(raw.data) ? raw.data.map((x) => Number(x.value)).filter((x) => Number.isFinite(x)) : [];
+    return res.json({ prices, timestamps: raw.data?.map((x) => x.date) || [], current: prices[0] || null, raw });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/news', async (req, res, next) => {
+  try {
+    const symbol = String(req.query.symbol || '').trim().toUpperCase();
+    let data = [];
+
+    if (symbol) {
+      const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+      const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
+      const key = `news:company:${symbol}:${from}:${to}`;
+      data = await getOrSet(key, 900, () => finnhub.companyNews(symbol, from, to));
+    } else {
+      const category = String(req.query.category || 'general').trim().toLowerCase() || 'general';
+      const minId = Number.isFinite(Number(req.query.minId)) ? Number(req.query.minId) : 0;
+      const key = `news:general:${category}:${minId}`;
+      data = await getOrSet(key, 900, () => finnhub.generalNews(category, minId));
+    }
+
+    return res.json(Array.isArray(data) ? data : []);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/news/recommended', async (req, res, next) => {
+  try {
+    const symbols = normalizeSymbolList(req.query.symbols).slice(0, 8);
+    const category = String(req.query.category || 'general').trim().toLowerCase() || 'general';
+    const minId = Number.isFinite(Number(req.query.minId)) ? Number(req.query.minId) : 0;
+    const minScore = Number.isFinite(Number(req.query.minScore)) ? Number(req.query.minScore) : 6;
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 60;
+    const maxAgeHours = Number.isFinite(Number(req.query.maxAgeHours)) ? Number(req.query.maxAgeHours) : 48;
+    const strictImpact = String(req.query.strictImpact || '1') !== '0';
+    const to = String(req.query.to || new Date().toISOString().slice(0, 10));
+    const from = String(req.query.from || new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString().slice(0, 10));
+
+    const recommendedCategories = Array.from(new Set([category, 'general', 'forex', 'crypto']));
+    const categoryBuckets = await Promise.all(
+      recommendedCategories.map((cat) => {
+        const key = `news:recommended:general:${cat}:${minId}`;
+        return getOrSet(key, 900, () => finnhub.generalNews(cat, minId)).catch(() => []);
+      })
+    );
+
+    const companyBuckets = await Promise.all(
+      symbols.map((symbol) => {
+        const key = `news:recommended:company:${symbol}:${from}:${to}`;
+        return getOrSet(key, 900, () => finnhub.companyNews(symbol, from, to)).catch(() => []);
+      })
+    );
+
+    const merged = new Map();
+    for (const item of [...categoryBuckets.flat(), ...companyBuckets.flat()]) {
+      const key = item?.id || item?.url;
+      if (!key || merged.has(key)) continue;
+      merged.set(key, item);
+    }
+
+    const themeCtrBoost = await getThemeCtrBoost(req.user?.id, 14);
+    const ranked = rankNews([...merged.values()], {
+      watchlistSymbols: symbols,
+      minScore,
+      limit,
+      maxAgeHours,
+      strictImpact,
+      themeCtrBoost
+    });
+
+    return res.json({
+      mode: 'ai',
+      minScore,
+      maxAgeHours,
+      strictImpact,
+      total: merged.size,
+      count: ranked.length,
+      items: ranked
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/news/telemetry', async (req, res, next) => {
+  try {
+    const eventType = String(req.body?.eventType || '').trim().toLowerCase();
+    if (!['impression', 'click'].includes(eventType)) throw badRequest('eventType inválido');
+    const incoming = Array.isArray(req.body?.items) ? req.body.items : [];
+    const items = incoming.slice(0, 60).map((item) => ({
+      itemKey: String(item?.id || item?.url || item?.headline || '').trim().slice(0, 255),
+      theme: String(item?.theme || item?.aiTheme || 'global').trim().toLowerCase().slice(0, 64) || 'global',
+      score: Number.isFinite(Number(item?.score ?? item?.aiScore)) ? Number(item?.score ?? item?.aiScore) : null,
+      headline: String(item?.headline || '').trim().slice(0, 500)
+    })).filter((item) => item.itemKey);
+    if (!items.length) return res.status(201).json({ ok: true, inserted: 0 });
+
+    try {
+      await ensureNewsTelemetryTable();
+      for (const item of items) {
+        // Keep simple inserts; volume is low and easier to reason about on failures.
+        await query(
+          `INSERT INTO news_telemetry_events (user_id, event_type, item_key, theme, score, headline)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [req.user.id, eventType, item.itemKey, item.theme, item.score, item.headline || null]
+        );
+      }
+    } catch {
+      // Best effort telemetry: never block market/news UX.
+      return res.status(201).json({ ok: true, inserted: 0, persisted: false });
+    }
+
+    return res.status(201).json({ ok: true, inserted: items.length, persisted: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/news/telemetry/summary', async (req, res, next) => {
+  try {
+    const days = Math.max(1, Math.min(30, Number(req.query.days || 7)));
+    try {
+      await ensureNewsTelemetryTable();
+      const [totalsOut, byThemeOut] = await Promise.all([
+        query(
+          `SELECT
+             COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks
+           FROM news_telemetry_events
+           WHERE user_id = $1 AND created_at >= NOW() - ($2::text || ' days')::interval`,
+          [req.user.id, String(days)]
+        ),
+        query(
+          `SELECT
+             theme,
+             COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+             COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks
+           FROM news_telemetry_events
+           WHERE user_id = $1 AND created_at >= NOW() - ($2::text || ' days')::interval
+           GROUP BY theme
+           ORDER BY clicks DESC, impressions DESC`,
+          [req.user.id, String(days)]
+        )
+      ]);
+      const totals = totalsOut.rows[0] || { impressions: 0, clicks: 0 };
+      const impressions = Number(totals.impressions || 0);
+      const clicks = Number(totals.clicks || 0);
+      return res.json({
+        days,
+        impressions,
+        clicks,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        byTheme: (byThemeOut.rows || []).map((row) => {
+          const imp = Number(row.impressions || 0);
+          const clk = Number(row.clicks || 0);
+          return {
+            theme: row.theme,
+            impressions: imp,
+            clicks: clk,
+            ctr: imp > 0 ? (clk / imp) * 100 : 0
+          };
+        })
+      });
+    } catch {
+      return res.json({ days, impressions: 0, clicks: 0, ctr: 0, byTheme: [], persisted: false });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete('/news/telemetry/summary', async (req, res, next) => {
+  try {
+    try {
+      await ensureNewsTelemetryTable();
+      await query('DELETE FROM news_telemetry_events WHERE user_id = $1', [req.user.id]);
+      return res.json({ ok: true, persisted: true });
+    } catch {
+      return res.json({ ok: true, persisted: false });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/profile', async (req, res, next) => {
+  try {
+    const { symbol } = req.query;
+    if (!symbol) throw badRequest('symbol requerido');
+    const data = await getOrSet(`profile:${symbol}`, 86400, async () => {
+      const [finn, over] = await Promise.all([finnhub.profile(symbol), av.overview(symbol)]);
+      return {
+        name: finn.name || over.Name,
+        sector: finn.finnhubIndustry || over.Sector,
+        marketCap: finn.marketCapitalization || over.MarketCapitalization,
+        pe: over.PERatio,
+        dividendYield: over.DividendYield
+      };
+    });
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/universe', async (_req, res) => {
+  const categories = Array.from(new Set(MARKET_UNIVERSE.map((item) => item.category)));
+  return res.json({
+    assets: MARKET_UNIVERSE,
+    categories,
+    count: MARKET_UNIVERSE.length
+  });
+});
+
+router.get('/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ items: [], count: 0, q });
+
+    const cachedUniverse = MARKET_UNIVERSE.filter((item) => {
+      const symbol = normalizeSearchText(item.symbol);
+      const name = normalizeSearchText(item.name);
+      const needle = normalizeSearchText(q);
+      return symbol.includes(needle) || name.includes(needle);
+    }).slice(0, 20);
+
+    const key = `market:search:${normalizeSearchText(q)}`;
+    const remote = await getOrSet(key, 600, async () => resolveMarketSearch(q));
+
+    const merged = new Map();
+    [...cachedUniverse, ...(Array.isArray(remote) ? remote : [])].forEach((item) => {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol || merged.has(symbol)) return;
+      merged.set(symbol, {
+        symbol,
+        name: String(item?.name || ''),
+        category: String(item?.category || 'equity'),
+        source: String(item?.source || (symbol.endsWith('USDT') ? 'finnhub_crypto' : symbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+      });
+    });
+
+    const items = [...merged.values()].slice(0, 20);
+    return res.json({ items, count: items.length, q });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+module.exports = router;
+
+### grep -A 50 "market-data" nexusfin-api/src/index.js
+app.get('/api/health/market-data', async (_req, res) => {
+  const symbols = new Set((MARKET_UNIVERSE || []).map((item) => String(item?.symbol || '').toUpperCase()));
+  let liveProbe = { ok: false, symbol: 'AAPL' };
+  try {
+    const probe = await resolveMarketQuote('AAPL');
+    liveProbe = {
+      ok: true,
+      symbol: 'AAPL',
+      source: probe?.meta?.source || null,
+      hasPrice: Number.isFinite(Number(probe?.quote?.c))
+    };
+  } catch (error) {
+    liveProbe = {
+      ok: false,
+      symbol: 'AAPL',
+      code: error?.code || null,
+      reason: error?.reason || null,
+      message: error?.message || null
+    };
+  }
+  return res.json({
+    ok: true,
+    providers: {
+      finnhub: Boolean(String(env.finnhubKey || '').trim()),
+      alphaVantage: Boolean(String(env.alphaVantageKey || '').trim()),
+      twelveData: Boolean(String(env.twelveDataKey || '').trim())
+    },
+    universe: {
+      count: symbols.size,
+      hasMerval: symbols.has('^MERV'),
+      hasGoldSpot: symbols.has('XAU_USD')
+    },
+    ws: {
+      chainResolverEnabled: true
+    },
+    strictRealtime: Boolean(env.marketStrictRealtime),
+    liveProbe,
+    ts: new Date().toISOString()
+  });
+});
+
+app.get('/api/health/cron', (_req, res) => {
+  const status = app.locals.getCronStatus?.();
+  return res.json(
+    status || {
+      enabled: false,
+      lastRun: null,
+      lastDuration: 0,
+      symbolsScanned: 0,
+      candidatesFound: 0,
+      aiValidations: 0,
+
+### nexusfin-api/src/workers/marketCron.js
+const cron = require('node-cron');
+const { env } = require('../config/env');
+
+const ET_ZONE = 'America/New_York';
+
+const toEtParts = (date = new Date()) => {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET_ZONE,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  return {
+    weekday: String(parts.weekday || '').toLowerCase(),
+    hour: Number(parts.hour || 0),
+    minute: Number(parts.minute || 0)
+  };
+};
+
+const isWeekdayEt = (date = new Date()) => {
+  const day = toEtParts(date).weekday;
+  return !['sat', 'sun'].includes(day);
+};
+
+const isUsMarketHoursEt = (date = new Date()) => {
+  if (!isWeekdayEt(date)) return false;
+  const { hour, minute } = toEtParts(date);
+  const minutes = hour * 60 + minute;
+  return minutes >= 570 && minutes < 960; // 09:30-16:00 ET
+};
+
+const scheduleIntervalMs = (schedule) => {
+  const match = String(schedule || '').match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
+  if (!match) return null;
+  const mins = Number(match[1]);
+  if (!Number.isFinite(mins) || mins <= 0) return null;
+  return mins * 60 * 1000;
+};
+
+const toStopLossChecked = (out) => {
+  if (Number.isFinite(Number(out?.stopLossChecked))) return Number(out.stopLossChecked);
+  if (!Array.isArray(out?.results)) return 0;
+  return out.results.reduce((acc, item) => acc + Number(item?.positionsScanned || 0), 0);
+};
+
+const toMetric = (out, key) => {
+  const value = Number(out?.[key]);
+  return Number.isFinite(value) ? value : 0;
+};
+
+const buildTasks = (config = env, runners = {}, clock = () => new Date()) => {
+  const inUsHours = () => isUsMarketHoursEt(clock());
+  const inWeekday = () => isWeekdayEt(clock());
+  return [
+    {
+      name: 'market-us',
+      schedule: `*/${Math.max(1, config.cronMarketIntervalMinutes)} * * * *`,
+      shouldRun: inUsHours,
+      run: runners.us || (async () => ({ scanned: 0, generated: 0, market: 'us' }))
+    },
+    {
+      name: 'market-crypto',
+      schedule: `*/${Math.max(1, config.cronCryptoIntervalMinutes)} * * * *`,
+      shouldRun: () => true,
+      run: runners.crypto || (async () => ({ scanned: 0, generated: 0, market: 'crypto' }))
+    },
+    {
+      name: 'market-forex',
+      schedule: `*/${Math.max(1, config.cronForexIntervalMinutes)} * * * *`,
+      shouldRun: inWeekday,
+      run: runners.forex || (async () => ({ scanned: 0, generated: 0, market: 'forex' }))
+    },
+    {
+      name: 'market-commodity',
+      schedule: `*/${Math.max(1, config.cronCommodityIntervalMinutes)} * * * *`,
+      shouldRun: inUsHours,
+      run: runners.commodity || (async () => ({ scanned: 0, generated: 0, market: 'commodity' }))
+    },
+    {
+      name: 'macro-daily',
+      schedule: String(config.cronMacroDailySchedule || '0 8 * * *'),
+      shouldRun: () => true,
+      run: runners.macroDaily || (async () => ({ generated: 0 }))
+    },
+    {
+      name: 'portfolio-daily',
+      schedule: String(config.cronPortfolioDailySchedule || '15 8 * * *'),
+      shouldRun: () => true,
+      run: runners.portfolioDaily || (async () => ({ generated: 0 }))
+    }
+  ];
+};
+
+const startMarketCron = (options = {}) => {
+  const enabled = options.enabled ?? env.cronEnabled;
+  const logger = options.logger ?? console;
+  const now = options.now ?? (() => Date.now());
+  const logRun = options.logRun;
+  const tasks = options.tasks ?? buildTasks();
+
+  const status = {
+    enabled,
+    lastRun: null,
+    lastDuration: 0,
+    symbolsScanned: 0,
+    candidatesFound: 0,
+    aiValidations: 0,
+    aiConfirmations: 0,
+    aiRejections: 0,
+    aiFailures: 0,
+    alertsGenerated: 0,
+    stopLossChecked: 0,
+    macroRuns: 0,
+    portfolioRuns: 0,
+    nextRun: null,
+    errors: [],
+    lastTask: null
+  };
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      stop: () => {},
+      getStatus: () => ({ ...status })
+    };
+  }
+
+  const jobs = [];
+
+  for (const task of tasks) {
+    const intervalMs = scheduleIntervalMs(task.schedule);
+    const job = cron.schedule(
+      task.schedule,
+      async () => {
+        const startedAtMs = now();
+        status.lastTask = task.name;
+        status.nextRun = intervalMs ? new Date(startedAtMs + intervalMs).toISOString() : null;
+
+        if (typeof task.shouldRun === 'function' && !task.shouldRun()) {
+          return;
+        }
+
+        let runLogId = null;
+        if (typeof logRun === 'function') {
+          try {
+            runLogId = await logRun({
+              event: 'start',
+              task: task.name,
+              startedAt: new Date(startedAtMs).toISOString()
+            });
+          } catch {
+            runLogId = null;
+          }
+        }
+
+        try {
+          const out = await task.run();
+          logger.log(`[cron:${task.name}] ok`, out);
+          const duration = Math.max(0, now() - startedAtMs);
+          const alertsGenerated = Number(out?.alertsCreated ?? out?.generated ?? 0);
+          const stopLossChecked = toStopLossChecked(out);
+          const symbolsScanned = toMetric(out, 'symbolsScanned');
+          const candidatesFound = toMetric(out, 'candidatesFound');
+          const aiValidations = toMetric(out, 'aiValidations');
+          const aiConfirmations = toMetric(out, 'aiConfirmations');
+          const aiRejections = toMetric(out, 'aiRejections');
+          const aiFailures = toMetric(out, 'aiFailures');
+          status.lastRun = new Date(startedAtMs).toISOString();
+          status.lastDuration = duration;
+          status.symbolsScanned = symbolsScanned;
+          status.candidatesFound = candidatesFound;
+          status.aiValidations = aiValidations;
+          status.aiConfirmations = aiConfirmations;
+          status.aiRejections = aiRejections;
+          status.aiFailures = aiFailures;
+          status.alertsGenerated = Number.isFinite(alertsGenerated) ? alertsGenerated : 0;
+          status.stopLossChecked = Number.isFinite(stopLossChecked) ? stopLossChecked : 0;
+          if (task.name === 'macro-daily') {
+            status.macroRuns = Number(out?.generated || 0);
+          }
+          if (task.name === 'portfolio-daily') {
+            status.portfolioRuns = Number(out?.generated || 0);
+          }
+          status.errors = [];
+
+          if (typeof logRun === 'function') {
+            await logRun({
+              event: 'success',
+              runId: runLogId,
+              task: task.name,
+              startedAt: new Date(startedAtMs).toISOString(),
+              finishedAt: new Date(now()).toISOString(),
+              durationMs: duration,
+              symbolsScanned,
+              candidatesFound,
+              aiValidations,
+              aiConfirmations,
+              aiRejections,
+              aiFailures,
+              alertsGenerated: status.alertsGenerated,
+              stopLossChecked: status.stopLossChecked,
+              errors: []
+            });
+          }
+        } catch (error) {
+          const message = String(error?.message || error);
+          logger.error(`[cron:${task.name}] failed`, message);
+          status.lastRun = new Date(startedAtMs).toISOString();
+          status.lastDuration = Math.max(0, now() - startedAtMs);
+          status.errors = [{ task: task.name, message, ts: new Date().toISOString() }, ...status.errors].slice(0, 10);
+
+          if (typeof logRun === 'function') {
+            await logRun({
+              event: 'failed',
+              runId: runLogId,
+              task: task.name,
+              startedAt: new Date(startedAtMs).toISOString(),
+              finishedAt: new Date(now()).toISOString(),
+              durationMs: status.lastDuration,
+              symbolsScanned: 0,
+              candidatesFound: 0,
+              aiValidations: 0,
+              aiConfirmations: 0,
+              aiRejections: 0,
+              aiFailures: 0,
+              alertsGenerated: 0,
+              stopLossChecked: 0,
+              errors: [message]
+            });
+          }
+        }
+      },
+      { timezone: ET_ZONE }
+    );
+    jobs.push(job);
+  }
+
+  return {
+    enabled: true,
+    stop: () => {
+      for (const job of jobs) job.stop();
+    },
+    getStatus: () => ({ ...status })
+  };
+};
+
+module.exports = { startMarketCron, buildTasks, isUsMarketHoursEt, isWeekdayEt, scheduleIntervalMs, toStopLossChecked };
+
+### nexusfin-api/src/constants/marketUniverse.js
+const MARKET_UNIVERSE = [
+  { id: 'aapl', symbol: 'AAPL', wsSymbol: 'AAPL', name: 'Apple', category: 'equity' },
+  { id: 'msft', symbol: 'MSFT', wsSymbol: 'MSFT', name: 'Microsoft', category: 'equity' },
+  { id: 'nvda', symbol: 'NVDA', wsSymbol: 'NVDA', name: 'NVIDIA', category: 'equity' },
+  { id: 'amzn', symbol: 'AMZN', wsSymbol: 'AMZN', name: 'Amazon', category: 'equity' },
+  { id: 'googl', symbol: 'GOOGL', wsSymbol: 'GOOGL', name: 'Alphabet', category: 'equity' },
+  { id: 'meta', symbol: 'META', wsSymbol: 'META', name: 'Meta', category: 'equity' },
+  { id: 'tsla', symbol: 'TSLA', wsSymbol: 'TSLA', name: 'Tesla', category: 'equity' },
+  { id: 'brkb', symbol: 'BRK.B', wsSymbol: 'BRK.B', name: 'Berkshire Hathaway B', category: 'equity' },
+  { id: 'jpm', symbol: 'JPM', wsSymbol: 'JPM', name: 'JPMorgan', category: 'equity' },
+  { id: 'xom', symbol: 'XOM', wsSymbol: 'XOM', name: 'Exxon Mobil', category: 'equity' },
+  { id: 'ko', symbol: 'KO', wsSymbol: 'KO', name: 'Coca-Cola', category: 'equity' },
+  { id: 'pep', symbol: 'PEP', wsSymbol: 'PEP', name: 'PepsiCo', category: 'equity' },
+  { id: 'wmt', symbol: 'WMT', wsSymbol: 'WMT', name: 'Walmart', category: 'equity' },
+  { id: 'cost', symbol: 'COST', wsSymbol: 'COST', name: 'Costco', category: 'equity' },
+  { id: 'dis', symbol: 'DIS', wsSymbol: 'DIS', name: 'Disney', category: 'equity' },
+  { id: 'bac', symbol: 'BAC', wsSymbol: 'BAC', name: 'Bank of America', category: 'equity' },
+  { id: 'gs', symbol: 'GS', wsSymbol: 'GS', name: 'Goldman Sachs', category: 'equity' },
+  { id: 'v', symbol: 'V', wsSymbol: 'V', name: 'Visa', category: 'equity' },
+  { id: 'ma', symbol: 'MA', wsSymbol: 'MA', name: 'Mastercard', category: 'equity' },
+  { id: 'unh', symbol: 'UNH', wsSymbol: 'UNH', name: 'UnitedHealth', category: 'equity' },
+  { id: 'jnj', symbol: 'JNJ', wsSymbol: 'JNJ', name: 'Johnson & Johnson', category: 'equity' },
+  { id: 'pfe', symbol: 'PFE', wsSymbol: 'PFE', name: 'Pfizer', category: 'equity' },
+  { id: 'crm', symbol: 'CRM', wsSymbol: 'CRM', name: 'Salesforce', category: 'equity' },
+  { id: 'orcl', symbol: 'ORCL', wsSymbol: 'ORCL', name: 'Oracle', category: 'equity' },
+  { id: 'adbe', symbol: 'ADBE', wsSymbol: 'ADBE', name: 'Adobe', category: 'equity' },
+  { id: 'amd', symbol: 'AMD', wsSymbol: 'AMD', name: 'AMD', category: 'equity' },
+  { id: 'intc', symbol: 'INTC', wsSymbol: 'INTC', name: 'Intel', category: 'equity' },
+  { id: 'nflx', symbol: 'NFLX', wsSymbol: 'NFLX', name: 'Netflix', category: 'equity' },
+  { id: 'uber', symbol: 'UBER', wsSymbol: 'UBER', name: 'Uber', category: 'equity' },
+  { id: 'abnb', symbol: 'ABNB', wsSymbol: 'ABNB', name: 'Airbnb', category: 'equity' },
+  { id: 'baba', symbol: 'BABA', wsSymbol: 'BABA', name: 'Alibaba', category: 'equity' },
+  { id: 'meli', symbol: 'MELI', wsSymbol: 'MELI', name: 'MercadoLibre', category: 'equity' },
+  { id: 'vale', symbol: 'VALE', wsSymbol: 'VALE', name: 'Vale', category: 'equity' },
+  { id: 'pbr', symbol: 'PBR', wsSymbol: 'PBR', name: 'Petrobras', category: 'equity' },
+
+  { id: 'spy', symbol: 'SPY', wsSymbol: 'SPY', name: 'S&P 500 ETF', category: 'etf' },
+  { id: 'qqq', symbol: 'QQQ', wsSymbol: 'QQQ', name: 'Nasdaq 100 ETF', category: 'etf' },
+  { id: 'dia', symbol: 'DIA', wsSymbol: 'DIA', name: 'Dow Jones ETF', category: 'etf' },
+  { id: 'iwm', symbol: 'IWM', wsSymbol: 'IWM', name: 'Russell 2000 ETF', category: 'etf' },
+  { id: 'xlf', symbol: 'XLF', wsSymbol: 'XLF', name: 'Financials ETF', category: 'etf' },
+  { id: 'xle', symbol: 'XLE', wsSymbol: 'XLE', name: 'Energy ETF', category: 'etf' },
+  { id: 'xlk', symbol: 'XLK', wsSymbol: 'XLK', name: 'Technology ETF', category: 'etf' },
+  { id: 'arkk', symbol: 'ARKK', wsSymbol: 'ARKK', name: 'Innovation ETF', category: 'etf' },
+  { id: 'vti', symbol: 'VTI', wsSymbol: 'VTI', name: 'Vanguard Total Market ETF', category: 'etf' },
+  { id: 'voo', symbol: 'VOO', wsSymbol: 'VOO', name: 'Vanguard S&P 500 ETF', category: 'etf' },
+  { id: 'vea', symbol: 'VEA', wsSymbol: 'VEA', name: 'Vanguard Developed Markets ETF', category: 'etf' },
+  { id: 'eem', symbol: 'EEM', wsSymbol: 'EEM', name: 'Emerging Markets ETF', category: 'etf' },
+  { id: 'xlp', symbol: 'XLP', wsSymbol: 'XLP', name: 'Consumer Staples ETF', category: 'etf' },
+  { id: 'xli', symbol: 'XLI', wsSymbol: 'XLI', name: 'Industrials ETF', category: 'etf' },
+  { id: 'xlv', symbol: 'XLV', wsSymbol: 'XLV', name: 'Health Care ETF', category: 'etf' },
+  { id: 'xlu', symbol: 'XLU', wsSymbol: 'XLU', name: 'Utilities ETF', category: 'etf' },
+  { id: 'smh', symbol: 'SMH', wsSymbol: 'SMH', name: 'Semiconductor ETF', category: 'etf' },
+  { id: 'gdx', symbol: 'GDX', wsSymbol: 'GDX', name: 'Gold Miners ETF', category: 'etf' },
+  { id: 'dba', symbol: 'DBA', wsSymbol: 'DBA', name: 'Agriculture ETF', category: 'etf' },
+
+  { id: 'tlt', symbol: 'TLT', wsSymbol: 'TLT', name: 'US 20Y Treasury ETF', category: 'bond' },
+  { id: 'ief', symbol: 'IEF', wsSymbol: 'IEF', name: 'US 7-10Y Treasury ETF', category: 'bond' },
+  { id: 'shy', symbol: 'SHY', wsSymbol: 'SHY', name: 'US 1-3Y Treasury ETF', category: 'bond' },
+  { id: 'tip', symbol: 'TIP', wsSymbol: 'TIP', name: 'TIPS ETF', category: 'bond' },
+  { id: 'lqd', symbol: 'LQD', wsSymbol: 'LQD', name: 'IG Corporate Bonds ETF', category: 'bond' },
+  { id: 'hyg', symbol: 'HYG', wsSymbol: 'HYG', name: 'High Yield Bonds ETF', category: 'bond' },
+
+  { id: 'gld', symbol: 'GLD', wsSymbol: 'GLD', name: 'Gold ETF', category: 'metal' },
+  { id: 'xauusd', symbol: 'XAU_USD', wsSymbol: 'XAU_USD', name: 'Gold Spot (XAU/USD)', category: 'metal' },
+  { id: 'slv', symbol: 'SLV', wsSymbol: 'SLV', name: 'Silver ETF', category: 'metal' },
+  { id: 'pplt', symbol: 'PPLT', wsSymbol: 'PPLT', name: 'Platinum ETF', category: 'metal' },
+  { id: 'pall', symbol: 'PALL', wsSymbol: 'PALL', name: 'Palladium ETF', category: 'metal' },
+  { id: 'cper', symbol: 'CPER', wsSymbol: 'CPER', name: 'Copper ETF', category: 'metal' },
+
+  { id: 'uso', symbol: 'USO', wsSymbol: 'USO', name: 'Oil ETF', category: 'commodity' },
+  { id: 'bno', symbol: 'BNO', wsSymbol: 'BNO', name: 'Brent Oil ETF', category: 'commodity' },
+  { id: 'ung', symbol: 'UNG', wsSymbol: 'UNG', name: 'Natural Gas ETF', category: 'commodity' },
+  { id: 'dbc', symbol: 'DBC', wsSymbol: 'DBC', name: 'Broad Commodity ETF', category: 'commodity' },
+  { id: 'corn', symbol: 'CORN', wsSymbol: 'CORN', name: 'Corn ETF', category: 'commodity' },
+  { id: 'soyb', symbol: 'SOYB', wsSymbol: 'SOYB', name: 'Soybean ETF', category: 'commodity' },
+  { id: 'weat', symbol: 'WEAT', wsSymbol: 'WEAT', name: 'Wheat ETF', category: 'commodity' },
+
+  { id: 'btc', symbol: 'BTCUSDT', wsSymbol: 'BINANCE:BTCUSDT', name: 'Bitcoin', category: 'crypto' },
+  { id: 'eth', symbol: 'ETHUSDT', wsSymbol: 'BINANCE:ETHUSDT', name: 'Ethereum', category: 'crypto' },
+  { id: 'sol', symbol: 'SOLUSDT', wsSymbol: 'BINANCE:SOLUSDT', name: 'Solana', category: 'crypto' },
+  { id: 'bnb', symbol: 'BNBUSDT', wsSymbol: 'BINANCE:BNBUSDT', name: 'BNB', category: 'crypto' },
+  { id: 'xrp', symbol: 'XRPUSDT', wsSymbol: 'BINANCE:XRPUSDT', name: 'XRP', category: 'crypto' },
+  { id: 'ada', symbol: 'ADAUSDT', wsSymbol: 'BINANCE:ADAUSDT', name: 'Cardano', category: 'crypto' },
+  { id: 'doge', symbol: 'DOGEUSDT', wsSymbol: 'BINANCE:DOGEUSDT', name: 'Dogecoin', category: 'crypto' },
+  { id: 'avax', symbol: 'AVAXUSDT', wsSymbol: 'BINANCE:AVAXUSDT', name: 'Avalanche', category: 'crypto' },
+  { id: 'dot', symbol: 'DOTUSDT', wsSymbol: 'BINANCE:DOTUSDT', name: 'Polkadot', category: 'crypto' },
+  { id: 'link', symbol: 'LINKUSDT', wsSymbol: 'BINANCE:LINKUSDT', name: 'Chainlink', category: 'crypto' },
+  { id: 'ltc', symbol: 'LTCUSDT', wsSymbol: 'BINANCE:LTCUSDT', name: 'Litecoin', category: 'crypto' },
+  { id: 'matic', symbol: 'MATICUSDT', wsSymbol: 'BINANCE:MATICUSDT', name: 'Polygon', category: 'crypto' },
+  { id: 'trx', symbol: 'TRXUSDT', wsSymbol: 'BINANCE:TRXUSDT', name: 'TRON', category: 'crypto' },
+
+  { id: 'eurusd', symbol: 'EUR_USD', wsSymbol: 'OANDA:EUR_USD', name: 'EUR/USD', category: 'fx' },
+  { id: 'gbpusd', symbol: 'GBP_USD', wsSymbol: 'OANDA:GBP_USD', name: 'GBP/USD', category: 'fx' },
+  { id: 'usdjpy', symbol: 'USD_JPY', wsSymbol: 'OANDA:USD_JPY', name: 'USD/JPY', category: 'fx' },
+  { id: 'usdchf', symbol: 'USD_CHF', wsSymbol: 'OANDA:USD_CHF', name: 'USD/CHF', category: 'fx' },
+  { id: 'audusd', symbol: 'AUD_USD', wsSymbol: 'OANDA:AUD_USD', name: 'AUD/USD', category: 'fx' },
+  { id: 'usdcad', symbol: 'USD_CAD', wsSymbol: 'OANDA:USD_CAD', name: 'USD/CAD', category: 'fx' },
+  { id: 'nzdusd', symbol: 'NZD_USD', wsSymbol: 'OANDA:NZD_USD', name: 'NZD/USD', category: 'fx' },
+  { id: 'eurjpy', symbol: 'EUR_JPY', wsSymbol: 'OANDA:EUR_JPY', name: 'EUR/JPY', category: 'fx' },
+  { id: 'eurgbp', symbol: 'EUR_GBP', wsSymbol: 'OANDA:EUR_GBP', name: 'EUR/GBP', category: 'fx' },
+  { id: 'gbpjpy', symbol: 'GBP_JPY', wsSymbol: 'OANDA:GBP_JPY', name: 'GBP/JPY', category: 'fx' },
+  { id: 'audjpy', symbol: 'AUD_JPY', wsSymbol: 'OANDA:AUD_JPY', name: 'AUD/JPY', category: 'fx' },
+  { id: 'usdbrl', symbol: 'USD_BRL', wsSymbol: 'OANDA:USD_BRL', name: 'USD/BRL', category: 'fx' },
+  { id: 'merval', symbol: '^MERV', wsSymbol: '^MERV', name: 'S&P Merval (Argentina)', category: 'equity' }
+];
+
+module.exports = { MARKET_UNIVERSE };
+
+### src/components/Markets.jsx
+import React from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '../api/apiClient';
+import { useApp } from '../store/AppContext';
+import AssetRow from './common/AssetRow';
+import { CATEGORY_OPTIONS } from '../utils/constants';
+
+const categoryLabel = {
+  all: 'Todos',
+  equity: 'Equity',
+  crypto: 'Crypto',
+  metal: 'Metal',
+  commodity: 'Commodity',
+  fx: 'FX',
+  bond: 'Bond'
+};
+
+const normalizeSearchText = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const Markets = () => {
+  const { state, actions } = useApp();
+  const [category, setCategory] = useState('all');
+  const [watchlistQuery, setWatchlistQuery] = useState('');
+  const [candidate, setCandidate] = useState('');
+  const [universe, setUniverse] = useState([]);
+  const [remoteUniverse, setRemoteUniverse] = useState([]);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [resettingWatchlist, setResettingWatchlist] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(8);
+  const loadMoreRef = useRef(null);
+  const isStreamingLoad = state.progress.loaded < state.progress.total;
+  const remainingToLoad = Math.max(0, Number(state.progress.total || 0) - Number(state.progress.loaded || 0));
+
+  const normalizedCandidate = String(candidate || '').trim().toUpperCase();
+  const searchableUniverse = useMemo(() => universe || [], [universe]);
+  const localCandidateMatches = useMemo(() => {
+    const raw = normalizeSearchText(candidate);
+    if (!raw) return [];
+    return searchableUniverse
+      .filter((item) => {
+        const symbol = normalizeSearchText(item.symbol);
+        const name = normalizeSearchText(item.name);
+        return symbol.includes(raw) || name.includes(raw);
+      })
+      .sort((a, b) => {
+        const aSymbol = normalizeSearchText(a.symbol);
+        const bSymbol = normalizeSearchText(b.symbol);
+        const aName = normalizeSearchText(a.name);
+        const bName = normalizeSearchText(b.name);
+        const aScore = aSymbol === raw ? 0 : aName === raw ? 1 : aSymbol.startsWith(raw) ? 2 : aName.startsWith(raw) ? 3 : 4;
+        const bScore = bSymbol === raw ? 0 : bName === raw ? 1 : bSymbol.startsWith(raw) ? 2 : bName.startsWith(raw) ? 3 : 4;
+        if (aScore !== bScore) return aScore - bScore;
+        return aSymbol.localeCompare(bSymbol);
+      })
+      .slice(0, 8);
+  }, [searchableUniverse, candidate]);
+
+  const candidateSuggestions = useMemo(() => {
+    const map = new Map();
+    [...localCandidateMatches, ...(remoteUniverse || [])].forEach((item) => {
+      const symbol = String(item?.symbol || '').toUpperCase();
+      if (!symbol || map.has(symbol)) return;
+      map.set(symbol, {
+        symbol,
+        name: String(item?.name || ''),
+        category: String(item?.category || 'equity'),
+        source: String(item?.source || (symbol.endsWith('USDT') ? 'finnhub_crypto' : symbol.includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+      });
+    });
+    return [...map.values()].slice(0, 8);
+  }, [localCandidateMatches, remoteUniverse]);
+
+  const watchlistSet = useMemo(
+    () => new Set((state.watchlistSymbols || []).map((s) => String(s || '').toUpperCase())),
+    [state.watchlistSymbols]
+  );
+  const selectedUniverseMatch = useMemo(() => {
+    const raw = normalizeSearchText(candidate);
+    if (!raw) return null;
+    const bySymbol = candidateSuggestions.find((item) => normalizeSearchText(item.symbol) === raw);
+    if (bySymbol) return bySymbol;
+    const byExactName = candidateSuggestions.find((item) => normalizeSearchText(item.name) === raw);
+    if (byExactName) return byExactName;
+    const bySymbolPrefix = candidateSuggestions.find((item) => normalizeSearchText(item.symbol).startsWith(raw));
+    if (bySymbolPrefix) return bySymbolPrefix;
+    const byNamePrefix = candidateSuggestions.find((item) => normalizeSearchText(item.name).startsWith(raw));
+    if (byNamePrefix) return byNamePrefix;
+    const byNameContains = candidateSuggestions.find((item) => normalizeSearchText(item.name).includes(raw));
+    return byNameContains || null;
+  }, [candidateSuggestions, candidate]);
+  const isAlreadyInWatchlist = useMemo(() => {
+    if (selectedUniverseMatch?.symbol) return watchlistSet.has(String(selectedUniverseMatch.symbol).toUpperCase());
+    return watchlistSet.has(normalizedCandidate);
+  }, [selectedUniverseMatch, watchlistSet, normalizedCandidate]);
+  const canAddCandidate = !!normalizedCandidate && !isAlreadyInWatchlist && !!selectedUniverseMatch;
+
+  const watchlistAssets = useMemo(() => {
+    const q = normalizeSearchText(watchlistQuery);
+    const bySymbol = Object.fromEntries(state.assets.map((asset) => [String(asset.symbol || '').toUpperCase(), asset]));
+    return state.watchlistSymbols
+      .map((symbol) => bySymbol[String(symbol || '').toUpperCase()])
+      .filter(Boolean)
+      .filter((asset) => category === 'all' || asset.category === category)
+      .filter((asset) => {
+        if (!q) return true;
+        return normalizeSearchText(asset.symbol).includes(q) || normalizeSearchText(asset.name).includes(q);
+      });
+  }, [state.assets, state.watchlistSymbols, category, watchlistQuery]);
+  const visibleWatchlistSet = useMemo(
+    () => new Set(watchlistAssets.map((asset) => String(asset?.symbol || '').toUpperCase())),
+    [watchlistAssets]
+  );
+  const selectedSymbolUpper = String(selectedUniverseMatch?.symbol || '').toUpperCase();
+  const selectedAlreadyButHidden =
+    Boolean(selectedSymbolUpper) && watchlistSet.has(selectedSymbolUpper) && !visibleWatchlistSet.has(selectedSymbolUpper);
+
+  const visibleAssets = useMemo(() => watchlistAssets.slice(0, visibleCount), [watchlistAssets, visibleCount]);
+  const showStreamingNote = isStreamingLoad && (visibleAssets.length === 0 || remainingToLoad > 8);
+  const hasMore = visibleAssets.length < watchlistAssets.length;
+
+  useEffect(() => {
+    setVisibleCount(8);
+  }, [category, watchlistQuery, state.watchlistSymbols.length]);
+
+  useEffect(() => {
+    let active = true;
+    const loadUniverse = async () => {
+      try {
+        const out = await api.marketUniverse();
+        if (!active) return;
+        const assets = Array.isArray(out?.assets) ? out.assets : [];
+        setUniverse(
+          assets.map((item) => ({
+            symbol: String(item?.symbol || '').toUpperCase(),
+            name: String(item?.name || ''),
+            category: String(item?.category || 'equity').toLowerCase() === 'etf' ? 'equity' : String(item?.category || 'equity').toLowerCase(),
+            source: String(item?.symbol || '').toUpperCase().endsWith('USDT')
+              ? 'finnhub_crypto'
+              : String(item?.symbol || '').toUpperCase().includes('_')
+                ? 'finnhub_fx'
+                : 'finnhub_stock'
+          }))
+        );
+      } catch {
+        if (!active) return;
+        setUniverse([]);
+      }
+    };
+    loadUniverse();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const raw = String(candidate || '').trim();
+    if (raw.length < 2) {
+      setRemoteUniverse([]);
+      setCandidateLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    setCandidateLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const out = await api.marketSearch(raw);
+        if (!active) return;
+        const items = Array.isArray(out?.items) ? out.items : [];
+        setRemoteUniverse(
+          items.map((item) => ({
+            symbol: String(item?.symbol || '').toUpperCase(),
+            name: String(item?.name || ''),
+            category: String(item?.category || 'equity').toLowerCase(),
+            source: String(item?.source || (String(item?.symbol || '').toUpperCase().includes('_') ? 'finnhub_fx' : 'finnhub_stock'))
+          }))
+        );
+      } catch {
+        if (!active) return;
+        setRemoteUniverse([]);
+      } finally {
+        if (active) setCandidateLoading(false);
+      }
+    }, 260);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [candidate]);
+
+  useEffect(() => {
+    if (!hasMore) return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+
+    const node = loadMoreRef.current;
+    if (!node) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + 8, watchlistAssets.length));
+        }
+      },
+      { rootMargin: '120px 0px' }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, watchlistAssets.length]);
+
+  return (
+    <div className="grid markets-page">
+      <section className="card">
+        <h2 className="screen-title">Mercados</h2>
+
+        <div className="markets-tools">
+          <label className="label" style={{ margin: 0, flex: 1 }}>
+            <span className="muted">Agregar a watchlist</span>
+            <input
+              value={candidate}
+              onChange={(e) => setCandidate(e.target.value)}
+              placeholder="Escribí activo o ticker (ej: Apple o AAPL)"
+              aria-label="Activo para agregar a watchlist"
+            />
+            {normalizedCandidate ? (
+              <span className="muted" style={{ marginTop: 4, display: 'block' }}>
+                {selectedUniverseMatch
+                  ? isAlreadyInWatchlist
+                    ? selectedAlreadyButHidden
+                      ? `${selectedUniverseMatch.symbol} ya está en watchlist (ahora no se ve por los filtros/búsqueda actuales).`
+                      : `${selectedUniverseMatch.symbol} ya está en watchlist.`
+                    : `Se agregará: ${selectedUniverseMatch.symbol} - ${selectedUniverseMatch.name}`
+                  : candidateLoading
+                    ? 'Buscando activos...'
+                    : 'No encontramos ese activo. Probá con nombre o ticker.'}
+              </span>
+            ) : null}
+            {candidateSuggestions.length ? (
+              <div className="markets-watchlist-suggestions">
+                {candidateSuggestions.map((item) => (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    className={`markets-watchlist-suggestion ${selectedUniverseMatch?.symbol === item.symbol ? 'is-active' : ''}`}
+                    onClick={() => setCandidate(item.symbol)}
+                  >
+                    <span className="mono">{item.symbol}</span>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </label>
+          <button
+            type="button"
+            className="markets-tools-btn"
+            onClick={() => {
+              if (!canAddCandidate) return;
+              actions.addToWatchlist(selectedUniverseMatch);
+              setCandidate('');
+            }}
+            disabled={!canAddCandidate}
+          >
+            Agregar
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="row" style={{ alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 0 }}>Watchlist</h3>
+          <button
+            type="button"
+            onClick={async () => {
+              if (resettingWatchlist) return;
+              const ok = window.confirm('¿Querés reestablecer la watchlist al listado por defecto?');
+              if (!ok) return;
+              setResettingWatchlist(true);
+              try {
+                await actions.resetWatchlist();
+              } finally {
+                setResettingWatchlist(false);
+              }
+            }}
+            disabled={resettingWatchlist}
+            style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+          >
+            {resettingWatchlist ? 'Reestableciendo...' : 'Reestablecer watchlist'}
+          </button>
+        </div>
+        <div className="search-bar">
+          <input value={watchlistQuery} onChange={(e) => setWatchlistQuery(e.target.value)} placeholder="Buscar en watchlist (activo o ticker)..." />
+        </div>
+        <div className="ai-filter-stack" style={{ marginBottom: 8 }}>
+          <div className="ai-filter-group">
+            <span className="ai-filter-label">Clase de activo</span>
+            <div className="ai-filter-row">
+              {CATEGORY_OPTIONS.map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  className={`ai-filter-chip ${category === x ? 'is-active is-asset' : ''}`}
+                  onClick={() => setCategory(x)}
+                >
+                  {categoryLabel[x] || x}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {showStreamingNote && (
+          <div className="markets-loading-note">
+            Cargando mercado en segundo plano: {state.progress.loaded}/{state.progress.total} (faltan {remainingToLoad})
+          </div>
+        )}
+        <div className="asset-list">
+          {isStreamingLoad && !watchlistAssets.length
+            ? Array.from({ length: 6 }).map((_, idx) => <div key={`mk-skeleton-${idx}`} className="skeleton skeleton-asset" />)
+            : null}
+          {visibleAssets.map((a) => (
+            <AssetRow
+              key={a.symbol}
+              asset={a}
+              to={`/markets/${a.symbol}`}
+              action={state.watchlistSymbols.includes(a.symbol) ? () => actions.removeFromWatchlist(a.symbol) : null}
+              actionLabel={state.watchlistSymbols.includes(a.symbol) ? 'Quitar' : null}
+            />
+          ))}
+          {hasMore ? (
+            <div className="markets-load-more">
+              <button type="button" onClick={() => setVisibleCount((prev) => Math.min(prev + 8, watchlistAssets.length))} aria-label="Cargar más activos">
+                Cargar más
+              </button>
+              <div ref={loadMoreRef} className="markets-load-sentinel" aria-hidden="true" />
+            </div>
+          ) : null}
+          {!watchlistAssets.length && !isStreamingLoad ? <div className="muted">Tu watchlist no tiene activos para este filtro/búsqueda.</div> : null}
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default Markets;
+
+### src/api/apiClient.js
+import { getApiBaseUrl } from './env';
+
+const API_BASE = getApiBaseUrl();
+
+let token = null;
+let csrfToken = null;
+let authFailureHandler = null;
+
+export const setToken = (next) => {
+  token = next || null;
+};
+
+export const getToken = () => token;
+
+export const isAuthenticated = () => !!token;
+
+export const setCsrfToken = (next) => {
+  csrfToken = next || null;
+};
+
+export const getCsrfToken = () => csrfToken;
+
+export const setAuthFailureHandler = (handler) => {
+  authFailureHandler = typeof handler === 'function' ? handler : null;
+};
+
+export const resetApiClientStateForTests = () => {
+  token = null;
+  csrfToken = null;
+  authFailureHandler = null;
+};
+
+const parseError = async (res) => {
+  try {
+    const json = await res.json();
+    return json;
+  } catch {
+    return { message: `HTTP ${res.status}` };
+  }
+};
+
+const isMutationMethod = (method) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || 'GET').toUpperCase());
+
+const request = async (path, options = {}) => {
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (isMutationMethod(method) && csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+  const hadSession = !!token || !!csrfToken;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    method,
+    headers,
+    credentials: 'include'
+  });
+
+  const maybeRefresh = res.headers.get('X-Refresh-Token');
+  if (maybeRefresh) token = maybeRefresh;
+
+  if (!res.ok) {
+    const err = await parseError(res);
+
+    const authExpired = res.status === 401 && ['TOKEN_EXPIRED', 'INVALID_SESSION', 'TOKEN_REQUIRED', 'CSRF_INVALID'].includes(err?.error);
+    if (hadSession && authExpired) {
+      token = null;
+      csrfToken = null;
+      if (authFailureHandler) authFailureHandler(err);
+    }
+
+    throw { status: res.status, ...(err || {}) };
+  }
+
+  if (res.status === 204) return null;
+  return res.json();
+};
+
+export const api = {
+  register: (email, password) => request('/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  refresh: () => request('/auth/refresh', { method: 'POST' }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  me: () => request('/auth/me'),
+  updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
+  getCsrf: () => request('/auth/csrf'),
+  getOAuthProviders: () => request('/auth/oauth/providers'),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPasswordWithToken: (token, newPassword) => request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword }) }),
+  resetPassword: (currentPassword, newPassword) =>
+    request('/auth/reset-password/authenticated', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+  health: () => request('/health'),
+
+  getPortfolio: () => request('/portfolio'),
+  getPortfolios: () => request('/portfolio/portfolios'),
+  createPortfolio: (name) => request('/portfolio/portfolios', { method: 'POST', body: JSON.stringify({ name }) }),
+  renamePortfolio: (id, name) => request(`/portfolio/portfolios/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  deletePortfolio: (id) => request(`/portfolio/portfolios/${id}`, { method: 'DELETE' }),
+  inviteToPortfolio: (id, email) => request(`/portfolio/portfolios/${id}/invite`, { method: 'POST', body: JSON.stringify({ email }) }),
+  getReceivedPortfolioInvites: () => request('/portfolio/invitations/received'),
+  respondPortfolioInvite: (id, action) => request(`/portfolio/invitations/${id}/respond`, { method: 'POST', body: JSON.stringify({ action }) }),
+  addPosition: (data) => request('/portfolio', { method: 'POST', body: JSON.stringify(data) }),
+  updatePosition: (id, data) => request(`/portfolio/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deletePosition: (id) => request(`/portfolio/${id}`, { method: 'DELETE' }),
+
+  getConfig: () => request('/config'),
+  updateConfig: (data) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
+
+  getWatchlist: () => request('/watchlist'),
+  addToWatchlist: (data) => request('/watchlist', { method: 'POST', body: JSON.stringify(data) }),
+  removeFromWatchlist: (symbol) => request(`/watchlist/${symbol}`, { method: 'DELETE' }),
+
+  quote: (symbol) => request(`/market/quote?symbol=${encodeURIComponent(symbol)}`),
+  snapshot: (symbols = []) => {
+    const clean = Array.isArray(symbols)
+      ? symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+    const q = clean.join(',');
+    return request(`/market/snapshot?symbols=${encodeURIComponent(q)}`);
+  },
+  candles: (symbol, from, to, resolution = 'D') =>
+    request(`/market/candles?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}`),
+  cryptoCandles: (symbol, from, to, resolution = 'D') =>
+    request(`/market/crypto-candles?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}`),
+  forexCandles: (from, to, fromTs, toTs, resolution = 'D') =>
+    request(`/market/forex-candles?from=${from}&to=${to}&fromTs=${fromTs}&toTs=${toTs}&resolution=${resolution}`),
+  commodity: (fn, params = {}) => {
+    const q = new URLSearchParams({ function: String(fn || '') });
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v) !== '') q.set(k, String(v));
+    });
+    return request(`/market/commodity?${q.toString()}`);
+  },
+  profile: (symbol) => request(`/market/profile?symbol=${encodeURIComponent(symbol)}`),
+  marketUniverse: () => request('/market/universe'),
+  marketSearch: (q) => request(`/market/search?q=${encodeURIComponent(String(q || ''))}`),
+  marketNews: (arg1 = {}, fromArg, toArg) => {
+    const q = new URLSearchParams();
+    if (typeof arg1 === 'string') {
+      q.set('symbol', String(arg1 || ''));
+      if (fromArg) q.set('from', fromArg);
+      if (toArg) q.set('to', toArg);
+    } else {
+      const opts = arg1 || {};
+      if (opts.symbol) q.set('symbol', String(opts.symbol));
+      if (opts.category) q.set('category', String(opts.category));
+      if (opts.from) q.set('from', String(opts.from));
+      if (opts.to) q.set('to', String(opts.to));
+      if (opts.minId != null) q.set('minId', String(opts.minId));
+    }
+    return request(`/market/news?${q.toString()}`);
+  },
+  marketNewsRecommended: ({ symbols = [], category = 'general', minId = 0, minScore = 6, limit = 60, maxAgeHours = 48, strictImpact = true } = {}) => {
+    const q = new URLSearchParams();
+    const cleanSymbols = Array.isArray(symbols)
+      ? symbols.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+    if (cleanSymbols.length) q.set('symbols', cleanSymbols.join(','));
+    if (category) q.set('category', String(category));
+    if (minId != null) q.set('minId', String(minId));
+    if (minScore != null) q.set('minScore', String(minScore));
+    if (limit != null) q.set('limit', String(limit));
+    if (maxAgeHours != null) q.set('maxAgeHours', String(maxAgeHours));
+    q.set('strictImpact', strictImpact ? '1' : '0');
+    return request(`/market/news/recommended?${q.toString()}`);
+  },
+  trackNewsTelemetry: ({ eventType, items = [] }) =>
+    request('/market/news/telemetry', { method: 'POST', body: JSON.stringify({ eventType, items }) }),
+  getNewsTelemetrySummary: (days = 7) => request(`/market/news/telemetry/summary?days=${encodeURIComponent(String(days || 7))}`),
+  resetNewsTelemetry: () => request('/market/news/telemetry/summary', { method: 'DELETE' }),
+
+  getGroups: () => request('/groups'),
+  createGroup: (name) => request('/groups', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameGroup: (id, name) => request('/groups/' + id, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  joinGroup: (code) => request('/groups/join', { method: 'POST', body: JSON.stringify({ code }) }),
+  getGroup: (id) => request(`/groups/${id}`),
+  getGroupFeed: (groupId, page = 1, limit = 30) => request(`/groups/${groupId}/feed?page=${page}&limit=${limit}`),
+  reactToGroupEvent: (groupId, eventId, reaction) =>
+    request(`/groups/${groupId}/feed/${eventId}/react`, { method: 'POST', body: JSON.stringify({ reaction }) }),
+  leaveGroup: (id) => request(`/groups/${id}/leave`, { method: 'DELETE' }),
+  deleteGroup: (id) => request(`/groups/${id}`, { method: 'DELETE' }),
+  removeMember: (groupId, userId) => request(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
+
+  getAlerts: ({ page = 1, limit = 20, type = null } = {}) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (type) params.set('type', type);
+    return request(`/alerts?${params.toString()}`);
+  },
+  getAlertDetail: (id) => request(`/alerts/${id}`),
+  shareAlert: (alertId, groupId) => request(`/alerts/${alertId}/share`, { method: 'POST', body: JSON.stringify({ groupId }) }),
+  getMacroInsight: () => request('/alerts/macro'),
+  refreshMacroInsight: () => request('/alerts/macro/refresh', { method: 'POST', body: JSON.stringify({}) }),
+  getPortfolioAdvice: () => request('/alerts/portfolio-advice'),
+  refreshPortfolioAdvice: () => request('/alerts/portfolio-advice/refresh', { method: 'POST', body: JSON.stringify({}) }),
+
+  getNotificationPreferences: () => request('/notifications/preferences'),
+  updateNotificationPreferences: (data) => request('/notifications/preferences', { method: 'PUT', body: JSON.stringify(data) }),
+  getNotificationPublicKey: () => request('/notifications/vapid-public-key'),
+  subscribeNotifications: (subscription) =>
+    request('/notifications/subscribe', { method: 'POST', body: JSON.stringify({ platform: 'web', subscription }) }),
+
+  exportAlertPdf: async (alertId) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/export/alert/${encodeURIComponent(alertId)}?format=pdf`, {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    });
+
+    const maybeRefresh = res.headers.get('X-Refresh-Token');
+    if (maybeRefresh) token = maybeRefresh;
+
+    if (!res.ok) {
+      const err = await parseError(res);
+      throw { status: res.status, ...(err || {}) };
+    }
+
+    return res.arrayBuffer();
+  },
+
+  exportPortfolioCsv: async (filter = 'all') => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/export/portfolio?format=csv&filter=${encodeURIComponent(filter)}`, {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    });
+
+    const maybeRefresh = res.headers.get('X-Refresh-Token');
+    if (maybeRefresh) token = maybeRefresh;
+
+    if (!res.ok) {
+      const err = await parseError(res);
+      throw { status: res.status, ...(err || {}) };
+    }
+
+    return res.text();
+  },
+
+  migrate: (data) => request('/migrate', { method: 'POST', body: JSON.stringify(data) })
+};
