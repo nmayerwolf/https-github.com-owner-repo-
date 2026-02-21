@@ -52,6 +52,7 @@ class FinnhubProvider extends MarketDataProvider {
 
     const all = [];
     const hardErrors = [];
+    let forbiddenCount = 0;
     for (const symbol of uniqueSymbols) {
       try {
         const candles = await this.client.candles(symbol, 'D', fromTs, toTs);
@@ -60,6 +61,7 @@ class FinnhubProvider extends MarketDataProvider {
         const message = String(error?.message || '').toUpperCase();
         if (message.includes('FORBIDDEN')) {
           // Some Finnhub plans block subsets of instruments/endpoints; skip and continue.
+          forbiddenCount += 1;
           continue;
         }
         hardErrors.push(error);
@@ -68,6 +70,9 @@ class FinnhubProvider extends MarketDataProvider {
 
     if (!all.length && hardErrors.length) {
       throw hardErrors[0];
+    }
+    if (!all.length && forbiddenCount > 0) {
+      return [];
     }
     return all;
   }

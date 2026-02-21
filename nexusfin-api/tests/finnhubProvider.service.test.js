@@ -73,4 +73,15 @@ describe('FinnhubProvider', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].symbol).toBe('AAPL');
   });
+
+  test('getDailyBars returns empty when all symbols are forbidden', async () => {
+    finnhub.candles
+      .mockRejectedValueOnce(new Error('FINNHUB_ENDPOINT_FORBIDDEN'))
+      .mockRejectedValueOnce(new Error('FINNHUB_ENDPOINT_FORBIDDEN'));
+
+    const provider = new FinnhubProvider(finnhub);
+    const rows = await provider.getDailyBars(['BINANCE:BTCUSDT', 'OANDA:EUR_USD'], 1700000000, 1700086400);
+
+    expect(rows).toEqual([]);
+  });
 });
