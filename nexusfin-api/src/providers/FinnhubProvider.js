@@ -51,9 +51,23 @@ class FinnhubProvider extends MarketDataProvider {
     if (!uniqueSymbols.length || !Number.isFinite(fromTs) || !Number.isFinite(toTs)) return [];
 
     const all = [];
+    const hardErrors = [];
     for (const symbol of uniqueSymbols) {
-      const candles = await this.client.candles(symbol, 'D', fromTs, toTs);
-      all.push(...normalizeBars(symbol, candles));
+      try {
+        const candles = await this.client.candles(symbol, 'D', fromTs, toTs);
+        all.push(...normalizeBars(symbol, candles));
+      } catch (error) {
+        const message = String(error?.message || '').toUpperCase();
+        if (message.includes('FORBIDDEN')) {
+          // Some Finnhub plans block subsets of instruments/endpoints; skip and continue.
+          continue;
+        }
+        hardErrors.push(error);
+      }
+    }
+
+    if (!all.length && hardErrors.length) {
+      throw hardErrors[0];
     }
     return all;
   }
