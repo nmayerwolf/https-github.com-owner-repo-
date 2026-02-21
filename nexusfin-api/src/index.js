@@ -247,29 +247,57 @@ app.get('/api/health/cron', (_req, res) => {
 
 app.get('/api/health/engines', async (_req, res, next) => {
   try {
+    const queryWithFallback = async (primarySql, fallbackSql, params = []) => {
+      try {
+        return await query(primarySql, params);
+      } catch {
+        try {
+          return await query(fallbackSql, params);
+        } catch {
+          return { rows: [] };
+        }
+      }
+    };
+
     const [latestBars, latestMetrics, latestRegime, latestCrisis, runStats] = await Promise.all([
-      query(
+      queryWithFallback(
         `SELECT COALESCE(MAX(bar_date), MAX(date))::text AS date,
                 COUNT(*)::int AS symbols_ok
          FROM market_daily_bars
-         WHERE COALESCE(bar_date, date) = (SELECT MAX(COALESCE(bar_date, date)) FROM market_daily_bars)`
+         WHERE COALESCE(bar_date, date) = (SELECT MAX(COALESCE(bar_date, date)) FROM market_daily_bars)`,
+        `SELECT MAX(date)::text AS date,
+                COUNT(*)::int AS symbols_ok
+         FROM market_daily_bars
+         WHERE date = (SELECT MAX(date) FROM market_daily_bars)`
       ),
-      query(
+      queryWithFallback(
         `SELECT COALESCE(MAX(metric_date), MAX(date))::text AS date,
                 COUNT(*)::int AS symbols_computed
          FROM market_metrics_daily
-         WHERE COALESCE(metric_date, date) = (SELECT MAX(COALESCE(metric_date, date)) FROM market_metrics_daily)`
+         WHERE COALESCE(metric_date, date) = (SELECT MAX(COALESCE(metric_date, date)) FROM market_metrics_daily)`,
+        `SELECT MAX(date)::text AS date,
+                COUNT(*)::int AS symbols_computed
+         FROM market_metrics_daily
+         WHERE date = (SELECT MAX(date) FROM market_metrics_daily)`
       ),
-      query(
+      queryWithFallback(
         `SELECT COALESCE(state_date, date)::text AS run_date, regime, confidence
          FROM regime_state
          ORDER BY COALESCE(state_date, date) DESC
+         LIMIT 1`,
+        `SELECT date::text AS run_date, regime, confidence
+         FROM regime_state
+         ORDER BY date DESC
          LIMIT 1`
       ),
-      query(
+      queryWithFallback(
         `SELECT COALESCE(state_date, date)::text AS run_date, is_active
          FROM crisis_state
          ORDER BY COALESCE(state_date, date) DESC
+         LIMIT 1`,
+        `SELECT date::text AS run_date, is_active
+         FROM crisis_state
+         ORDER BY date DESC
          LIMIT 1`
       ),
       query(
@@ -278,11 +306,13 @@ app.get('/api/health/engines', async (_req, res, next) => {
          WHERE status = 'success'
            AND job_name = ANY($1::text[])`,
         [['market_snapshot_daily', 'metrics_daily', 'regime_daily', 'crisis_check', 'portfolio_snapshot_daily']]
-      )
+      ).catch(() => ({ rows: [] }))
     ]);
 
     const runByJob = new Map((runStats.rows || []).map((row) => [String(row.job_name), row.run_date]));
-    const universe = await query('SELECT COUNT(*)::int AS total FROM universe_symbols WHERE COALESCE(active, is_active, true) = true');
+    const universe = await query('SELECT COUNT(*)::int AS total FROM universe_symbols WHERE COALESCE(active, is_active, true) = true').catch(() =>
+      query('SELECT COUNT(*)::int AS total FROM universe_symbols').catch(() => ({ rows: [{ total: 0 }] }))
+    );
     const total = Number(universe.rows?.[0]?.total || 0);
     const symbolsOk = Number(latestBars.rows?.[0]?.symbols_ok || 0);
 
