@@ -1,6 +1,30 @@
 const { env } = require('../config/env');
 const { logAiUsage } = require('./aiUsageLogger');
 
+// ── UPGRADED SYSTEM PROMPT ─────────────────────────────────────────────────────
+const MACRO_SYSTEM_PROMPT = [
+  'Sos el estratega macro senior de Horsai, una plataforma de inversión inteligente.',
+  'Tu audiencia son inversores individuales que necesitan entender QUÉ está pasando, POR QUÉ importa, y QUÉ HACER.',
+  '',
+  'PRINCIPIOS DE ANÁLISIS:',
+  '1. CROSS-ASSET NARRATIVE: Siempre conectá los movimientos entre clases de activos. Si equity sube y bonds bajan, explicá la rotación. Si crypto sube con VIX alto, señalá la divergencia.',
+  '2. CAUSALIDAD > DESCRIPCIÓN: No digas "SPY subió 0.8%". Decí "SPY +0.8% impulsado por earnings de tech, con breadth del 63% confirmando amplitud — no es rally estrecho."',
+  '3. NÚMEROS CONCRETOS SIEMPRE: Cada theme DEBE incluir mínimo 3 datos numéricos (precio, %, RSI, SMA, vol, breadth). Sin números = insight vacío.',
+  '4. ACTIONABLE: Cada theme termina con qué debería considerar el usuario. No "estar atentos" sino "evaluar exposición a duration si TLT perfora -1.5% semanal".',
+  '5. PERSONALIZACIÓN REAL: Si el usuario tiene portfolio, conectá CADA theme con su exposición real. Si tiene 40% tech y tech lidera, decilo explícitamente.',
+  '6. RIESGO ESPECÍFICO: No "volatilidad puede aumentar". Sí "vol20d SPY en 18.5% (percentil 72); un salto arriba de 22% históricamente precede correcciones de 3-5%."',
+  '7. EVENTOS CON IMPACTO CUANTIFICADO: No "Fed puede mover mercados". Sí "Reunión FOMC el 18/3 — mercado pricea 78% de probabilidad de pausa; sorpresa hawkish impactaría TLT -2/3% y tech -1.5/2%."',
+  '',
+  'ANTI-PATTERNS (evitar absolutamente):',
+  '- "Mercados mixtos con señales contradictorias" → siempre hay un sesgo dominante, identificalo',
+  '- "Se recomienda cautela" → decir exactamente qué acción tomar y bajo qué condición',
+  '- "Estar atentos a la volatilidad" → cuantificar nivel de vol actual vs histórico y threshold de acción',
+  '- Listar datos sin conectarlos: "SPY +0.8%, QQQ +1.2%, TLT -0.5%" → explicar qué significa esa combinación',
+  '- Themes genéricos como "Momentum global" → ser específico: "Rotación hacia growth liderada por semis (SMH +2.1%) con breadth expandiéndose"',
+  '',
+  'IDIOMA: Español. FORMATO: JSON estricto, sin markdown ni backticks.',
+].join('\n');
+
 const toFinite = (value) => {
   const out = Number(value);
   return Number.isFinite(out) ? out : null;
@@ -199,21 +223,47 @@ const buildPrompt = ({ market, globalContext, headlines, userContext }) => {
     '',
     'REGLAS DE CALIDAD:',
     '- Usa solo datos provistos arriba; no inventes valores.',
-    '- Cada theme debe incluir al menos 2 números concretos (precio, % de cambio, breadth, volatilidad o confidence).',
+    '- Cada theme debe incluir al menos 3 números concretos (precio, % de cambio, breadth, volatilidad, RSI, SMA, o confidence).',
     '- Cubre al menos 4 clases de activos entre equity, bonos, commodities, crypto y FX.',
-    '- En relevance_to_user, conecta explícitamente con perfil/portfolio del usuario.',
-    '- Evita frases vacías como "mercado mixto".',
+    '- En relevance_to_user, conecta explícitamente con perfil/portfolio del usuario — mencionar holdings específicos si hay.',
+    '- reasoning de cada theme: mínimo 2 oraciones con lógica causal (dato → implicancia → acción).',
+    '- catalysts: eventos específicos con fechas cuando sea posible (earnings, FOMC, datos macro).',
+    '- risks: cuantificados con niveles de precio o condiciones específicas de invalidación.',
+    '- suggested_assets: el "why" debe explicar por qué ESE activo captura el theme mejor que alternativas.',
+    '- Evita frases vacías como "mercado mixto", "se recomienda cautela", "estar atentos".',
+    '- Si hay conflicto entre señales (ej: equity sube pero breadth baja), SEÑALARLO explícitamente como divergencia.',
     '',
-    'BAD example: "Mercados mixtos y volatilidad."',
-    'GOOD example: "SPY +0.8% a 542.30 con 63.4% de acciones sobre MA50, mientras BTC +2.1% y TLT -0.9% muestran apetito por riesgo con presión en duration."',
+    'EJEMPLO DE CALIDAD:',
+    '',
+    'BAD theme reasoning: "Mercados mixtos con volatilidad. Se recomienda estar atentos."',
+    '',
+    'GOOD theme reasoning: "SPY +0.8% a 542.30 con breadth 63.4% (arriba del 60% threshold de confirmación). QQQ +1.4% lidera con semis (SMH +2.1%), pero TLT -0.9% y VIX en 16.8 señalan que el mercado acepta riesgo pero exige prima en duration. La divergencia equity-bonds sugiere expectativa de tasas más altas por más tiempo, favoreciendo activos de crecimiento con cash flow sobre plays de duration larga."',
+    '',
+    'BAD relevance_to_user: "Monitorear exposición al mercado."',
+    'GOOD relevance_to_user: "Tu cartera tiene 45% tech via AAPL/NVDA/MSFT — este rally de semis te beneficia directamente, pero la concentración sectorial sube tu riesgo de drawdown si tech corrige. Considerar tomar ganancia parcial en NVDA (+28% PnL) y diversificar 5-8% hacia GLD como hedge."',
+    '',
+    'BAD key_event: {"event": "Reunión de la Fed", "potential_impact": "Puede mover mercados"}',
+    'GOOD key_event: {"event": "FOMC rate decision", "date": "2025-03-18", "potential_impact": "Mercado pricea 78% pausa. Sorpresa hawkish impactaría TLT -2/3% y Nasdaq -1.5/2%. Dovish surprise impulsaría small caps (IWM) +2/3%.", "assets_affected": ["TLT", "QQQ", "IWM", "GLD"]}',
     '',
     'Responde en JSON estricto con este schema:',
     '{"market_sentiment":"bullish|neutral|bearish","sentiment_reasoning":"string","themes":[{"theme":"string","direction":"bullish|bearish","conviction":1,"timeframe":"1w|1m|3m|6m|1y","reasoning":"string","catalysts":["string"],"risks":["string"],"suggested_assets":[{"symbol":"string","name":"string","why":"string"}],"relevance_to_user":"string"}],"key_events_ahead":[{"event":"string","date":"YYYY-MM-DD","potential_impact":"string","assets_affected":["string"]}]}'
   ].join('\n');
 };
 
-const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = console }) => {
+const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = console, marketData = null }) => {
   const fetchQuote = async (symbol) => {
+    if (marketData) {
+      try {
+        const out = await marketData.quote(symbol);
+        return {
+          price: toFinite(out?.c),
+          changePct: toFinite(out?.dp)
+        };
+      } catch {
+        // fall through to finnhub
+      }
+    }
+
     try {
       const out = await finnhub.quote(symbol);
       return {
@@ -415,10 +465,11 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
   };
 
   const generateForUser = async (userId) => {
+    const newsProvider = marketData || finnhub;
     const [market, userContext, news, globalContext] = await Promise.all([
       fetchMarketSnapshot(),
       getUserContext(userId),
-      finnhub.generalNews('general', 0).catch(() => []),
+      newsProvider.generalNews('general', 0).catch(() => []),
       loadGlobalContext().catch(() => ({ date: null, benchmarks: [], movers: [], breadth: null, regime: null, news: [] }))
     ]);
     const contextualHeadlines = Array.isArray(globalContext?.news) && globalContext.news.length ? globalContext.news : safeArray(news);
@@ -435,7 +486,7 @@ const createMacroRadar = ({ query, finnhub, alpha, aiAgent = null, logger = cons
           apiKey: env.anthropicApiKey,
           model: env.aiAgentModel,
           timeoutMs: env.aiAgentTimeoutMs,
-          systemPrompt: 'Sos un estratega macro del equipo de Horsai. Responde solo JSON.',
+          systemPrompt: MACRO_SYSTEM_PROMPT,
           userPrompt: buildPrompt({ market, globalContext, headlines: contextualHeadlines, userContext })
         });
         usage = response?.raw?.usage || null;

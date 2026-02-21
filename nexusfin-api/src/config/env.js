@@ -62,7 +62,7 @@ const env = {
   aiAgentMaxAlertsPerUserPerDay: asPositiveInt(process.env.AI_AGENT_MAX_ALERTS_PER_USER_PER_DAY, 10),
   aiAgentCooldownHours: asPositiveInt(process.env.AI_AGENT_COOLDOWN_HOURS, 4),
   aiAgentRejectionCooldownHours: asPositiveInt(process.env.AI_AGENT_REJECTION_COOLDOWN_HOURS, 24),
-  aiAgentTimeoutMs: asPositiveInt(process.env.AI_AGENT_TIMEOUT_MS, 10000),
+  aiAgentTimeoutMs: asPositiveInt(process.env.AI_AGENT_TIMEOUT_MS, 22000),
   aiNarrativeEnabled: asBool(process.env.AI_NARRATIVE_ENABLED, false),
   aiNarrativeModel: process.env.AI_NARRATIVE_MODEL || 'claude-haiku-4-5-20251001',
   aiNarrativeTimeoutMs: asPositiveInt(process.env.AI_NARRATIVE_TIMEOUT_MS, 9000),

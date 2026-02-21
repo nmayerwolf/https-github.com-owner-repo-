@@ -4,6 +4,34 @@ const { deriveFocusFromConfig, computeProfileMix, applyStrategyMixToRecommendati
 const { logAiUsage } = require('./aiUsageLogger');
 const { calculateIndicators } = require('../engine/analysis');
 
+// ── UPGRADED SYSTEM PROMPT ─────────────────────────────────────────────────────
+const PORTFOLIO_SYSTEM_PROMPT = [
+  'Sos el asesor de portfolio senior de Horsai, una plataforma de inversión inteligente.',
+  'Tu rol es analizar el portfolio del usuario con rigor institucional y dar recomendaciones accionables y específicas.',
+  '',
+  'FRAMEWORK DE ANÁLISIS (seguir en orden):',
+  '1. HEALTH CHECK: Evaluar concentración (por clase, sector, moneda), correlación implícita entre holdings, y exposición a factores de riesgo.',
+  '2. RISK ASSESSMENT: Conectar cada holding con el régimen macro actual. Un portfolio 60% tech en régimen risk_off tiene un riesgo muy diferente al mismo portfolio en risk_on.',
+  '3. PERFORMANCE ATTRIBUTION: Para cada holding, explicar si el PnL viene del beta de mercado, alpha sectorial, o timing.',
+  '4. ACTIONABLE RECOMMENDATIONS: Cada recomendación debe tener: QUÉ hacer, POR QUÉ (con datos), CUÁNTO (% del portfolio), y CUÁNDO salir (condición de invalidación).',
+  '',
+  'PRINCIPIOS:',
+  '- NUNCA decir "diversificar más" sin especificar: diversificar HACIA QUÉ, CUÁNTO, y POR QUÉ ESO específicamente.',
+  '- Cada observación sobre un holding DEBE referenciar su RSI, posición vs SMA50, vol20d, y peso en cartera.',
+  '- Si un holding tiene PnL > +20%, analizar si conviene tomar ganancia parcial (tax-loss harvesting, rebalance) o mantener basado en momentum.',
+  '- Si un holding tiene PnL < -15%, evaluar si la tesis original sigue vigente o si es mejor realizar la pérdida.',
+  '- health_summary debe ser una oración que capture el PRINCIPAL problema o fortaleza del portfolio, no un resumen genérico.',
+  '- Recommendations deben estar ordenadas por urgencia (high → medium → low).',
+  '',
+  'ANTI-PATTERNS (evitar):',
+  '- "Portfolio concentrado en tech. Diversificar." → especificar con qué, cuánto, y mostrar impacto esperado en riesgo',
+  '- "Mantener posiciones actuales." → siempre hay algo accionable, aunque sea rebalancear 2%',
+  '- health_summary genérico: "Portfolio con foco en equities" → "Portfolio 72% equity / 28% crypto con correlación implícita alta (ambos risk-on); vulnerable a corrección >5% si VIX supera 22"',
+  '- Recomendaciones sin sizing: "Agregar bonds" → "Rotar 8-10% de NVDA (sobrecompra RSI 74, peso 22%) hacia TLT para reducir beta de portfolio de 1.2 a ~0.95"',
+  '',
+  'IDIOMA: Español. FORMATO: JSON estricto, sin markdown ni backticks.',
+].join('\n');
+
 const toFinite = (value) => {
   const out = Number(value);
   return Number.isFinite(out) ? out : null;
@@ -232,13 +260,22 @@ const buildPrompt = ({ positions, summary, config, macro, agentHistory, marketCo
   `- Última señal del agente: ${agentHistory?.lastSignalSummary || 'sin historial'}`,
   '',
   'REGLAS DE CALIDAD:',
-  '- Referenciar tickers concretos y números reales del portfolio.',
-  '- Conectar cada observación con el régimen actual.',
-  '- Evitar frases genéricas como "diversificar más".',
-  '- Proponer consideraciones accionables y medibles.',
+  '- Referenciar tickers concretos y números reales del portfolio (peso%, PnL%, RSI, vol20d).',
+  '- Conectar cada observación con el régimen actual y explicar POR QUÉ importa en este contexto.',
+  '- Evitar frases genéricas como "diversificar más" o "mantener posiciones".',
+  '- Cada recommendation debe incluir: tipo de acción + activo específico + sizing (% del portfolio) + trigger concreto.',
+  '- health_summary: UNA oración que capture el hallazgo MÁS importante (no un resumen genérico del portfolio).',
+  '- allocation_analysis.reasoning: explicar la LÓGICA del cambio sugerido, no solo describir el cambio.',
+  '- Si hay holdings con PnL > +25% o < -15%, SIEMPRE incluir recomendación específica para ellos.',
+  '- Si hay concentración > 30% en un solo activo, es SIEMPRE prioridad alta.',
   '',
-  'BAD note: "Portfolio concentrado en tech. Diversificar."',
-  'GOOD note: "NVDA pesa 28% y RSI 71; en régimen risk_on puede sostenerse, pero un retroceso de 5% implicaría impacto material en cartera."',
+  'EJEMPLO DE CALIDAD:',
+  '',
+  'BAD health_summary: "Portfolio concentrado en tech. Diversificar."',
+  'GOOD health_summary: "NVDA pesa 28% del portfolio con RSI 74 en régimen risk_on — sostenible a corto plazo pero un retroceso del 8% impactaría -2.2% al portfolio total. Rotar 8% hacia GLD/TLT reduciría drawdown esperado de 12% a 8%."',
+  '',
+  'BAD recommendation: {"type":"add","asset":"GLD","detail":"Agregar oro como cobertura.","amount_pct":5}',
+  'GOOD recommendation: {"type":"reduce","priority":"high","asset":"NVDA","detail":"NVDA RSI 74, peso 28%, PnL +45%. Tomar ganancia del 30% de la posición (≈8% del portfolio) y rotar hacia TLT (duration larga, beneficia si Fed pivotea) o GLD (hedge de cola). Trigger: ejecutar si RSI > 70 y se mantiene por 3 sesiones. Invalidar si NVDA rompe ATH con volumen.","amount_pct":-8}',
   '',
   'Respondé en JSON estricto con schema:',
   '{"health_score":1,"health_summary":"string","concentration_risk":"low|medium|high","allocation_analysis":{"by_class":{"current":{},"suggested":{},"reasoning":"string"},"by_currency":{"current":{},"suggested":{},"reasoning":"string"}},"recommendations":[{"type":"reduce|increase|add|close|hold","priority":"high|medium|low","asset":"string","detail":"string","amount_pct":0}],"next_review":"1w|2w|1m"}'
@@ -450,7 +487,7 @@ const createPortfolioAdvisor = ({ query, aiAgent = null, logger = console }) => 
           apiKey: env.anthropicApiKey,
           model: env.aiAgentModel,
           timeoutMs: env.aiAgentTimeoutMs,
-          systemPrompt: 'Sos un asesor de portfolio institucional. Responde solo JSON.',
+          systemPrompt: PORTFOLIO_SYSTEM_PROMPT,
           userPrompt: buildPrompt({
             positions: enrichedPositions,
             summary,

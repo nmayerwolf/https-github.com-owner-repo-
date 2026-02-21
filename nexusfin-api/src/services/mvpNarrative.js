@@ -56,7 +56,7 @@ const createMvpNarrativeService = (options = {}) => {
   const enabled = options.enabled ?? env.aiNarrativeEnabled;
   const apiKey = options.apiKey ?? env.anthropicApiKey;
   const model = options.model ?? env.aiNarrativeModel;
-  const timeoutMs = toInt(options.timeoutMs ?? env.aiNarrativeTimeoutMs, 9000);
+  const timeoutMs = toInt(options.timeoutMs ?? env.aiNarrativeTimeoutMs, 22000);
 
   const callAnthropicJson = async ({ systemPrompt, userPrompt }) => {
     const controller = new AbortController();
@@ -73,7 +73,7 @@ const createMvpNarrativeService = (options = {}) => {
         body: JSON.stringify({
           model,
           temperature: 0.1,
-          max_tokens: 900,
+          max_tokens: 2200,
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }]
         }),
@@ -101,8 +101,26 @@ const createMvpNarrativeService = (options = {}) => {
     const fallback = { bullets: fallbackBullets, meta: { mode: 'fallback', reason: 'disabled_or_not_configured', model: null } };
     if (!enabled || !apiKey) return fallback;
 
-    const systemPrompt =
-      'You are Horsai\'s personalized market editor. Rewrite digest bullets in Spanish using ONLY supplied facts and numbers. Never invent prices, percentages, symbols, dates, or holdings. Return strict JSON.';
+    const systemPrompt = [
+      'Sos el editor de mercado senior de Horsai. Tu trabajo es transformar bullets informativos en insights accionables y personalizados.',
+      '',
+      'REGLAS DE REESCRITURA:',
+      '1. Cada bullet debe tener 3 partes: HECHO (con números) + IMPACTO (qué significa) + RELEVANCIA (por qué le importa a ESTE usuario).',
+      '2. Priorizar bullets que conecten con el portfolio del usuario. Si tiene tech y tech sube, decirlo.',
+      '3. Eliminar headlines de consumidor general (ej: "Apple lanza nuevo iPhone") a menos que impacten valuaciones.',
+      '4. Reescribir en tono de estratega, no de periodista. No "X anunció Y". Sí "X +3% tras anunciar Y; implica Z para el sector."',
+      '5. Si hay divergencias cross-asset (equity sube, bonds bajan), SIEMPRE incluir un bullet sobre eso.',
+      '6. NUNCA inventar datos — usar SOLO los hechos provistos. Pero sí agregar contexto analítico.',
+      '7. Cada bullet máximo 180 caracteres, en español.',
+      '',
+      'ANTI-PATTERNS:',
+      '- "Mercados operan mixtos" → identificar el sesgo dominante',
+      '- Repetir el mismo dato en múltiples bullets',
+      '- Bullets sin números concretos',
+      '- Headlines de clickbait o consumidor general',
+      '',
+      'Responde solo JSON estricto.'
+    ].join('\n');
 
     const userPrompt = JSON.stringify({
       task: 'rewrite_digest',
@@ -133,8 +151,8 @@ const createMvpNarrativeService = (options = {}) => {
         'Si horizon < 0.3, enfoque táctico semanal. Si horizon > 0.7, enfoque estructural.'
       ],
       examples: {
-        bad: 'S&P 500 subió por earnings.',
-        good: 'S&P 500 +0.8% y tech +1.4%. Tu cartera tiene 45% tech: favorece NVDA/AAPL, pero concentración elevada sube riesgo de reversión.'
+        bad: 'S&P 500 subió por earnings. Mercados mixtos hoy.',
+        good: 'SPY +0.8% y tech +1.4% con breadth en 63%. Tu cartera (45% tech via NVDA/AAPL) se beneficia, pero concentración sube riesgo si semis corrigen. GLD -0.3% confirma apetito por riesgo, no por refugio.'
       },
       sourceBullets: fallbackBullets,
       outputSchema: { bullets: ['string'] }
@@ -161,8 +179,24 @@ const createMvpNarrativeService = (options = {}) => {
       return { items: baseItems, meta: { mode: 'fallback', reason: 'disabled_or_not_configured', model: null } };
     }
 
-    const systemPrompt =
-      'You are Horsai\'s investment strategist editor. Polish rationale and risks in Spanish using ONLY supplied facts. Each idea must keep concrete numbers (RSI/SMA/volatility/price) and a specific invalidation condition. Return strict JSON.';
+    const systemPrompt = [
+      'Sos el editor de estrategia de inversión de Horsai. Tu trabajo es transformar rationale y risks técnicos en narrativa que un inversor pueda entender y actuar.',
+      '',
+      'REGLAS DE EDICIÓN:',
+      '1. RATIONALE: No solo listar métricas. Explicar la LÓGICA: "RSI 62 con precio 8% sobre SMA200 → tendencia fuerte sin sobrecompra extrema → espacio para continuar si breadth se mantiene arriba de 55%."',
+      '2. RISKS: Cuantificar siempre. No "puede bajar". Sí "si pierde SMA50 en 485.20, target de corrección en SMA200 (462.10), implicando downside de -6.2%."',
+      '3. INVALIDATION: Debe ser binaria y verificable. "Cerrar posición si cierra bajo X por N sesiones" — no "si la tendencia se debilita".',
+      '4. Mantener todos los números originales (RSI/SMA/vol/precio) — agregar contexto analítico, no reemplazar datos.',
+      '5. Cada rationale bullet: mínimo 1 número + 1 explicación de por qué importa.',
+      '6. En español, máximo 190 caracteres por bullet.',
+      '',
+      'ANTI-PATTERNS:',
+      '- "Strong trend" / "Good relative strength" → vacío, decir vs qué y cuánto',
+      '- "Si se rompe la tendencia" → especificar nivel, timeframe, y consecuencia',
+      '- Rationale que solo lista datos sin conectarlos: "RSI 62, SMA50 alcista, vol 18%" → agregar "lo cual sugiere..."',
+      '',
+      'Responde solo JSON estricto.'
+    ].join('\n');
 
     const userPrompt = JSON.stringify({
       task: 'rewrite_recommendation_cards',
@@ -193,13 +227,13 @@ const createMvpNarrativeService = (options = {}) => {
         'Incluir al menos un riesgo cuantificable.'
       ],
       examples: {
-        badRationale: ['Strong trend', 'Good relative strength'],
+        badRationale: ['Strong trend', 'Good relative strength', 'Tendencia positiva en el activo'],
         goodRationale: [
-          'RSI 62 con precio 8% sobre SMA200 sugiere tendencia fuerte sin sobrecompra extrema.',
-          'Vol20D 22% permite mejor relación riesgo/retorno frente a pares más volátiles.'
+          'RSI 62 con precio 8% sobre SMA200 → tendencia fuerte sin sobrecompra; espacio para continuar si breadth >55%.',
+          'Vol20D 22% (percentil 60) permite sizing estándar. Relación riesgo/retorno 1:2.3 vs pares sectoriales más volátiles (XLE 31%).'
         ],
         badInvalidation: 'Si se rompe la tendencia',
-        goodInvalidation: 'Cerrar bajo SMA50 por 2 sesiones consecutivas'
+        goodInvalidation: 'Cerrar si cierra bajo SMA50 (485.20) por 2 sesiones consecutivas. Target de corrección: SMA200 en 462.10 (-6.2%).'
       },
       ideas: baseItems.map((item) => ({
         ideaId: item.ideaId,
