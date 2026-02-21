@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, getToken, isAuthenticated, resetApiClientStateForTests, setAuthFailureHandler, setToken } from '../apiClient';
+import { api, getToken, isAuthenticated, resetApiClientStateForTests, setAuthFailureHandler, setToken, setTokenUpdateHandler } from '../apiClient';
 
 const makeResponse = ({ ok, status, body, refreshToken = null }) => ({
   ok,
@@ -30,6 +30,18 @@ describe('apiClient', () => {
 
     expect(out).toEqual({ ok: true });
     expect(getToken()).toBe('new-token');
+  });
+
+  it('persists refreshed token via token update handler', async () => {
+    const onTokenUpdate = vi.fn();
+    setToken('old-token');
+    setTokenUpdateHandler(onTokenUpdate);
+
+    global.fetch.mockResolvedValueOnce(makeResponse({ ok: true, status: 200, body: { ok: true }, refreshToken: 'new-token' }));
+
+    await api.health();
+
+    expect(onTokenUpdate).toHaveBeenCalledWith('new-token');
   });
 
   it('clears token and triggers auth failure handler on TOKEN_EXPIRED', async () => {

@@ -99,7 +99,7 @@ describe('auth middleware', () => {
   it('does not add X-Refresh-Token when token is still fresh', async () => {
     const now = Math.floor(Date.now() / 1000);
 
-    jwt.verify.mockReturnValueOnce({ userId: 'u1', email: 'user@mail.com', exp: now + 60 * 60 * 48 });
+    jwt.verify.mockReturnValueOnce({ userId: 'u1', email: 'user@mail.com', exp: now + 60 * 60 * 96 });
     query.mockResolvedValueOnce({ rows: [{ id: 's1' }] });
 
     const app = makeApp();

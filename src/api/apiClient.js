@@ -5,9 +5,17 @@ const API_BASE = getApiBaseUrl();
 let token = null;
 let csrfToken = null;
 let authFailureHandler = null;
+let tokenUpdateHandler = null;
+
+const setInMemoryToken = (next, { notify = true } = {}) => {
+  token = next || null;
+  if (notify && tokenUpdateHandler) {
+    tokenUpdateHandler(token);
+  }
+};
 
 export const setToken = (next) => {
-  token = next || null;
+  setInMemoryToken(next);
 };
 
 export const getToken = () => token;
@@ -24,10 +32,15 @@ export const setAuthFailureHandler = (handler) => {
   authFailureHandler = typeof handler === 'function' ? handler : null;
 };
 
+export const setTokenUpdateHandler = (handler) => {
+  tokenUpdateHandler = typeof handler === 'function' ? handler : null;
+};
+
 export const resetApiClientStateForTests = () => {
   token = null;
   csrfToken = null;
   authFailureHandler = null;
+  tokenUpdateHandler = null;
 };
 
 const parseError = async (res) => {
@@ -58,14 +71,14 @@ const request = async (path, options = {}) => {
   });
 
   const maybeRefresh = res.headers.get('X-Refresh-Token');
-  if (maybeRefresh) token = maybeRefresh;
+  if (maybeRefresh) setInMemoryToken(maybeRefresh);
 
   if (!res.ok) {
     const err = await parseError(res);
 
     const authExpired = res.status === 401 && ['TOKEN_EXPIRED', 'INVALID_SESSION', 'TOKEN_REQUIRED', 'CSRF_INVALID'].includes(err?.error);
     if (hadSession && authExpired) {
-      token = null;
+      setInMemoryToken(null);
       csrfToken = null;
       if (authFailureHandler) authFailureHandler(err);
     }
@@ -219,7 +232,7 @@ export const api = {
     });
 
     const maybeRefresh = res.headers.get('X-Refresh-Token');
-    if (maybeRefresh) token = maybeRefresh;
+    if (maybeRefresh) setInMemoryToken(maybeRefresh);
 
     if (!res.ok) {
       const err = await parseError(res);
@@ -240,7 +253,7 @@ export const api = {
     });
 
     const maybeRefresh = res.headers.get('X-Refresh-Token');
-    if (maybeRefresh) token = maybeRefresh;
+    if (maybeRefresh) setInMemoryToken(maybeRefresh);
 
     if (!res.ok) {
       const err = await parseError(res);

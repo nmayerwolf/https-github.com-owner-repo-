@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { api, setAuthFailureHandler, setCsrfToken, setToken } from '../api/apiClient';
+import { api, setAuthFailureHandler, setCsrfToken, setToken, setTokenUpdateHandler } from '../api/apiClient';
 
 const AuthContext = createContext(null);
 const AUTH_TOKEN_STORAGE_KEY = 'horsai_auth_token_v1';
@@ -88,6 +88,21 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       setAuthFailureHandler(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    setTokenUpdateHandler((nextToken) => {
+      const safe = String(nextToken || '').trim();
+      persistToken(safe);
+      if (safe) {
+        setTokenState('bearer');
+      } else {
+        setTokenState(null);
+      }
+    });
+    return () => {
+      setTokenUpdateHandler(null);
     };
   }, []);
 

@@ -5,7 +5,7 @@ const { query } = require('../config/db');
 const { env } = require('../config/env');
 const { unauthorized } = require('../utils/errors');
 
-const TOKEN_REFRESH_WINDOW_SECONDS = 24 * 60 * 60;
+const TOKEN_REFRESH_WINDOW_SECONDS = env.jwtRefreshWindowSeconds;
 
 const tokenHash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -17,7 +17,7 @@ const issueToken = (user) =>
       sid: uuidv4()
     },
     env.jwtSecret,
-    { expiresIn: '7d' }
+    { expiresIn: env.jwtExpiresIn }
   );
 
 const issueCsrfToken = (rawToken) => {
@@ -41,7 +41,7 @@ const cookieOptions = () => ({
   sameSite: env.nodeEnv === 'production' ? 'none' : 'strict',
   secure: env.nodeEnv === 'production',
   path: '/',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
+  maxAge: env.authSessionTtlDays * 24 * 60 * 60 * 1000,
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
 });
 
@@ -88,9 +88,10 @@ const resolveRequestToken = (req) => {
 };
 
 const storeSession = async (userId, rawToken) => {
-  await query(`INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')`, [
+  await query(`INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 day'))`, [
     userId,
-    tokenHash(rawToken)
+    tokenHash(rawToken),
+    env.authSessionTtlDays
   ]);
 
   await query(
@@ -99,9 +100,9 @@ const storeSession = async (userId, rawToken) => {
        SELECT id FROM sessions
        WHERE user_id = $1
        ORDER BY created_at DESC
-       OFFSET 5
+       OFFSET $2
      )`,
-    [userId]
+    [userId, env.authSessionsPerUser]
   );
 };
 

@@ -20,6 +20,11 @@ const asPositiveInt = (value, fallback) => {
   return Math.floor(parsed);
 };
 
+const asString = (value, fallback) => {
+  const out = String(value || '').trim();
+  return out || fallback;
+};
+
 const env = {
   port: Number(process.env.PORT || 3001),
   databaseUrl: process.env.DATABASE_URL,
@@ -68,6 +73,10 @@ const env = {
   wsPriceIntervalSeconds: asPositiveInt(process.env.WS_PRICE_INTERVAL, 20),
   realtimeEnabled: asBool(process.env.REALTIME_ENABLED, true),
   marketStrictRealtime: asBool(process.env.MARKET_STRICT_REALTIME, String(process.env.NODE_ENV || '').toLowerCase() === 'production'),
+  jwtExpiresIn: asString(process.env.JWT_EXPIRES_IN, '30d'),
+  authSessionTtlDays: asPositiveInt(process.env.AUTH_SESSION_TTL_DAYS, 30),
+  authSessionsPerUser: asPositiveInt(process.env.AUTH_SESSIONS_PER_USER, 20),
+  jwtRefreshWindowSeconds: asPositiveInt(process.env.JWT_REFRESH_WINDOW_SECONDS, 72 * 60 * 60),
 
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || '',
