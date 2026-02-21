@@ -84,4 +84,27 @@ describe('FinnhubProvider', () => {
 
     expect(rows).toEqual([]);
   });
+
+  test('getDailyBars treats forbidden by code/status as skippable', async () => {
+    const forbidden = new Error('blocked');
+    forbidden.code = 'FINNHUB_ENDPOINT_FORBIDDEN';
+    forbidden.status = 403;
+
+    finnhub.candles
+      .mockRejectedValueOnce(forbidden)
+      .mockResolvedValueOnce({
+        o: [200],
+        h: [201],
+        l: [199],
+        c: [200.5],
+        v: [2000],
+        t: [1700000000]
+      });
+
+    const provider = new FinnhubProvider(finnhub);
+    const rows = await provider.getDailyBars(['BTCUSDT', 'AAPL'], 1700000000, 1700086400);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].symbol).toBe('AAPL');
+  });
 });

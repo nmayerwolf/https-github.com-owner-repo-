@@ -38,6 +38,13 @@ const normalizeBars = (symbol, payload = {}) => {
   return out;
 };
 
+const isEndpointForbiddenError = (error) => {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toUpperCase();
+  const status = Number(error?.status);
+  return code === 'FINNHUB_ENDPOINT_FORBIDDEN' || message.includes('FINNHUB_ENDPOINT_FORBIDDEN') || status === 403;
+};
+
 class FinnhubProvider extends MarketDataProvider {
   constructor(client = finnhub) {
     super();
@@ -58,8 +65,7 @@ class FinnhubProvider extends MarketDataProvider {
         const candles = await this.client.candles(symbol, 'D', fromTs, toTs);
         all.push(...normalizeBars(symbol, candles));
       } catch (error) {
-        const message = String(error?.message || '').toUpperCase();
-        if (message.includes('FORBIDDEN')) {
+        if (isEndpointForbiddenError(error)) {
           // Some Finnhub plans block subsets of instruments/endpoints; skip and continue.
           forbiddenCount += 1;
           continue;
