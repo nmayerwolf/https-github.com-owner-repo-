@@ -41,8 +41,15 @@ const normalizeBars = (symbol, payload = {}) => {
 const isEndpointForbiddenError = (error) => {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '').toUpperCase();
+  const raw = String(error || '').toUpperCase();
   const status = Number(error?.status);
-  return code === 'FINNHUB_ENDPOINT_FORBIDDEN' || message.includes('FINNHUB_ENDPOINT_FORBIDDEN') || status === 403;
+  return (
+    code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
+    message.includes('FINNHUB_ENDPOINT_FORBIDDEN') ||
+    raw.includes('FINNHUB_ENDPOINT_FORBIDDEN') ||
+    raw.includes('FORBIDDEN') ||
+    status === 403
+  );
 };
 
 class FinnhubProvider extends MarketDataProvider {

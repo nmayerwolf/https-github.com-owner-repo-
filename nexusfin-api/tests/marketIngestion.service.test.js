@@ -1,4 +1,4 @@
-const { computeSeriesMetrics, buildSectorPercentiles, buildNewsId, normalizeNewsRows } = require('../src/services/marketIngestion');
+const { createMarketIngestionService, computeSeriesMetrics, buildSectorPercentiles, buildNewsId, normalizeNewsRows } = require('../src/services/marketIngestion');
 
 describe('marketIngestion helpers', () => {
   it('computes rolling metrics for daily bars', () => {
@@ -57,5 +57,34 @@ describe('marketIngestion helpers', () => {
     expect(out).toHaveLength(1);
     expect(out[0].tickers).toEqual(['SPY']);
     expect(out[0].id).toEqual(buildNewsId(inRows[0]));
+  });
+});
+
+describe('marketIngestion runMarketSnapshotDaily', () => {
+  it('returns ok:true with warnings when provider raises forbidden', async () => {
+    const query = jest.fn(async (sql) => {
+      if (String(sql).includes('SELECT symbol FROM universe_symbols')) {
+        return { rows: [{ symbol: 'AAPL' }, { symbol: 'MSFT' }] };
+      }
+      return { rows: [] };
+    });
+    const provider = {
+      getDailyBars: jest.fn(async () => {
+        const err = new Error('FINNHUB_ENDPOINT_FORBIDDEN');
+        err.code = 'FINNHUB_ENDPOINT_FORBIDDEN';
+        err.status = 403;
+        throw err;
+      })
+    };
+    const service = createMarketIngestionService({ query, provider, logger: { log: jest.fn(), warn: jest.fn() } });
+
+    const out = await service.runMarketSnapshotDaily({ date: '2026-02-21' });
+
+    expect(out.ok).toBe(true);
+    expect(out.job).toBe('market_snapshot_daily');
+    expect(out.generated).toBe(0);
+    expect(out.skipped).toBe(2);
+    expect(Array.isArray(out.warnings)).toBe(true);
+    expect(out.warnings.length).toBeGreaterThan(0);
   });
 });

@@ -162,6 +162,21 @@ const normalizeNewsRows = (rows = []) =>
     })
     .filter(Boolean);
 
+const isForbiddenError = (error) => {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || error || '').toUpperCase();
+  const body = String(error?.body || '').toUpperCase();
+  const status = Number(error?.status ?? error?.response?.status);
+  return (
+    code === 'FINNHUB_ENDPOINT_FORBIDDEN' ||
+    message.includes('FINNHUB_ENDPOINT_FORBIDDEN') ||
+    message.includes('FORBIDDEN') ||
+    body.includes('FORBIDDEN') ||
+    status === 403 ||
+    status === 401
+  );
+};
+
 const createMarketIngestionService = ({ query, provider = new FinnhubProvider(), logger = console } = {}) => {
   const activeUniverseSymbols = async () => {
     const out = await query('SELECT symbol FROM universe_symbols WHERE is_active = TRUE ORDER BY symbol ASC');
@@ -182,7 +197,33 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
       return { generated: 0, date: runDate, symbolsScanned: 0, barsUpserted: 0, metricsUpserted: 0, skipped: 'NO_UNIVERSE' };
     }
 
-    const bars = await provider.getDailyBars(symbols, fromTs, toTs);
+    let bars = [];
+    try {
+      bars = await provider.getDailyBars(symbols, fromTs, toTs);
+    } catch (error) {
+      if (isForbiddenError(error)) {
+        const warning = `Finnhub forbidden on market snapshot (${String(error?.code || error?.message || 'FORBIDDEN')})`;
+        logger.warn?.('[marketIngestion] snapshot daily forbidden', {
+          runDate,
+          symbols: symbols.length,
+          warning
+        });
+        return {
+          ok: true,
+          job: 'market_snapshot_daily',
+          generated: 0,
+          saved: 0,
+          skipped: symbols.length,
+          total: symbols.length,
+          warnings: [warning],
+          date: runDate,
+          symbolsScanned: symbols.length,
+          barsUpserted: 0,
+          metricsUpserted: 0
+        };
+      }
+      throw error;
+    }
     const barsBySymbol = new Map();
 
     for (const bar of bars) {
@@ -255,7 +296,13 @@ const createMarketIngestionService = ({ query, provider = new FinnhubProvider(),
     logger.log('[marketIngestion] snapshot daily done', { runDate, symbols: symbols.length, barsUpserted, metricsUpserted });
 
         return {
+          ok: true,
+          job: 'market_snapshot_daily',
           generated: metricsUpserted,
+          saved: metricsUpserted,
+          skipped: Math.max(0, symbols.length - barsBySymbol.size),
+          total: symbols.length,
+          warnings: [],
           date: runDate,
           symbolsScanned: symbols.length,
           barsUpserted,
