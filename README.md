@@ -47,6 +47,7 @@ Archivo: `/Users/nmayerwolf/Documents/nexusfin/.env`
 
 ```bash
 VITE_API_URL=http://localhost:3001/api
+VITE_WS_URL=ws://localhost:3001/ws
 VITE_ANTHROPIC_KEY=
 VITE_MARKET_VISIBLE=false
 VITE_REALTIME_ENABLED=false

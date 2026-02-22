@@ -119,6 +119,14 @@ app.locals.getMobileHealthStatus = () => ({
   },
   ts: new Date().toISOString()
 });
+app.locals.getYahooHealthStatus = async () => ({
+  ok: false,
+  provider: 'yahoo-finance2',
+  mode: 'not_initialized',
+  quote: null,
+  error: { code: 'NOT_INITIALIZED', message: 'Yahoo health runtime not initialized' },
+  ts: new Date().toISOString()
+});
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -207,7 +215,7 @@ app.get('/api/health/market-data', async (_req, res) => {
 
   return res.json({
     ok: true,
-    providerMode: 'finnhub-polling',
+    providerMode: 'finnhub->twelvedata-fallback',
     keyPresent: Boolean(String(env.finnhubKey || '').trim()),
     keyLength: String(env.finnhubKey || '').trim().length,
     universe: {
@@ -220,6 +228,31 @@ app.get('/api/health/market-data', async (_req, res) => {
     probes,
     ts: new Date().toISOString()
   });
+});
+
+app.get('/api/health/yahoo', async (req, res) => {
+  const force = String(req.query.force || '0') === '1';
+  try {
+    const status = await app.locals.getYahooHealthStatus?.(force);
+    const payload = status || {
+      ok: false,
+      provider: 'yahoo-finance2',
+      mode: 'unavailable',
+      quote: null,
+      error: { code: 'UNAVAILABLE', message: 'Yahoo health status unavailable' },
+      ts: new Date().toISOString()
+    };
+    return res.status(payload.ok ? 200 : 503).json(payload);
+  } catch (error) {
+    return res.status(503).json({
+      ok: false,
+      provider: 'yahoo-finance2',
+      mode: 'error',
+      quote: null,
+      error: { code: String(error?.code || 'HEALTH_ERROR'), message: String(error?.message || 'health check failed') },
+      ts: new Date().toISOString()
+    });
+  }
 });
 
 app.get('/api/health/cron', (_req, res) => {
@@ -572,6 +605,72 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const pushNotifier = createPushNotifier({ query, logger: console });
   const aiAgent = createAiAgent();
   const yahoo = createYahooProvider({ logger: console });
+  const yahooHealthTtlMs = 30 * 1000;
+  let yahooHealthCache = { checkedAt: 0, payload: null };
+  const getYahooHealthStatus = async (force = false) => {
+    const now = Date.now();
+    if (!force && yahooHealthCache.payload && now - yahooHealthCache.checkedAt < yahooHealthTtlMs) {
+      return yahooHealthCache.payload;
+    }
+
+    const dnsServers = String(process.env.YAHOO_DNS_SERVERS || '')
+      .split(',')
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+
+    try {
+      const quote = await yahoo.quote('SPY');
+      if (quote && Number.isFinite(Number(quote.c)) && Number(quote.c) > 0) {
+        const payload = {
+          ok: true,
+          provider: 'yahoo-finance2',
+          mode: 'active',
+          dnsServers,
+          quote: {
+            symbol: 'SPY',
+            price: Number(quote.c),
+            prevClose: Number.isFinite(Number(quote.pc)) ? Number(quote.pc) : null,
+            changePct: Number.isFinite(Number(quote.dp)) ? Number(quote.dp) : null,
+            asOfTs: Number.isFinite(Number(quote.t)) ? Number(quote.t) : null
+          },
+          error: null,
+          ts: new Date().toISOString()
+        };
+        yahooHealthCache = { checkedAt: now, payload };
+        return payload;
+      }
+
+      const payload = {
+        ok: false,
+        provider: 'yahoo-finance2',
+        mode: 'degraded',
+        dnsServers,
+        quote: null,
+        error: {
+          code: 'NO_PRICE',
+          message: 'Yahoo returned no valid price for SPY'
+        },
+        ts: new Date().toISOString()
+      };
+      yahooHealthCache = { checkedAt: now, payload };
+      return payload;
+    } catch (error) {
+      const code = String(error?.cause?.code || error?.code || 'YAHOO_CHECK_FAILED');
+      const message = String(error?.cause?.message || error?.message || 'Yahoo health check failed');
+      const payload = {
+        ok: false,
+        provider: 'yahoo-finance2',
+        mode: 'degraded',
+        dnsServers,
+        quote: null,
+        error: { code, message },
+        ts: new Date().toISOString()
+      };
+      yahooHealthCache = { checkedAt: now, payload };
+      return payload;
+    }
+  };
+  app.locals.getYahooHealthStatus = getYahooHealthStatus;
   const fallbackProvider = new FallbackProvider({ finnhubClient: finnhub, yahoo, logger: console });
   const marketData = createMarketDataProvider({ finnhub, yahoo, logger: console });
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console, marketData });

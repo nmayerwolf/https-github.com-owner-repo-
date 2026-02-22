@@ -1,4 +1,5 @@
 const finnhub = require('./finnhub');
+const twelvedata = require('./twelvedata');
 
 const ErrorCodes = {
   KEY_MISSING: 'KEY_MISSING',
@@ -40,7 +41,22 @@ const mapFinnhubToInternal = (symbol) => {
   return upper;
 };
 
-const normalizeProviderError = (symbol, error) => {
+const mapInternalToTwelve = (symbol) => {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.endsWith('USDT')) {
+    const base = upper.slice(0, -4);
+    return `${base}/USD`;
+  }
+  if (upper.includes('_')) {
+    const [base, quote] = upper.split('_');
+    if (!base || !quote) return null;
+    return `${base}/${quote}`;
+  }
+  return upper;
+};
+
+const normalizeProviderError = (symbol, error = null) => {
   if (error instanceof MarketProviderError) return error;
 
   const upper = String(symbol || '').toUpperCase();
@@ -63,6 +79,24 @@ const normalizeProviderError = (symbol, error) => {
 
   if (status === 401) {
     return new MarketProviderError(ErrorCodes.PROVIDER_AUTH_FAILED, `Finnhub auth failed for ${upper}`, {
+      symbol: upper
+    });
+  }
+
+  if (code === 'KEY_MISSING') {
+    return new MarketProviderError(ErrorCodes.KEY_MISSING, `No market provider key configured for ${upper}`, {
+      symbol: upper
+    });
+  }
+
+  if (code === 'PROVIDER_AUTH_FAILED') {
+    return new MarketProviderError(ErrorCodes.PROVIDER_AUTH_FAILED, `Provider auth failed for ${upper}`, {
+      symbol: upper
+    });
+  }
+
+  if (code === 'SYMBOL_UNSUPPORTED') {
+    return new MarketProviderError(ErrorCodes.SYMBOL_UNSUPPORTED, `Symbol unsupported by provider for ${upper}`, {
       symbol: upper
     });
   }
@@ -103,28 +137,23 @@ const scoreSearchResult = (query, item) => {
   return score;
 };
 
-const resolveMarketQuote = async (symbol) => {
-  const internal = mapFinnhubToInternal(symbol);
-  if (!internal) {
-    throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, 'Empty symbol', { reason: 'SYMBOL_REQUIRED' });
-  }
+const parsePercent = (value) => {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return null;
+  const clean = raw.endsWith('%') ? raw.slice(0, -1) : raw;
+  const out = Number(clean);
+  return Number.isFinite(out) ? out : null;
+};
 
+const resolveViaFinnhub = async (internal) => {
   const quoteSymbol = mapInternalToFinnhub(internal);
   if (!quoteSymbol) {
     throw new MarketProviderError(ErrorCodes.SYMBOL_UNSUPPORTED, `Cannot map symbol: ${internal}`, { symbol: internal });
   }
-
-  let out;
-  try {
-    out = await finnhub.quote(quoteSymbol);
-  } catch (error) {
-    throw normalizeProviderError(internal, error);
-  }
-
+  const out = await finnhub.quote(quoteSymbol);
   const price = toFinite(out?.c);
   const previousClose = toFinite(out?.pc);
   const percentChange = toFinite(out?.dp);
-
   if (!Number.isFinite(price) || price <= 0) {
     throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, `No live quote available for ${internal}`, {
       symbol: internal,
@@ -150,6 +179,86 @@ const resolveMarketQuote = async (symbol) => {
       fallbackLevel: 0
     }
   };
+};
+
+const resolveViaTwelveData = async (internal) => {
+  if (typeof twelvedata.hasKey === 'function' && !twelvedata.hasKey()) {
+    throw new MarketProviderError(ErrorCodes.KEY_MISSING, 'TWELVE_DATA_KEY not configured', { symbol: internal });
+  }
+
+  const symbol = mapInternalToTwelve(internal);
+  if (!symbol) {
+    throw new MarketProviderError(ErrorCodes.SYMBOL_UNSUPPORTED, `Cannot map symbol: ${internal}`, { symbol: internal });
+  }
+
+  const out = await twelvedata.quote(symbol);
+  const price = toFinite(out?.close ?? out?.price);
+  const previousClose = toFinite(out?.previous_close);
+  const percentChange = parsePercent(out?.percent_change);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, `No live quote available for ${internal}`, {
+      symbol: internal,
+      reason: 'INVALID_PRICE'
+    });
+  }
+
+  const asOf = out?.datetime ? new Date(out.datetime).toISOString() : new Date().toISOString();
+
+  return {
+    quote: {
+      c: price,
+      pc: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : price,
+      dp: Number.isFinite(percentChange) ? percentChange : null,
+      h: toFinite(out?.high),
+      l: toFinite(out?.low),
+      o: toFinite(out?.open),
+      t: Math.floor(new Date(asOf).getTime() / 1000)
+    },
+    meta: {
+      source: 'twelvedata',
+      asOf,
+      symbol: internal,
+      stale: false,
+      fallbackLevel: 1
+    }
+  };
+};
+
+const resolveMarketQuote = async (symbol) => {
+  const internal = mapFinnhubToInternal(symbol);
+  if (!internal) {
+    throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, 'Empty symbol', { reason: 'SYMBOL_REQUIRED' });
+  }
+
+  let finnhubError = null;
+  try {
+    return await resolveViaFinnhub(internal);
+  } catch (error) {
+    finnhubError = error;
+  }
+
+  try {
+    return await resolveViaTwelveData(internal);
+  } catch (twelveError) {
+    const normalized = normalizeProviderError(internal, finnhubError || twelveError);
+    normalized.details = {
+      ...(normalized.details || {}),
+      attempts: [
+        {
+          provider: 'finnhub',
+          code: String(finnhubError?.code || ''),
+          status: Number(finnhubError?.status || 0) || null
+        },
+        {
+          provider: 'twelvedata',
+          code: String(twelveError?.code || ''),
+          status: Number(twelveError?.status || 0) || null
+        }
+      ]
+    };
+    throw normalized;
+  }
 };
 
 const toCandleResolution = (resolution = 'D') => {
@@ -179,6 +288,49 @@ const normalizeCandles = (payload) => {
   };
 };
 
+const toTwelveInterval = (resolution = 'D') => {
+  const raw = toCandleResolution(resolution);
+  if (raw === 'W') return '1week';
+  if (raw === 'M') return '1month';
+  if (raw === 'D') return '1day';
+  if (raw === '60') return '1h';
+  if (raw === '30') return '30min';
+  if (raw === '15') return '15min';
+  if (raw === '5') return '5min';
+  if (raw === '1') return '1min';
+  return '1day';
+};
+
+const normalizeTwelveCandles = (payload = {}) => {
+  const rows = Array.isArray(payload?.values) ? payload.values : [];
+  if (!rows.length) return { s: 'no_data', c: [], h: [], l: [], v: [], t: [] };
+
+  const normalized = rows
+    .map((row) => {
+      const ts = Math.floor(new Date(String(row?.datetime || '')).getTime() / 1000);
+      if (!Number.isFinite(ts) || ts <= 0) return null;
+      const close = toFinite(row?.close);
+      const high = toFinite(row?.high);
+      const low = toFinite(row?.low);
+      const volume = toFinite(row?.volume) ?? 0;
+      if (![close, high, low].every((x) => Number.isFinite(x))) return null;
+      return { ts, close, high, low, volume };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.ts - b.ts);
+
+  if (!normalized.length) return { s: 'no_data', c: [], h: [], l: [], v: [], t: [] };
+
+  return {
+    s: 'ok',
+    c: normalized.map((x) => x.close),
+    h: normalized.map((x) => x.high),
+    l: normalized.map((x) => x.low),
+    v: normalized.map((x) => x.volume),
+    t: normalized.map((x) => x.ts)
+  };
+};
+
 const resolveMarketCandles = async ({ symbol, resolution = 'D', from, to, outputsize = 90 }) => {
   const internal = mapFinnhubToInternal(symbol);
   if (!internal) throw new MarketProviderError(ErrorCodes.NO_LIVE_DATA, 'Empty symbol', { reason: 'SYMBOL_REQUIRED' });
@@ -199,7 +351,21 @@ const resolveMarketCandles = async ({ symbol, resolution = 'D', from, to, output
     }
     return normalizeCandles(await finnhub.candles(internal, candleResolution, fromTs, toTs));
   } catch (error) {
-    throw normalizeProviderError(internal, error);
+    try {
+      if (typeof twelvedata.hasKey === 'function' && !twelvedata.hasKey()) {
+        throw normalizeProviderError(internal, error);
+      }
+      const twelveSymbol = mapInternalToTwelve(internal);
+      const interval = toTwelveInterval(candleResolution);
+      const series = await twelvedata.timeSeries(twelveSymbol, interval, Math.max(30, Number(outputsize || 90)));
+      const normalized = normalizeTwelveCandles(series);
+      if (normalized.s !== 'ok') {
+        throw normalizeProviderError(internal, error);
+      }
+      return normalized;
+    } catch (fallbackError) {
+      throw normalizeProviderError(internal, error || fallbackError);
+    }
   }
 };
 
@@ -211,12 +377,11 @@ const resolveMarketSearch = async (query) => {
   try {
     out = await finnhub.symbolSearch(q);
   } catch {
-    return [];
+    out = { result: [] };
   }
 
   const rows = Array.isArray(out?.result) ? out.result : [];
-
-  return rows
+  const mappedFinnhub = rows
     .map((item) => {
       const providerSymbol = String(item?.symbol || '').trim().toUpperCase();
       const internalSymbol = mapFinnhubToInternal(providerSymbol);
@@ -230,7 +395,39 @@ const resolveMarketSearch = async (query) => {
         providerSymbol
       };
     })
-    .filter(Boolean)
+    .filter(Boolean);
+
+  if (!mappedFinnhub.length && typeof twelvedata.hasKey === 'function' && twelvedata.hasKey()) {
+    try {
+      const twelve = await twelvedata.symbolSearch(q, 20);
+      const rows = Array.isArray(twelve?.data) ? twelve.data : [];
+      const mappedTwelve = rows
+        .map((item) => {
+          const rawSymbol = String(item?.symbol || '').trim().toUpperCase();
+          const name = String(item?.instrument_name || item?.symbol || '').trim();
+          if (!rawSymbol || !name) return null;
+          const internalSymbol = mapFinnhubToInternal(rawSymbol.replace('/', '_'));
+          if (!internalSymbol) return null;
+          return {
+            symbol: internalSymbol,
+            name,
+            category: normalizeSearchCategory(rawSymbol, name),
+            source: 'twelvedata',
+            providerSymbol: rawSymbol
+          };
+        })
+        .filter(Boolean);
+      if (mappedTwelve.length) {
+        return mappedTwelve
+          .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
+          .slice(0, 20);
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  return mappedFinnhub
     .sort((a, b) => scoreSearchResult(q, b) - scoreSearchResult(q, a))
     .slice(0, 20);
 };

@@ -33,6 +33,7 @@ CSRF_SECRET=<64+ chars random>
 FINNHUB_KEY=<key>
 ALPHA_VANTAGE_KEY=<key>
 TWELVE_DATA_KEY=<key>
+YAHOO_DNS_SERVERS=1.1.1.1,8.8.8.8
 ANTHROPIC_API_KEY=<key>
 AI_AGENT_ENABLED=true
 AI_NARRATIVE_ENABLED=true
@@ -51,6 +52,7 @@ ADMIN_JOB_TOKEN_NEXT=<optional-rotation-token>
 ```bash
 curl -sS https://api.horsai.app/api/health
 curl -sS https://api.horsai.app/api/health/cron
+curl -sS https://api.horsai.app/api/health/yahoo
 ```
 7. Aplicar migraciones en prod:
 ```bash
