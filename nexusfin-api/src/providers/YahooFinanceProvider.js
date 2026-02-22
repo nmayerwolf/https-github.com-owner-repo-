@@ -28,6 +28,8 @@
  *   const news = await yahoo.generalNews('market', 20);
  */
 
+const dns = require('dns');
+
 const SYMBOL_MAP = {
   // Map Finnhub-style symbols to Yahoo symbols
   'BINANCE:BTCUSDT': 'BTC-USD',
@@ -55,9 +57,77 @@ const toIsoDate = (date) => {
 };
 
 const createYahooProvider = ({ logger = console } = {}) => {
+  let _dnsConfigured = false;
+
+  const configureDns = () => {
+    if (_dnsConfigured) return;
+    _dnsConfigured = true;
+
+    const raw = String(process.env.YAHOO_DNS_SERVERS || '').trim();
+    if (!raw) return;
+
+    const servers = raw
+      .split(',')
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    if (!servers.length) return;
+
+    try {
+      dns.setServers(servers);
+      logger.log?.('[YahooProvider] DNS servers override active', servers);
+    } catch (err) {
+      logger.warn?.('[YahooProvider] Failed to apply YAHOO_DNS_SERVERS:', err.message);
+    }
+  };
+
+  const canResolveYahooHost = async () => {
+    const host = 'query2.finance.yahoo.com';
+    try {
+      await dns.promises.resolve4(host);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const quoteViaHttp = async (symbol) => {
+    const yahooSym = toYahooSymbol(symbol);
+    const hosts = ['query2.finance.yahoo.com', 'query1.finance.yahoo.com'];
+    let lastError = null;
+
+    for (const host of hosts) {
+      const url = `https://${host}/v7/finance/quote?symbols=${encodeURIComponent(yahooSym)}`;
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'nexusfin/1.0 (+https://horsai.app)' }
+        });
+        if (!res.ok) throw new Error(`HTTP_${res.status}`);
+        const body = await res.json();
+        const row = body?.quoteResponse?.result?.[0];
+        const price = Number(row?.regularMarketPrice);
+        if (!Number.isFinite(price) || price <= 0) throw new Error('NO_PRICE');
+        return {
+          c: price,
+          dp: row?.regularMarketChangePercent ?? null,
+          d: row?.regularMarketChange ?? null,
+          h: row?.regularMarketDayHigh ?? null,
+          l: row?.regularMarketDayLow ?? null,
+          o: row?.regularMarketOpen ?? null,
+          pc: row?.regularMarketPreviousClose ?? null,
+          t: row?.regularMarketTime ?? null,
+        };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('YAHOO_HTTP_QUOTE_FAILED');
+  };
+
   // Lazy-load yahoo-finance2 (it's ESM-first, need dynamic import for CJS)
   let _yf = null;
   const getYF = async () => {
+    configureDns();
     if (_yf) return _yf;
     try {
       // yahoo-finance2 v3+ uses default export
@@ -102,7 +172,25 @@ const createYahooProvider = ({ logger = console } = {}) => {
       };
     } catch (err) {
       logger.warn?.(`[YahooProvider] quote(${yahooSym}) failed:`, err.message);
-      return null;
+
+      const networkFailure =
+        String(err?.message || '').toLowerCase().includes('fetch failed') ||
+        String(err?.code || '').toUpperCase() === 'ENOTFOUND' ||
+        String(err?.cause?.code || '').toUpperCase() === 'ENOTFOUND';
+
+      if (!networkFailure) return null;
+
+      const resolvable = await canResolveYahooHost();
+      if (!resolvable) {
+        logger.error?.('[YahooProvider] DNS cannot resolve query2.finance.yahoo.com');
+      }
+
+      try {
+        return await quoteViaHttp(symbol);
+      } catch (fallbackErr) {
+        logger.warn?.(`[YahooProvider] quote HTTP fallback(${yahooSym}) failed:`, fallbackErr.message);
+        return null;
+      }
     }
   };
 

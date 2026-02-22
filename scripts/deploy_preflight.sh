@@ -15,14 +15,18 @@ test -f "$API_DIR/.env.production.example" || { echo "Falta nexusfin-api/.env.pr
 test -f "$ROOT_DIR/nexusfin-mobile/.env.production.example" || { echo "Falta nexusfin-mobile/.env.production.example"; exit 1; }
 echo "OK"
 
-echo "[deploy-preflight] 2) Verificando .env en gitignore..."
+echo "[deploy-preflight] 2) Validando consistencia de integraciones y DNS..."
+node "$ROOT_DIR/scripts/integration_doctor.cjs"
+echo "OK"
+
+echo "[deploy-preflight] 3) Verificando .env en gitignore..."
 if ! grep -q "^\\.env$" "$ROOT_DIR/.gitignore"; then
   echo "ERROR: .env no está en .gitignore"
   exit 1
 fi
 echo "OK"
 
-echo "[deploy-preflight] 3) Buscando secretos hardcodeados en frontend..."
+echo "[deploy-preflight] 4) Buscando secretos hardcodeados en frontend..."
 if rg -n "sk-ant|d6742n|UFZ6W|FINNHUB_KEY|ALPHA_VANTAGE_KEY|TWELVE_DATA_KEY" "$ROOT_DIR/src" --glob "*.{js,jsx}" >/tmp/horsai-secrets.txt; then
   echo "ERROR: Posibles secretos encontrados en frontend:"
   cat /tmp/horsai-secrets.txt
@@ -30,16 +34,23 @@ if rg -n "sk-ant|d6742n|UFZ6W|FINNHUB_KEY|ALPHA_VANTAGE_KEY|TWELVE_DATA_KEY" "$R
 fi
 echo "OK"
 
-echo "[deploy-preflight] 4) Check frontend..."
+echo "[deploy-preflight] 5) Check frontend..."
 cd "$ROOT_DIR"
 npm run check
 
-echo "[deploy-preflight] 5) Check backend..."
+echo "[deploy-preflight] 6) Check backend..."
 cd "$API_DIR"
 if [[ -z "${DATABASE_URL:-}" || -z "${JWT_SECRET:-}" ]]; then
   echo "WARN: DATABASE_URL/JWT_SECRET no definidos; salteando check backend."
 else
   npm run check
+fi
+
+echo "[deploy-preflight] 7) Yahoo health local (opcional)..."
+if curl -fsS "http://localhost:3001/api/health/yahoo" >/tmp/horsai-yahoo-health.json 2>/dev/null; then
+  echo "OK (local API): /api/health/yahoo responde"
+else
+  echo "INFO: API local no disponible en :3001 o Yahoo health no accesible (no bloqueante)."
 fi
 
 echo "[deploy-preflight] DONE"

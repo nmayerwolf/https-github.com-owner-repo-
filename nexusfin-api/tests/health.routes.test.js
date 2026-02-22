@@ -68,4 +68,16 @@ describe('health routes', () => {
     expect(res.body).toHaveProperty('nextRun');
     expect(Array.isArray(res.body.errors)).toBe(true);
   });
+
+  test('GET /api/health/yahoo returns yahoo diagnostics payload', async () => {
+    const res = await request(app).get('/api/health/yahoo');
+
+    expect([200, 503]).toContain(res.status);
+    expect(typeof res.body.ok).toBe('boolean');
+    expect(res.body.provider).toBe('yahoo-finance2');
+    expect(typeof res.body.mode).toBe('string');
+    expect(res.body).toHaveProperty('quote');
+    expect(res.body).toHaveProperty('error');
+    expect(typeof res.body.ts).toBe('string');
+  });
 });
