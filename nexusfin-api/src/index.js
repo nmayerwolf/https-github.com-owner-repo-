@@ -34,8 +34,6 @@ const { createPortfolioSnapshotsService } = require('./services/portfolioSnapsho
 const { createNotificationPolicyService } = require('./services/notificationPolicy');
 const { createMarketIngestionService } = require('./services/marketIngestion');
 const { createHorsaiDailyService } = require('./services/horsaiDaily');
-const { createGeopoliticalNewsService } = require('./services/geopoliticalNews');
-const { createMacroDataDailyService } = require('./services/macroDataDaily');
 const { createHorsaiV1Service } = require('./services/horsaiV1');
 
 const authRoutes = require('./routes/auth');
@@ -681,8 +679,6 @@ const startHttpServer = ({ port = env.port } = {}) => {
   const macroRadar = createMacroRadar({ query, finnhub, alpha: av, aiAgent, logger: console, marketData });
   const portfolioAdvisor = createPortfolioAdvisor({ query, aiAgent, logger: console });
   const marketIngestion = createMarketIngestionService({ query, provider: fallbackProvider, logger: console });
-  const geopoliticalNews = createGeopoliticalNewsService({ query, logger: console });
-  const macroDataDaily = createMacroDataDailyService({ query, logger: console });
   const mvpDailyPipeline = createMvpDailyPipeline({ query, logger: console });
   const portfolioSnapshots = createPortfolioSnapshotsService({ query, logger: console });
   const notificationPolicy = createNotificationPolicyService({ query, pushNotifier, logger: console });
@@ -691,8 +687,6 @@ const startHttpServer = ({ port = env.port } = {}) => {
   app.locals.macroRadar = macroRadar;
   app.locals.portfolioAdvisor = portfolioAdvisor;
   app.locals.marketIngestion = marketIngestion;
-  app.locals.geopoliticalNews = geopoliticalNews;
-  app.locals.macroDataDaily = macroDataDaily;
   app.locals.mvpDailyPipeline = mvpDailyPipeline;
   app.locals.portfolioSnapshots = portfolioSnapshots;
   app.locals.notificationPolicy = notificationPolicy;
@@ -725,8 +719,6 @@ const startHttpServer = ({ port = env.port } = {}) => {
       const marketSnapshotOut = await marketIngestion.runMarketSnapshotDaily();
       const fundamentalsOut = await marketIngestion.runFundamentalsWeekly();
       const newsIngestOut = await marketIngestion.runNewsIngestDaily();
-      const geopoliticalOut = await geopoliticalNews.runDaily();
-      const macroDataOut = await macroDataDaily.runDaily();
       const [macroOut, mvpOut] = await Promise.all([macroRadar.runGlobalDaily(), mvpDailyPipeline.runDaily()]);
       const notifyOut = await notificationPolicy.runDaily({ date: mvpOut?.date });
       return {
@@ -734,16 +726,12 @@ const startHttpServer = ({ port = env.port } = {}) => {
           Number(marketSnapshotOut?.generated || 0) +
           Number(fundamentalsOut?.generated || 0) +
           Number(newsIngestOut?.generated || 0) +
-          Number(geopoliticalOut?.upserted || 0) +
-          Number(macroDataOut?.upserted || 0) +
           Number(macroOut?.generated || 0) +
           Number(mvpOut?.generated || 0) +
           Number(notifyOut?.sent || 0),
         marketSnapshot: marketSnapshotOut,
         fundamentals: fundamentalsOut,
         newsIngest: newsIngestOut,
-        geopolitical: geopoliticalOut,
-        macroData: macroDataOut,
         mvp: mvpOut,
         notifications: notifyOut
       };
