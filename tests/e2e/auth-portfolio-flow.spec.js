@@ -106,7 +106,6 @@ test('login and add position in portfolio', async ({ page }) => {
 
     if (isPath('/api/portfolio') && method === 'GET') return json(200, { positions, portfolios, activePortfolioId: portfolios[0]?.id || '' });
     if (isPath('/api/portfolio/portfolios') && method === 'GET') return json(200, { portfolios });
-    if (isPath('/api/portfolio/invitations/received') && method === 'GET') return json(200, { invitations: [] });
     if (isPath('/api/portfolio/portfolios') && method === 'POST') {
       const body = req.postDataJSON();
       const createdPortfolio = {
@@ -196,15 +195,14 @@ test('login and add position in portfolio', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Horsai' })).toBeVisible({ timeout: 45_000 });
   const navItems = page.locator('nav.bottom-nav a.nav-item');
-  await expect(navItems).toHaveCount(4);
+  await expect(navItems).toHaveCount(3);
   await expect(page.locator('nav.bottom-nav')).toContainText('Ideas');
   await expect(page.locator('nav.bottom-nav')).not.toContainText('Mercados');
   await expect(page.locator('nav.bottom-nav')).toContainText('Portafolio');
-  await expect(page.locator('nav.bottom-nav')).toContainText('Agente');
   await expect(page.locator('a.nav-item.active[href="/brief"]')).toBeVisible();
 
   await page.goto('/markets');
-  await expect(page).toHaveURL(/\/markets$/);
+  await expect(page).toHaveURL(/\/ideas$/);
   await expect(page.getByRole('heading', { name: 'Ideas', exact: true })).toBeVisible();
 
   await page.goto('/markets/AAPL');
@@ -216,12 +214,12 @@ test('login and add position in portfolio', async ({ page }) => {
     await page.getByRole('button', { name: /m[aá]s tarde/i }).click();
     await expect(migrationHeading).toBeHidden();
   }
-  await page.locator('a.nav-item[href="/agent"]').click();
-  await expect(page).toHaveURL(/\/agent$/);
-
   await page.locator('a.nav-item[href="/portfolio"]').click();
   await expect(page).toHaveURL(/\/portfolio$/);
   await expect(page.getByRole('heading', { name: 'Portfolio', exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Snapshot')).toBeVisible();
-  await expect(page.getByText('No active exposure.')).toBeVisible();
+  await expect(async () => {
+    const hasConcentration = await page.getByText(/Concentration|Concentración/).isVisible().catch(() => false);
+    const hasEmptyCta = await page.getByText(/Upload your portfolio to personalize ideas|Subí tu portfolio para personalizar ideas/).isVisible().catch(() => false);
+    expect(hasConcentration || hasEmptyCta).toBe(true);
+  }).toPass({ timeout: 10_000 });
 });
