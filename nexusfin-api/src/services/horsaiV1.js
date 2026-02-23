@@ -75,7 +75,11 @@ const buildAnalysisFromPrompt = ({ prompt, date }) => {
 };
 
 const latestChangeExplanation = ({ prevStatus, nextStatus, prevTotal, nextTotal }) => {
-  return `We re-reviewed this idea and moved conviction from ${prevTotal.toFixed(1)} to ${nextTotal.toFixed(1)}. Status changed from ${prevStatus} to ${nextStatus} only when the new evidence justified it.`;
+  const base = `We re-reviewed this idea and moved conviction from ${prevTotal.toFixed(1)} to ${nextTotal.toFixed(1)}. Status changed from ${prevStatus} to ${nextStatus} only when the new evidence justified it.`;
+  if (nextStatus === 'UNDER_REVIEW') {
+    return `${base} To return to priority, conviction needs to recover to at least 3.0 with clearer dated catalysts and explicit dislocation evidence.`;
+  }
+  return base;
 };
 
 const createHorsaiV1Service = ({ query, logger = console, convictionEngine = createConvictionEngine() }) => {

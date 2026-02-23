@@ -22,6 +22,14 @@ const latestChange = (idea) => {
   return rows.length ? rows[rows.length - 1] : null;
 };
 
+const underReviewFallback = ({ idea, isSpanish }) => {
+  const total = Number(idea?.conviction_total || 0).toFixed(1);
+  if (isSpanish) {
+    return `La idea quedó en UNDER_REVIEW con convicción ${total}. Para volver a prioridad debería recuperar al menos 3.0 con catalizadores más concretos (fechados) y evidencia más clara de dislocación.`;
+  }
+  return `This idea remains UNDER_REVIEW with conviction ${total}. To become priority again it should recover to at least 3.0 with clearer dated catalysts and stronger dislocation evidence.`;
+};
+
 const Markets = () => {
   const { isSpanish } = useLanguage();
   const { user } = useAuth();
@@ -137,6 +145,9 @@ const Markets = () => {
       {ideas.map((idea) => {
         const change = latestChange(idea);
         const status = String(idea.status || 'UNDER_REVIEW').toUpperCase();
+        const statusExplanation =
+          change?.explanation ||
+          (status === 'UNDER_REVIEW' ? underReviewFallback({ idea, isSpanish }) : null);
         return (
           <section key={idea.id} className="card ideas-card strategic">
             <div className="row">
@@ -163,9 +174,9 @@ const Markets = () => {
             </div>
 
             <div className="muted" style={{ marginTop: 8 }}>{t.lastReviewed}: {artDateTime(idea.last_reviewed_at, isSpanish)} ART</div>
-            {change?.explanation ? (
+            {statusExplanation ? (
               <div className="ideas-invalidation" style={{ marginTop: 8 }}>
-                <strong>{t.whatChanged}:</strong> {change.explanation}
+                <strong>{t.whatChanged}:</strong> {statusExplanation}
               </div>
             ) : null}
 
