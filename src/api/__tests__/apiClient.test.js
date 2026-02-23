@@ -126,30 +126,6 @@ describe('apiClient', () => {
     );
   });
 
-  it('downloads portfolio csv using export endpoint', async () => {
-    setToken('jwt-token');
-
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: async () => 'Symbol,Name\nAAPL,Apple'
-    });
-
-    const out = await api.exportPortfolioCsv('sold');
-
-    expect(out).toContain('AAPL,Apple');
-    expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:3001/api/export/portfolio?format=csv&filter=sold',
-      expect.objectContaining({
-        method: 'GET',
-        headers: expect.objectContaining({ Authorization: 'Bearer jwt-token' }),
-        credentials: 'include'
-      })
-    );
-  });
-
-
   it('calls patch me endpoint', async () => {
     setToken('jwt-token');
 

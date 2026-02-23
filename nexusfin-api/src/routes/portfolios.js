@@ -1,26 +1,17 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
-const { normalizeEmail } = require('../utils/validate');
 
 const router = express.Router();
 
 const PORTFOLIO_ID_RE = /^[0-9a-f-]{36}$/i;
 const MAX_PORTFOLIOS = 3;
 const MAX_HOLDINGS = 15;
-const ROLE_VALUES = new Set(['owner', 'editor', 'viewer']);
 
 const toPortfolioId = (value) => {
   const safe = String(value || '').trim();
   if (!PORTFOLIO_ID_RE.test(safe)) throw badRequest('portfolio id inválido', 'VALIDATION_ERROR');
   return safe;
-};
-
-const toRole = (value) => {
-  const role = String(value || 'viewer').trim().toLowerCase();
-  if (!ROLE_VALUES.has(role)) throw badRequest('role inválido', 'INVALID_ENUM');
-  if (role === 'owner') throw badRequest('owner solo puede ser el creador del portfolio', 'VALIDATION_ERROR');
-  return role;
 };
 
 const canEdit = (access) => access && (access.role === 'owner' || access.role === 'editor');
@@ -236,89 +227,12 @@ router.put('/:id/holdings', async (req, res, next) => {
   }
 });
 
-router.post('/:id/invite', async (req, res, next) => {
-  try {
-    const portfolioId = toPortfolioId(req.params.id);
-    const access = await getAccess(portfolioId, req.user.id);
-    if (access.role !== 'owner') throw forbidden('Solo owner puede invitar', 'OWNER_ONLY');
-
-    const email = normalizeEmail(req.body?.email);
-    const role = toRole(req.body?.role);
-
-    const userOut = await query('SELECT id FROM users WHERE email = $1', [email]);
-
-    const out = await query(
-      `INSERT INTO portfolio_invitations (portfolio_id, invited_email, invited_user_id, invited_by, role, status)
-       VALUES ($1,$2,$3,$4,$5,'pending')
-       ON CONFLICT (portfolio_id, invited_email) WHERE status = 'pending'
-       DO UPDATE SET invited_user_id = EXCLUDED.invited_user_id, invited_by = EXCLUDED.invited_by, role = EXCLUDED.role
-       RETURNING id, portfolio_id, invited_email, role, status, created_at`,
-      [portfolioId, email, userOut.rows?.[0]?.id || null, req.user.id, role]
-    );
-
-    return res.status(201).json({
-      inviteId: out.rows[0].id,
-      portfolioId: out.rows[0].portfolio_id,
-      email: out.rows[0].invited_email,
-      role: out.rows[0].role,
-      status: out.rows[0].status,
-      createdAt: out.rows[0].created_at
-    });
-  } catch (error) {
-    return next(error);
-  }
+router.post('/:id/invite', async (_req, res) => {
+  return res.status(410).json({ error: { code: 'FEATURE_REMOVED', message: 'Compartir portfolio fue removido.' } });
 });
 
-router.post('/:id/accept', async (req, res, next) => {
-  try {
-    const portfolioId = toPortfolioId(req.params.id);
-    const inviteId = String(req.body?.invite_id || req.body?.inviteId || '').trim();
-    if (!PORTFOLIO_ID_RE.test(inviteId)) throw badRequest('invite_id inválido', 'VALIDATION_ERROR');
-
-    const invitedEmail = normalizeEmail(req.user.email);
-    const inviteOut = await query(
-      `SELECT id, portfolio_id, invited_user_id, invited_email, role, status
-       FROM portfolio_invitations
-       WHERE id = $1 AND portfolio_id = $2
-       LIMIT 1`,
-      [inviteId, portfolioId]
-    );
-
-    if (!inviteOut.rows.length) throw notFound('Invitación no encontrada', 'INVITE_NOT_FOUND');
-    const invite = inviteOut.rows[0];
-    if (String(invite.status) === 'accepted') {
-      throw conflict('Invitación ya aceptada', 'INVITE_ALREADY_ACCEPTED');
-    }
-    if (String(invite.status) !== 'pending') {
-      throw conflict('Invitación no está pendiente', 'INVITE_INVALID_STATUS', { status: invite.status });
-    }
-
-    if (invite.invited_user_id && invite.invited_user_id !== req.user.id) {
-      throw forbidden('Invitación pertenece a otro usuario', 'FORBIDDEN_INVITATION');
-    }
-    if (!invite.invited_user_id && invite.invited_email !== invitedEmail) {
-      throw forbidden('Invitación pertenece a otro email', 'FORBIDDEN_INVITATION');
-    }
-
-    await query(
-      `INSERT INTO portfolio_collaborators (portfolio_id, user_id, invited_by, role)
-       VALUES ($1,$2,$2,$3)
-       ON CONFLICT (portfolio_id, user_id)
-       DO UPDATE SET role = EXCLUDED.role`,
-      [portfolioId, req.user.id, invite.role || 'editor']
-    );
-
-    await query(
-      `UPDATE portfolio_invitations
-       SET status = 'accepted', invited_user_id = COALESCE(invited_user_id, $2), responded_at = NOW()
-       WHERE id = $1`,
-      [inviteId, req.user.id]
-    );
-
-    return res.json({ ok: true, portfolioId, inviteId, role: invite.role || 'editor' });
-  } catch (error) {
-    return next(error);
-  }
+router.post('/:id/accept', async (_req, res) => {
+  return res.status(410).json({ error: { code: 'FEATURE_REMOVED', message: 'Compartir portfolio fue removido.' } });
 });
 
 module.exports = router;

@@ -30,49 +30,12 @@ describe('export routes', () => {
     query.mockReset();
   });
 
-  it('returns 400 for unsupported csv format', async () => {
+  it('returns FEATURE_REMOVED for portfolio csv export endpoint', async () => {
     const app = makeApp();
-    const res = await request(app).get('/api/export/portfolio?format=pdf');
+    const res = await request(app).get('/api/export/portfolio?format=csv&filter=all');
 
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_ERROR');
-  });
-
-  it('returns 400 for invalid csv filter', async () => {
-    const app = makeApp();
-    const res = await request(app).get('/api/export/portfolio?format=csv&filter=bad');
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_ERROR');
-  });
-
-  it('exports csv with BOM and escaped fields', async () => {
-    query.mockResolvedValueOnce({
-      rows: [
-        {
-          symbol: 'AAPL',
-          name: 'Apple Inc.',
-          category: 'equity',
-          buy_date: '2026-01-10',
-          buy_price: '100',
-          quantity: '2.5',
-          sell_date: '2026-02-01',
-          sell_price: '125',
-          notes: 'nota, con coma'
-        }
-      ]
-    });
-
-    const app = makeApp();
-    const res = await request(app).get('/api/export/portfolio?format=csv&filter=sold');
-
-    expect(res.status).toBe(200);
-    expect(res.headers['content-type']).toContain('text/csv');
-    expect(res.headers['content-disposition']).toContain('attachment; filename="horsai-portfolio-');
-    expect(res.text.charCodeAt(0)).toBe(65279);
-    expect(res.text).toContain('Symbol,Name,Category,Buy Date,Buy Price,Quantity,Sell Date,Sell Price,P&L %,Notes');
-    expect(res.text).toContain('AAPL,Apple Inc.,equity,2026-01-10,100.0000,2.5,2026-02-01,125.0000,25.00%,"nota, con coma"');
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('AND sell_date IS NOT NULL'), ['u1']);
+    expect(res.status).toBe(410);
+    expect(res.body.error.code).toBe('FEATURE_REMOVED');
   });
 
   it('returns 400 for unsupported pdf format', async () => {

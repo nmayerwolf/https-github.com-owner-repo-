@@ -67,37 +67,18 @@ describe('portfolios v2 routes', () => {
     expect(res.body.error.details).toEqual({ symbol: 'AAPL' });
   });
 
-  it('returns INVITE_ALREADY_ACCEPTED when accepting an already accepted invitation', async () => {
-    query.mockResolvedValueOnce({
-      rows: [
-        {
-          id: '11111111-1111-4111-8111-111111111112',
-          portfolio_id: '11111111-1111-4111-8111-111111111111',
-          invited_user_id: 'u1',
-          invited_email: 'user@mail.com',
-          role: 'editor',
-          status: 'accepted'
-        }
-      ]
-    });
+  it('returns FEATURE_REMOVED for portfolio sharing endpoints', async () => {
+    const inviteRes = await request(makeApp())
+      .post('/api/portfolios/11111111-1111-4111-8111-111111111111/invite')
+      .send({ email: 'other@mail.com', role: 'viewer' });
+    expect(inviteRes.status).toBe(410);
+    expect(inviteRes.body.error.code).toBe('FEATURE_REMOVED');
 
-    const res = await request(makeApp())
-      .post('/api/portfolios/11111111-1111-4111-8111-111111111111/accept')
-      .send({ inviteId: '11111111-1111-4111-8111-111111111112' });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe('INVITE_ALREADY_ACCEPTED');
-  });
-
-  it('returns INVITE_NOT_FOUND when invite does not exist', async () => {
-    query.mockResolvedValueOnce({ rows: [] });
-
-    const res = await request(makeApp())
+    const acceptRes = await request(makeApp())
       .post('/api/portfolios/11111111-1111-4111-8111-111111111111/accept')
       .send({ invite_id: '11111111-1111-4111-8111-111111111112' });
-
-    expect(res.status).toBe(404);
-    expect(res.body.error.code).toBe('INVITE_NOT_FOUND');
+    expect(acceptRes.status).toBe(410);
+    expect(acceptRes.body.error.code).toBe('FEATURE_REMOVED');
   });
 
   it('returns portfolio contract with holdings + snapshot + alignment + exposures + ai notes', async () => {

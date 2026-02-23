@@ -81,6 +81,51 @@ cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
 DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm run check
 ```
 
+## Ops diario (Macro + Geopolítica)
+
+Script operativo:
+- `/Users/nmayerwolf/Documents/nexusfin/scripts/horsai_ops_check.sh`
+
+Comandos rápidos desde root:
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+npm run ops:horsai:status
+```
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+npm run ops:horsai
+```
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+npm run ops:horsai:strict
+```
+
+Notas:
+- `ops:horsai:status` solo verifica estado/cobertura.
+- `ops:horsai` ejecuta jobs (`news_ingest_daily`, `geopolitical_news_daily`, `macro_data_daily`, `macro_radar`) y valida `sources/status`.
+- `ops:horsai:strict` falla si no cumple umbrales mínimos (`news24h`, `geo24h`, `macro.indicators`) o si hay warnings.
+- Para localhost, el script autogenera JWT y puede leer `ADMIN_JOB_TOKEN` desde `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env`.
+
+Automatización local (macOS `launchd`):
+
+```bash
+cd /Users/nmayerwolf/Documents/nexusfin
+npm run ops:horsai:schedule
+```
+
+`ops:horsai:schedule` instala corrida diaria a las `06:00` hora local.
+
+Comandos útiles:
+
+```bash
+npm run ops:horsai:schedule:status
+npm run ops:horsai:schedule:run-now
+npm run ops:horsai:schedule:remove
+```
+
 ## Estado actual (resumen)
 
 - Realtime multi-activo disponible en codebase (`/api/market/universe`, WS `/ws`), pero en MVP strict queda fuera de acceptance (batch-only).
@@ -88,7 +133,6 @@ DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm
 - AI agent de validación (fallback técnico cuando AI no está disponible).
 - Outcome evaluation server-side (win/loss/open).
 - Export:
-  - CSV portfolio (`GET /api/export/portfolio?format=csv`)
   - PDF de alerta (`GET|POST /api/export/alert/:id?format=pdf`)
 - Auth:
   - login/register/refresh/logout,

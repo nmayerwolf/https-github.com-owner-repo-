@@ -90,7 +90,7 @@ MVP contract:
 - `GET /api/reco/today`
 - `GET /api/reco/:date`
 - `GET /api/crisis/today`
-- `GET|POST|PUT /api/portfolios*` (incluye invite/accept y holdings)
+- `GET|POST|PUT /api/portfolios*` (holdings; sharing deshabilitado)
 - `GET /api/horsai/portfolio/:id/summary`
 - `GET /api/horsai/portfolio/:id/signal-review?days=90`
 - `POST /api/horsai/signals/:id/action` (`acknowledge|dismiss`)
@@ -115,7 +115,6 @@ Groups/alerts/notifications/export:
 - `GET /api/alerts`
 - `POST /api/alerts/:id/share`
 - `GET|PUT|POST|DELETE /api/notifications/*`
-- `GET /api/export/portfolio?format=csv&filter=all|active|sold`
 - `GET|POST /api/export/alert/:id?format=pdf`
 
 Health/realtime:
@@ -130,6 +129,7 @@ Admin jobs:
 - `POST /api/admin/jobs/run`
 - `GET /api/admin/jobs/runs`
 - `GET /api/admin/jobs/status`
+- `GET /api/admin/jobs/sources/status`
 
 Admin jobs soportados (`jobs`):
 - `mvp_daily`
@@ -138,9 +138,25 @@ Admin jobs soportados (`jobs`):
 - `market_snapshot_daily`
 - `fundamentals_weekly`
 - `news_ingest_daily`
+- `geopolitical_news_daily`
+- `macro_data_daily`
 - `macro_radar`
 - `portfolio_advisor`
 - `horsai_daily`
+
+Variables nuevas para capa macro/geopolítica:
+- `NEWS_API_KEY` (opcional, habilita ingest de NewsAPI)
+- `GDELT_ENABLED` (`true|false`, habilita ingest GDELT)
+- `FRED_API_KEY` (opcional, habilita ingest macro FRED)
+
+Ejemplo para correr jobs nuevos vía admin endpoint:
+
+```bash
+curl -X POST "http://localhost:3001/api/admin/jobs/run" \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_JOB_TOKEN" \
+  -d '{"jobs":["geopolitical_news_daily","macro_data_daily","macro_radar"]}'
+```
 
 ## API Error Contract (v1.1)
 
@@ -206,6 +222,10 @@ Códigos mínimos usados en MVP:
 - `016_phase6_admin_job_runs_audit.sql`
 - `017_mvp_universe_expand.sql`
 - `018_horsai_agent_core.sql`
+- `019_horsai_track_record_fields.sql`
+- `024_horsai_admin_role_and_usage_indexes.sql`
+- `025_macro_indicators_and_job.sql`
+- `026_news_items_geopolitical_indexes.sql`
 
 ## Tests
 
