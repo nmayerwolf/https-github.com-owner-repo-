@@ -11,3 +11,4 @@ const parseBool = (value, fallback = false) => {
 
 export const MARKET_VISIBLE = parseBool(import.meta.env.VITE_MARKET_VISIBLE, false);
 export const REALTIME_ENABLED = parseBool(import.meta.env.VITE_REALTIME_ENABLED, true);
+export const IDEAS_ADMIN_CONTROLS = parseBool(import.meta.env.VITE_IDEAS_ADMIN_CONTROLS, false);

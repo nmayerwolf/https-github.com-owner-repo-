@@ -8,8 +8,6 @@ const SYMBOL_PATTERN = /^[A-Z0-9.^/_:-]{1,24}$/;
 const PORTFOLIO_ID_PATTERN = /^[0-9a-f-]{36}$/i;
 const MAX_PORTFOLIOS = 3;
 const MAX_HOLDINGS_PER_PORTFOLIO = 15;
-const MAX_PORTFOLIO_USERS = 6;
-const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const canWritePortfolio = (access = {}) => Boolean(access?.is_owner || String(access?.collaborator_role || '').toLowerCase() === 'editor');
 
 const listPortfolios = async (userId) => {
@@ -63,18 +61,6 @@ const getAccessiblePortfolio = async (userId, portfolioId) => {
   return out.rows[0];
 };
 
-const getAccessiblePortfolioIds = async (userId) => {
-  const rows = await query(
-    `SELECT DISTINCT p.id
-     FROM portfolios p
-     LEFT JOIN portfolio_collaborators pc ON pc.portfolio_id = p.id
-     WHERE p.deleted_at IS NULL
-       AND (p.user_id = $1 OR pc.user_id = $1)`,
-    [userId]
-  );
-  return rows.rows.map((row) => row.id);
-};
-
 router.get('/', async (req, res, next) => {
   try {
     const portfolios = await listPortfolios(req.user.id);
@@ -124,141 +110,16 @@ router.post('/portfolios', async (req, res, next) => {
   }
 });
 
-router.post('/portfolios/:id/invite', async (req, res, next) => {
-  try {
-    const owned = await getOwnedPortfolio(req.user.id, req.params.id);
-    if (!owned) throw notFound('Portfolio no encontrado');
-    const invitedEmail = String(req.body?.email || '').trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(invitedEmail)) throw badRequest('email inválido', 'VALIDATION_ERROR');
-    if (invitedEmail === String(req.user.email || '').toLowerCase()) {
-      throw badRequest('No podés invitarte a vos mismo', 'VALIDATION_ERROR');
-    }
-
-    const participants = await query(
-      `SELECT (1 + COUNT(*))::int AS total
-       FROM portfolio_collaborators
-       WHERE portfolio_id = $1`,
-      [owned.id]
-    );
-    if (participants.rows[0].total >= MAX_PORTFOLIO_USERS) {
-      return res.status(403).json({ error: { code: 'PORTFOLIO_USER_LIMIT', message: `Máximo ${MAX_PORTFOLIO_USERS} usuarios por portfolio` } });
-    }
-
-    const existingMember = await query(
-      `SELECT 1 FROM users u
-       JOIN portfolio_collaborators pc ON pc.user_id = u.id
-       WHERE pc.portfolio_id = $1 AND LOWER(u.email) = $2
-       LIMIT 1`,
-      [owned.id, invitedEmail]
-    );
-    if (existingMember.rows.length) {
-      return res.status(409).json({ error: { code: 'ALREADY_COLLABORATOR', message: 'El usuario ya participa en este portfolio' } });
-    }
-
-    const invitedUser = await query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [invitedEmail]);
-    const invitation = await query(
-      `INSERT INTO portfolio_invitations (portfolio_id, invited_email, invited_user_id, invited_by, status)
-       VALUES ($1,$2,$3,$4,'pending')
-       ON CONFLICT (portfolio_id, invited_email) WHERE status = 'pending'
-       DO UPDATE SET invited_by = EXCLUDED.invited_by, invited_user_id = EXCLUDED.invited_user_id, created_at = NOW()
-       RETURNING id, portfolio_id, invited_email, status, created_at`,
-      [owned.id, invitedEmail, invitedUser.rows[0]?.id || null, req.user.id]
-    );
-    return res.status(201).json(invitation.rows[0]);
-  } catch (error) {
-    return next(error);
-  }
+router.post('/portfolios/:id/invite', async (_req, res) => {
+  return res.status(410).json({ error: { code: 'FEATURE_REMOVED', message: 'Compartir portfolio fue removido.' } });
 });
 
-router.get('/invitations/received', async (req, res, next) => {
-  try {
-    const rows = await query(
-      `SELECT i.id, i.portfolio_id, i.invited_email, i.status, i.created_at,
-        p.name AS portfolio_name,
-        owner.email AS invited_by_email
-       FROM portfolio_invitations i
-       JOIN portfolios p ON p.id = i.portfolio_id
-       JOIN users owner ON owner.id = i.invited_by
-       WHERE i.status = 'pending'
-         AND p.deleted_at IS NULL
-         AND (LOWER(i.invited_email) = LOWER($1) OR i.invited_user_id = $2)
-       ORDER BY i.created_at DESC`,
-      [req.user.email, req.user.id]
-    );
-    return res.json({ invitations: rows.rows });
-  } catch (error) {
-    return next(error);
-  }
+router.get('/invitations/received', async (_req, res) => {
+  return res.status(410).json({ error: { code: 'FEATURE_REMOVED', message: 'Compartir portfolio fue removido.' } });
 });
 
-router.post('/invitations/:id/respond', async (req, res, next) => {
-  try {
-    const action = String(req.body?.action || '').trim().toLowerCase();
-    if (!['accept', 'decline'].includes(action)) throw badRequest('action inválida', 'VALIDATION_ERROR');
-
-    const invite = await query(
-      `SELECT i.id, i.portfolio_id, i.invited_email, i.status,
-        p.user_id AS owner_user_id, p.deleted_at
-       FROM portfolio_invitations i
-       JOIN portfolios p ON p.id = i.portfolio_id
-       WHERE i.id = $1
-         AND (LOWER(i.invited_email) = LOWER($2) OR i.invited_user_id = $3)
-       LIMIT 1`,
-      [req.params.id, req.user.email, req.user.id]
-    );
-    if (!invite.rows.length) throw notFound('Invitación no encontrada', 'INVITE_NOT_FOUND');
-    const invitation = invite.rows[0];
-    if (invitation.status !== 'pending') {
-      if (invitation.status === 'accepted') {
-        throw conflict('Invitación ya aceptada', 'INVITE_ALREADY_ACCEPTED');
-      }
-      throw conflict('Invitación ya procesada', 'INVITE_ALREADY_ACCEPTED');
-    }
-    if (invitation.deleted_at) throw notFound('Portfolio no disponible');
-
-    if (action === 'decline') {
-      await query(
-        `UPDATE portfolio_invitations
-         SET status = 'declined', responded_at = NOW()
-         WHERE id = $1`,
-        [req.params.id]
-      );
-      return res.json({ ok: true, status: 'declined' });
-    }
-
-    const accessible = await getAccessiblePortfolioIds(req.user.id);
-    if (accessible.length >= MAX_PORTFOLIOS) {
-      return res.status(422).json({ error: { code: 'PORTFOLIO_LIMIT_REACHED', message: `Máximo ${MAX_PORTFOLIOS} portfolios por usuario` } });
-    }
-
-    const participants = await query(
-      `SELECT (1 + COUNT(*))::int AS total
-       FROM portfolio_collaborators
-       WHERE portfolio_id = $1`,
-      [invitation.portfolio_id]
-    );
-    if (participants.rows[0].total >= MAX_PORTFOLIO_USERS) {
-      return res.status(403).json({ error: { code: 'PORTFOLIO_USER_LIMIT', message: `Máximo ${MAX_PORTFOLIO_USERS} usuarios por portfolio` } });
-    }
-
-    await query(
-      `INSERT INTO portfolio_collaborators (portfolio_id, user_id, invited_by)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (portfolio_id, user_id) DO NOTHING`,
-      [invitation.portfolio_id, req.user.id, invitation.owner_user_id]
-    );
-
-    await query(
-      `UPDATE portfolio_invitations
-       SET status = 'accepted', invited_user_id = $2, responded_at = NOW()
-       WHERE id = $1`,
-      [req.params.id, req.user.id]
-    );
-
-    return res.json({ ok: true, status: 'accepted' });
-  } catch (error) {
-    return next(error);
-  }
+router.post('/invitations/:id/respond', async (_req, res) => {
+  return res.status(410).json({ error: { code: 'FEATURE_REMOVED', message: 'Compartir portfolio fue removido.' } });
 });
 
 router.patch('/portfolios/:id', async (req, res, next) => {

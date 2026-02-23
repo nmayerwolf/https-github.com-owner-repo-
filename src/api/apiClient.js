@@ -107,6 +107,13 @@ export const api = {
   getNewsDigestToday: () => request('/news/digest/today'),
   getRecoToday: () => request('/reco/today'),
   getCrisisToday: () => request('/crisis/today'),
+  getBriefToday: () => request('/brief/today'),
+  getBriefByDate: (date) => request(`/brief/${encodeURIComponent(String(date || ''))}`),
+  askBriefToday: (prompt) => request('/brief/ask', { method: 'POST', body: JSON.stringify({ prompt }) }),
+  getIdeas: (status = null) => request(`/ideas${status ? `?status=${encodeURIComponent(String(status).toUpperCase())}` : ''}`),
+  analyzeIdeaPrompt: (prompt) => request('/ideas/analyze', { method: 'POST', body: JSON.stringify({ prompt }) }),
+  reviewIdeaNow: (id) => request(`/ideas/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({}) }),
+  closeIdea: (id, reason) => request(`/ideas/${encodeURIComponent(id)}/close`, { method: 'POST', body: JSON.stringify({ reason }) }),
   getHorsaiPortfolioSummary: (portfolioId) => request(`/horsai/portfolio/${encodeURIComponent(portfolioId)}/summary`),
   getHorsaiSignalReview: (portfolioId, days = 90) =>
     request(`/horsai/portfolio/${encodeURIComponent(portfolioId)}/signal-review?days=${encodeURIComponent(String(days))}`),
@@ -118,9 +125,6 @@ export const api = {
   createPortfolio: (name) => request('/portfolio/portfolios', { method: 'POST', body: JSON.stringify({ name }) }),
   renamePortfolio: (id, name) => request(`/portfolio/portfolios/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deletePortfolio: (id) => request(`/portfolio/portfolios/${id}`, { method: 'DELETE' }),
-  inviteToPortfolio: (id, email) => request(`/portfolio/portfolios/${id}/invite`, { method: 'POST', body: JSON.stringify({ email }) }),
-  getReceivedPortfolioInvites: () => request('/portfolio/invitations/received'),
-  respondPortfolioInvite: (id, action) => request(`/portfolio/invitations/${id}/respond`, { method: 'POST', body: JSON.stringify({ action }) }),
   addPosition: (data) => request('/portfolio', { method: 'POST', body: JSON.stringify(data) }),
   updatePosition: (id, data) => request(`/portfolio/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deletePosition: (id) => request(`/portfolio/${id}`, { method: 'DELETE' }),
@@ -240,27 +244,6 @@ export const api = {
     }
 
     return res.arrayBuffer();
-  },
-
-  exportPortfolioCsv: async (filter = 'all') => {
-    const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const res = await fetch(`${API_BASE}/export/portfolio?format=csv&filter=${encodeURIComponent(filter)}`, {
-      method: 'GET',
-      headers,
-      credentials: 'include'
-    });
-
-    const maybeRefresh = res.headers.get('X-Refresh-Token');
-    if (maybeRefresh) setInMemoryToken(maybeRefresh);
-
-    if (!res.ok) {
-      const err = await parseError(res);
-      throw { status: res.status, ...(err || {}) };
-    }
-
-    return res.text();
   },
 
   migrate: (data) => request('/migrate', { method: 'POST', body: JSON.stringify(data) }),

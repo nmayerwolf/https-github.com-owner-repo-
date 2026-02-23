@@ -279,38 +279,22 @@ describe('portfolio routes', () => {
     expect(res.body.id).toBe('p1');
   });
 
-  it('returns INVITE_NOT_FOUND when invitation does not exist', async () => {
-    query.mockResolvedValueOnce({ rows: [] });
-
+  it('returns FEATURE_REMOVED for sharing endpoints', async () => {
     const app = makeApp('u1');
-    const res = await request(app)
-      .post('/api/portfolio/invitations/11111111-1111-4111-8111-111111111111/respond')
-      .send({ action: 'accept' });
+    const inviteRes = await request(app)
+      .post('/api/portfolio/portfolios/11111111-1111-4111-8111-111111111111/invite')
+      .send({ email: 'other@mail.com' });
+    expect(inviteRes.status).toBe(410);
+    expect(inviteRes.body.error.code).toBe('FEATURE_REMOVED');
 
-    expect(res.status).toBe(404);
-    expect(res.body.error.code).toBe('INVITE_NOT_FOUND');
-  });
+    const receivedRes = await request(app).get('/api/portfolio/invitations/received');
+    expect(receivedRes.status).toBe(410);
+    expect(receivedRes.body.error.code).toBe('FEATURE_REMOVED');
 
-  it('returns INVITE_ALREADY_ACCEPTED when invitation was already accepted', async () => {
-    query.mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'inv-1',
-          portfolio_id: '11111111-1111-4111-8111-111111111111',
-          invited_email: 'user@mail.com',
-          status: 'accepted',
-          owner_user_id: 'u2',
-          deleted_at: null
-        }
-      ]
-    });
-
-    const app = makeApp('u1');
-    const res = await request(app)
+    const respondRes = await request(app)
       .post('/api/portfolio/invitations/inv-1/respond')
       .send({ action: 'accept' });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe('INVITE_ALREADY_ACCEPTED');
+    expect(respondRes.status).toBe(410);
+    expect(respondRes.body.error.code).toBe('FEATURE_REMOVED');
   });
 });

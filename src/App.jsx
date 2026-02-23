@@ -166,7 +166,7 @@ const AdminDashboardModal = ({ open, loading, error, data, onClose, onRefresh, i
 
 const App = () => {
   const navigate = useNavigate();
-  const { isSpanish } = useLanguage();
+  const { isSpanish, language, setLanguage } = useLanguage();
   const { state } = useApp();
   const { isAuthenticated, user, logout, loading: authLoading, completeOnboarding } = useAuth();
   const [migrationPrompt, setMigrationPrompt] = useState(null);
@@ -191,8 +191,14 @@ const App = () => {
   const [notifItems, setNotifItems] = useState([]);
   const notifMenuRef = useRef(null);
   const processedRealtimeRef = useRef(new Set());
-  const seenInviteRef = useRef(new Set());
   const migrationPayload = useMemo(() => loadLegacyMigrationPayload(), [isAuthenticated]);
+
+  useEffect(() => {
+    const remoteLanguage = String(state?.config?.language || '').toLowerCase();
+    if (!remoteLanguage) return;
+    const safe = remoteLanguage === 'en' ? 'en' : 'es';
+    if (safe !== language) setLanguage(safe);
+  }, [state?.config?.language, language, setLanguage]);
 
   const markMigrationPromptDismissed = () => {
     try {
@@ -373,42 +379,6 @@ const App = () => {
       });
     }
   }, [state.realtimeAlerts, isSpanish]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return undefined;
-    let active = true;
-
-    const syncInvites = async () => {
-      try {
-        const out = await api.getReceivedPortfolioInvites();
-        if (!active) return;
-        const invites = Array.isArray(out?.invitations) ? out.invitations : [];
-        invites.forEach((inv) => {
-          const id = String(inv?.id || '');
-          if (!id || seenInviteRef.current.has(id)) return;
-          seenInviteRef.current.add(id);
-          pushImportantNotification({
-            key: `invite-${id}`,
-            title: isSpanish ? 'Nueva invitación al portafolio' : 'New portfolio invitation',
-            message: isSpanish
-              ? `${inv?.invited_by_email || 'Usuario'} te invitó a "${inv?.portfolio_name || 'Portafolio'}".`
-              : `${inv?.invited_by_email || 'User'} invited you to "${inv?.portfolio_name || 'Portfolio'}".`,
-            level: 'info',
-            route: '/portfolio'
-          });
-        });
-      } catch {
-        // ignore background invite refresh failures
-      }
-    };
-
-    syncInvites();
-    const id = setInterval(syncInvites, 45000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, [isAuthenticated]);
 
   useEffect(() => {
     if (state.wsStatus !== 'auth_error') return;
@@ -707,13 +677,14 @@ const App = () => {
         <Routes>
           <Route path="/" element={<Navigate to="/brief" replace />} />
           <Route
-            path="/markets"
+            path="/ideas"
             element={
               <RouteBoundary moduleName="Mercados">
                 <Markets />
               </RouteBoundary>
             }
           />
+          <Route path="/markets" element={<Navigate to="/ideas" replace />} />
           <Route
             path="/markets/:symbol"
             element={
@@ -738,7 +709,6 @@ const App = () => {
               </RouteBoundary>
             }
           />
-          <Route path="/ideas" element={<Navigate to="/agent" replace />} />
           <Route path="/alerts" element={<Navigate to="/agent" replace />} />
           <Route
             path="/portfolio"
