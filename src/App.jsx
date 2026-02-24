@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Navigation from './components/Navigation';
 import AuthScreen from './components/AuthScreen';
+import HorsaiHorseIcon from './components/common/HorsaiHorseIcon';
 import { api } from './api/apiClient';
 import { useAuth } from './store/AuthContext';
 import { useLanguage } from './store/LanguageContext';
@@ -11,6 +12,9 @@ const AppShell = ({ children, onLogout, title }) => (
     <header className="header">
       <div className="top-header">
         <div className="brand-lockup">
+          <span className="brand-mark-wrap" aria-hidden="true">
+            <HorsaiHorseIcon className="brand-mark" />
+          </span>
           <h1 className="brand-title">Horsai</h1>
         </div>
         <div className="header-actions">
