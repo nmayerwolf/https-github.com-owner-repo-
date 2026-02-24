@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './store/AuthContext';
-import { AppProvider } from './store/AppContext';
 import { LanguageProvider } from './store/LanguageContext';
 import { ThemeProvider } from './store/ThemeContext';
 import './styles.css';
@@ -51,9 +50,7 @@ createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <LanguageProvider>
           <AuthProvider>
-            <AppProvider>
-              <App />
-            </AppProvider>
+            <App />
           </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>

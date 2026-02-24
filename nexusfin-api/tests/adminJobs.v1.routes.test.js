@@ -1,0 +1,71 @@
+const express = require('express');
+const request = require('supertest');
+
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://test:test@localhost:5432/test';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+
+const { env } = require('../src/config/env');
+const routes = require('../src/routes/adminJobs');
+const { errorHandler } = require('../src/middleware/errorHandler');
+
+const makeApp = (locals = {}) => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.user = { id: 'u1' };
+    next();
+  });
+  app.locals = { ...app.locals, ...locals };
+  app.use('/api/admin/jobs', routes);
+  app.use(errorHandler);
+  return app;
+};
+
+describe('admin jobs routes v1', () => {
+  const prevToken = env.adminJobToken;
+  const prevTokenNext = env.adminJobTokenNext;
+
+  beforeEach(() => {
+    env.adminJobToken = 'admin-secret';
+    env.adminJobTokenNext = 'admin-secret-next';
+  });
+
+  afterAll(() => {
+    env.adminJobToken = prevToken;
+    env.adminJobTokenNext = prevTokenNext;
+  });
+
+  test('POST /run requires admin token', async () => {
+    const res = await request(makeApp()).post('/api/admin/jobs/run').send({});
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN_ADMIN_JOBS');
+  });
+
+  test('POST /run executes v1 jobs', async () => {
+    const app = makeApp({
+      marketIngestionService: { runIngestion: jest.fn(async () => ({ ok: true })) },
+      briefGenerator: { generateBrief: jest.fn(async () => ({ date: '2026-02-23' })) },
+      ideasDailyPipeline: {
+        reviewIdeas: jest.fn(async () => ({ reviewed: 2, published: 1 })),
+        generateDailyPackage: jest.fn(async () => ({ date: '2026-02-23' }))
+      }
+    });
+
+    const res = await request(app).post('/api/admin/jobs/run').set('x-admin-token', 'admin-secret').send({ date: '2026-02-23' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.results.ingestion.ok).toBe(true);
+    expect(res.body.results.ideasReview.reviewed).toBe(2);
+  });
+
+  test('GET /status returns cron snapshot', async () => {
+    const app = makeApp({
+      getCronStatus: () => ({ enabled: true, lastRun: '2026-02-23T09:30:00.000Z', errors: [] })
+    });
+
+    const res = await request(app).get('/api/admin/jobs/status').set('x-admin-token', 'admin-secret-next');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.cron.enabled).toBe(true);
+  });
+});

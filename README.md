@@ -1,18 +1,17 @@
-# Horsai (Phase 4)
+# Horsai V1
 
-Horsai es una plataforma de monitoreo financiero multi-activo con:
-- web (React + Vite),
-- backend API (Node + Express + PostgreSQL),
-- mobile (Expo),
-- realtime por WebSocket, alertas, portfolio, grupos y notificaciones push.
+Horsai V1 es una plataforma AI de inversión con 3 módulos:
+- Brief (contexto diario, informativo)
+- Ideas (análisis estructurado + scoring de convicción)
+- Portfolio (holdings, exposiciones y challenges)
 
-## Arquitectura
+## Estructura
 
 - Web: `/Users/nmayerwolf/Documents/nexusfin`
 - API: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api`
 - Mobile: `/Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile`
 
-## Quickstart (10 min)
+## Quickstart
 
 1. API
 
@@ -21,7 +20,7 @@ cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
 cp .env.example .env
 npm install
 npm run migrate
-npm run dev
+npm run start
 ```
 
 2. Web
@@ -33,141 +32,55 @@ npm install
 npm run dev
 ```
 
-3. Mobile (opcional)
-
-```bash
-cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-mobile
-npm install
-npm run start
-```
-
-## Variables de entorno (web)
-
-Archivo: `/Users/nmayerwolf/Documents/nexusfin/.env`
-
-```bash
-VITE_API_URL=http://localhost:3001/api
-VITE_WS_URL=ws://localhost:3001/ws
-VITE_ANTHROPIC_KEY=
-VITE_MARKET_VISIBLE=false
-VITE_REALTIME_ENABLED=false
-```
-
-Notas:
-- `VITE_MARKET_VISIBLE=false` oculta Mercado en la UI web (navegación y rutas).
-- Para reactivarlo sin cambios de código: `VITE_MARKET_VISIBLE=true`.
-- `VITE_REALTIME_ENABLED=false` desactiva sockets/realtime en web para MVP strict.
-- Para reactivarlo: `VITE_REALTIME_ENABLED=true`.
-- Template prod: `/Users/nmayerwolf/Documents/nexusfin/.env.production.example`.
-
-## Calidad y checks
-
-Web:
+## Validación rápida
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin
-npm run check
-```
-
-Incluye:
-- tests frontend,
-- build,
-- escaneo de secretos en bundle (`check:bundle-secrets`).
-
-API:
-
-```bash
+npm test
+npm run build
 cd /Users/nmayerwolf/Documents/nexusfin/nexusfin-api
-DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret npm run check
+npm test
 ```
 
-## Ops diario (Macro + Geopolítica)
+## Smoke V1
 
-Script operativo:
-- `/Users/nmayerwolf/Documents/nexusfin/scripts/horsai_ops_check.sh`
-
-Comandos rápidos desde root:
+Modo lectura:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin
-npm run ops:horsai:status
+bash ./scripts/v1_smoke.sh http://localhost:3001
 ```
+
+Modo admin:
 
 ```bash
 cd /Users/nmayerwolf/Documents/nexusfin
-npm run ops:horsai
-```
-
-```bash
-cd /Users/nmayerwolf/Documents/nexusfin
-npm run ops:horsai:strict
+MODE=admin bash ./scripts/v1_smoke.sh http://localhost:3001
 ```
 
 Notas:
-- `ops:horsai:status` solo verifica estado/cobertura.
-- `ops:horsai` ejecuta jobs (`news_ingest_daily`, `geopolitical_news_daily`, `macro_data_daily`, `macro_radar`) y valida `sources/status`.
-- `ops:horsai:strict` falla si no cumple umbrales mínimos (`news24h`, `geo24h`, `macro.indicators`) o si hay warnings.
-- Para localhost, el script autogenera JWT y puede leer `ADMIN_JOB_TOKEN` desde `/Users/nmayerwolf/Documents/nexusfin/nexusfin-api/.env`.
+- En localhost, el script puede autogenerar JWT si no pasás `JWT_TOKEN`.
+- Si `MODE=admin`, toma `ADMIN_JOB_TOKEN` desde `nexusfin-api/.env` si no está exportado.
 
-Automatización local (macOS `launchd`):
+## Endpoints V1 (backend)
 
-```bash
-cd /Users/nmayerwolf/Documents/nexusfin
-npm run ops:horsai:schedule
-```
+- `GET /api/brief/today`
+- `GET /api/brief/:date`
+- `GET /api/ideas`
+- `GET /api/ideas/:id`
+- `POST /api/ideas/analyze`
+- `POST /api/ideas/:id/review`
+- `POST /api/ideas/:id/close`
+- `GET /api/portfolio`
+- `POST /api/portfolio`
+- `POST /api/portfolio/holdings`
+- `GET /api/portfolio/challenges`
+- `GET /api/packages/today`
+- `GET /api/packages/:date`
+- `POST /api/admin/jobs/run`
+- `GET /api/admin/jobs/status`
 
-`ops:horsai:schedule` instala corrida diaria a las `06:00` hora local.
+## Migraciones activas
 
-Comandos útiles:
-
-```bash
-npm run ops:horsai:schedule:status
-npm run ops:horsai:schedule:run-now
-npm run ops:horsai:schedule:remove
-```
-
-## Estado actual (resumen)
-
-- Realtime multi-activo disponible en codebase (`/api/market/universe`, WS `/ws`), pero en MVP strict queda fuera de acceptance (batch-only).
-- Cron server-side con health (`GET /api/health/cron`).
-- AI agent de validación (fallback técnico cuando AI no está disponible).
-- Outcome evaluation server-side (win/loss/open).
-- Export:
-  - PDF de alerta (`GET|POST /api/export/alert/:id?format=pdf`)
-- Auth:
-  - login/register/refresh/logout,
-  - reset autenticado (`POST /api/auth/reset-password/authenticated`),
-  - forgot/reset por token (`POST /api/auth/forgot-password`, `POST /api/auth/reset-password`).
-- Push:
-  - web (VAPID + service worker),
-  - mobile (Expo).
-
-## CI
-
-Workflow: `/Users/nmayerwolf/Documents/nexusfin/.github/workflows/ci.yml`
-
-- test matrix Node 20/22,
-- build web,
-- escaneo de secretos en `dist/`.
-
-## Deploy producción
-
-- Runbook: `/Users/nmayerwolf/Documents/nexusfin/DEPLOY_PRODUCTION_RUNBOOK.md`
-- Preflight local:
-
-```bash
-cd /Users/nmayerwolf/Documents/nexusfin
-DATABASE_URL=postgres://test:test@localhost:5432/test JWT_SECRET=test-secret ./scripts/deploy_preflight.sh
-```
-
-## Documentación de cierre
-
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE3_CLOSEOUT.md`
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE3_SMOKE_RUNBOOK.md`
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE3_RELEASE_CHECKLIST.md`
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE4_CLOSEOUT.md`
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE4_SMOKE_RUNBOOK.md`
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE4_RELEASE_CHECKLIST.md`
-- `/Users/nmayerwolf/Documents/nexusfin/PHASE4_PR_PACKAGE.md`
-- `/Users/nmayerwolf/Documents/nexusfin/RELEASE_v1.0.0.md`
-- `/Users/nmayerwolf/Documents/nexusfin/CHANGELOG.md`
+- `nexusfin-api/migrations/001_conviction_engine_schema.sql`
+- `nexusfin-api/migrations/002_ideas_module_schema.sql`
