@@ -227,14 +227,9 @@ CREATE TABLE IF NOT EXISTS daily_alerts (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_daily_alerts_date ON daily_alerts(date);
 
-CREATE TABLE IF NOT EXISTS users (
-  user_id TEXT PRIMARY KEY,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS user_portfolios (
   portfolio_id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   name TEXT NOT NULL,
   base_currency TEXT NOT NULL DEFAULT 'USD',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -263,7 +258,7 @@ CREATE TABLE IF NOT EXISTS user_portfolio_exposures (
 );
 
 CREATE TABLE IF NOT EXISTS user_behavior_metrics (
-  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   as_of_date DATE NOT NULL,
   window_days INTEGER NOT NULL CHECK (window_days IN (60,180)),
   max_single_asset_concentration_avg NUMERIC,
@@ -288,7 +283,7 @@ CREATE TABLE IF NOT EXISTS portfolio_challenges (
 
 CREATE TABLE IF NOT EXISTS chat_threads (
   thread_id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   module app_module_enum NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -303,7 +298,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 
 CREATE TABLE IF NOT EXISTS chat_memory_summaries (
-  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   module app_module_enum NOT NULL,
   as_of_date DATE NOT NULL,
   window_days INTEGER NOT NULL CHECK (window_days IN (60,180)),
