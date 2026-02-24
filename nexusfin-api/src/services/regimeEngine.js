@@ -1,16 +1,14 @@
-const { randomUUID } = require('crypto');
-
 const ART_TZ = 'America/Argentina/Buenos_Aires';
 
 const artDate = (value = new Date()) => {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: ART_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ART_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(value);
   const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
   return `${map.year}-${map.month}-${map.day}`;
-};
-
-const toNum = (value, fallback = null) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
 };
 
 const safeQuery = async (query, sql, params = [], fallback = { rows: [] }) => {
@@ -21,95 +19,169 @@ const safeQuery = async (query, sql, params = [], fallback = { rows: [] }) => {
   }
 };
 
+const toNum = (value, fallback = null) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const MATERIAL_DELTA_THRESHOLD = 6;
+
 const createRegimeEngine = ({ query, logger = console, modelVersion = 'regime-v1' }) => {
-  const computeDailyRegime = async ({ date } = {}) => {
-    const runDate = date || artDate();
+  const getLatestMarketSignals = async (runDate) => {
+    const out = await safeQuery(
+      query,
+      `SELECT asset_id, last, change_pct
+       FROM market_snapshots
+       WHERE ts::date <= $1::date
+       ORDER BY ts DESC
+       LIMIT 250`,
+      [runDate]
+    );
 
-    const [vixObs, hyObs, trendObs] = await Promise.all([
-      safeQuery(query, `SELECT value FROM macro_observations WHERE series_id = 'VIXCLS' AND date <= $1 ORDER BY date DESC LIMIT 1`, [runDate]),
-      safeQuery(query, `SELECT value FROM macro_observations WHERE series_id = 'BAMLH0A0HYM2' AND date <= $1 ORDER BY date DESC LIMIT 1`, [runDate]),
-      safeQuery(
-        query,
-        `SELECT f.ret_1m AS value
-         FROM daily_features_theme f
-         JOIN themes t ON t.theme_id = f.theme_id
-         WHERE f.date <= $1
-         ORDER BY f.date DESC, t.tier ASC
-         LIMIT 1`,
-        [runDate]
-      )
-    ]);
+    const rows = out.rows || [];
+    const avgMove = rows.length
+      ? rows.reduce((acc, row) => acc + Math.abs(toNum(row.change_pct, 0)), 0) / rows.length
+      : null;
 
-    const vix = toNum(vixObs.rows?.[0]?.value, 18);
-    const hy = toNum(hyObs.rows?.[0]?.value, 350);
-    const trend = toNum(trendObs.rows?.[0]?.value, 0.02);
+    return {
+      coverage: rows.length,
+      avgAbsMovePct: avgMove
+    };
+  };
 
-    let regimeState = 'TRANSITION';
-    if (vix >= 28 || hy >= 550 || trend < -0.05) regimeState = 'STRESS';
-    else if (vix <= 18 && hy <= 420 && trend > 0) regimeState = 'EXPANSION';
+  const hasMaterialThemeDelta = async (runDate) => {
+    const out = await safeQuery(
+      query,
+      `WITH latest AS (
+         SELECT theme_id, score
+         FROM daily_theme_scores
+         WHERE date = $1::date
+         ORDER BY score DESC
+         LIMIT 10
+       ),
+       prev_date AS (
+         SELECT MAX(date) AS date
+         FROM daily_theme_scores
+         WHERE date < $1::date
+       ),
+       prev AS (
+         SELECT t.theme_id, t.score
+         FROM daily_theme_scores t
+         JOIN prev_date p ON p.date = t.date
+       )
+       SELECT l.theme_id,
+              l.score AS latest_score,
+              p.score AS prev_score
+       FROM latest l
+       LEFT JOIN prev p ON p.theme_id = l.theme_id`,
+      [runDate]
+    );
 
-    const confidence = Math.max(45, Math.min(95, Math.round(100 - Math.abs(vix - 20) - Math.max(0, (hy - 350) / 7))));
-    const changeRisk = Math.max(5, Math.min(90, Math.round((Math.abs(vix - 20) * 2 + Math.max(0, hy - 400) / 3) / 2)));
+    const rows = out.rows || [];
+    if (!rows.length) return false;
 
-    const numbers = [
-      { label: 'VIX', value: vix, unit: 'pts', sourceRef: 'VIXCLS' },
-      { label: 'High Yield Spread', value: hy, unit: 'bps', sourceRef: 'BAMLH0A0HYM2' },
-      { label: 'Theme Trend 1M', value: trend * 100, unit: '%', sourceRef: 'daily_features_theme.ret_1m' }
-    ];
+    let totalWeightedDelta = 0;
+    let totalWeight = 0;
+    let rank = 0;
 
+    for (const row of rows) {
+      rank += 1;
+      const prev = toNum(row.prev_score, null);
+      const latest = toNum(row.latest_score, null);
+      if (prev == null || latest == null) continue; // Missing metrics -> rule not triggered
+      const weight = Math.max(1, 11 - rank);
+      totalWeightedDelta += Math.abs(latest - prev) * weight;
+      totalWeight += weight;
+    }
+
+    if (totalWeight === 0) return false;
+    const weightedDelta = totalWeightedDelta / totalWeight;
+    return weightedDelta >= MATERIAL_DELTA_THRESHOLD;
+  };
+
+  const classify = (signals) => {
+    const avgMove = toNum(signals.avgAbsMovePct, 0);
+    const coverage = toNum(signals.coverage, 0);
+
+    let label = 'Neutral';
+    if (coverage >= 20 && avgMove >= 2.2) label = 'Risk-Off';
+    else if (coverage >= 20 && avgMove <= 0.8) label = 'Risk-On';
+
+    const confidence = Math.max(35, Math.min(92, Math.round(48 + coverage / 4 + (2.5 - Math.min(avgMove, 2.5)) * 12)));
     const narrative =
-      regimeState === 'STRESS'
-        ? 'Vemos señales de estrés y priorizamos preservación de capital hasta que baje la fricción de riesgo.'
-        : regimeState === 'EXPANSION'
-          ? 'Vemos un entorno constructivo con amplitud saludable y mejor balance riesgo/retorno.'
-          : 'Vemos un régimen de transición: el sesgo es selectivo y disciplinado mientras se define la dirección macro.';
+      label === 'Risk-Off'
+        ? 'El mercado muestra mayor fricción: priorizamos selectividad, control de riesgo y confirmación de tesis.'
+        : label === 'Risk-On'
+          ? 'El mercado mantiene tono constructivo: priorizamos calidad con catalizadores y disciplina de ejecución.'
+          : 'El mercado permanece mixto: mantenemos sesgo balanceado mientras esperamos confirmaciones.';
+
+    return {
+      label,
+      narrative,
+      confidence,
+      evidence: [
+        { key: 'coverage', value: coverage, note: 'cantidad de observaciones recientes' },
+        { key: 'avg_abs_move_pct', value: avgMove, note: 'movimiento absoluto promedio' }
+      ]
+    };
+  };
+
+  const computeAndPersist = async (runDate) => {
+    const signals = await getLatestMarketSignals(runDate);
+    const current = classify(signals);
+
+    const previousOut = await safeQuery(
+      query,
+      `SELECT as_of_date::text AS as_of_date, label, narrative, confidence
+       FROM regime_snapshots
+       WHERE as_of_date < $1::date
+       ORDER BY as_of_date DESC
+       LIMIT 1`,
+      [runDate]
+    );
+
+    const previous = previousOut.rows?.[0] || null;
+    let finalLabel = current.label;
+    let finalNarrative = current.narrative;
+
+    if (previous?.label && previous.label !== current.label) {
+      const material = await hasMaterialThemeDelta(runDate);
+      if (!material) {
+        finalLabel = previous.label;
+        finalNarrative = String(previous.narrative || current.narrative);
+      }
+    }
 
     await safeQuery(
       query,
-      `INSERT INTO daily_regime (date, regime_state, confidence, change_risk, narrative, numbers_json, model_version, computed_at)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,NOW())
-       ON CONFLICT (date)
-       DO UPDATE SET regime_state = EXCLUDED.regime_state,
-                     confidence = EXCLUDED.confidence,
-                     change_risk = EXCLUDED.change_risk,
+      `INSERT INTO regime_snapshots (as_of_date, model_version, label, narrative, signals, confidence, evidence, created_at)
+       VALUES ($1::date, $2, $3, $4, $5::jsonb, $6, $7::jsonb, NOW())
+       ON CONFLICT (as_of_date, model_version)
+       DO UPDATE SET label = EXCLUDED.label,
                      narrative = EXCLUDED.narrative,
-                     numbers_json = EXCLUDED.numbers_json,
-                     model_version = EXCLUDED.model_version,
-                     computed_at = NOW()`,
-      [runDate, regimeState, confidence, changeRisk, narrative, JSON.stringify(numbers), modelVersion]
-    );
-
-    const signals = [
-      { key: 'trend', value: trend, score: Math.round(Math.max(0, Math.min(100, 50 + trend * 400))) },
-      { key: 'vix', value: vix, score: Math.round(Math.max(0, Math.min(100, 100 - vix * 3))) },
-      { key: 'credit', value: hy, score: Math.round(Math.max(0, Math.min(100, 100 - (hy - 300) / 4))) },
-      { key: 'breadth', value: trend, score: Math.round(Math.max(0, Math.min(100, 48 + trend * 350))) }
-    ];
-
-    await Promise.all(
-      signals.map((signal) =>
-        safeQuery(
-          query,
-          `INSERT INTO daily_regime_signals (date, signal_key, value, normalized_score, source_ref, computed_at)
-           VALUES ($1,$2,$3,$4,$5,NOW())
-           ON CONFLICT (date, signal_key)
-           DO UPDATE SET value = EXCLUDED.value,
-                         normalized_score = EXCLUDED.normalized_score,
-                         source_ref = EXCLUDED.source_ref,
-                         computed_at = NOW()`,
-          [runDate, signal.key, signal.value, signal.score, signal.key]
-        )
-      )
+                     signals = EXCLUDED.signals,
+                     confidence = EXCLUDED.confidence,
+                     evidence = EXCLUDED.evidence,
+                     created_at = NOW()`,
+      [
+        runDate,
+        modelVersion,
+        finalLabel,
+        finalNarrative,
+        JSON.stringify(signals),
+        current.confidence,
+        JSON.stringify(current.evidence)
+      ]
     );
 
     return {
-      id: randomUUID(),
       date: runDate,
-      state: regimeState,
-      confidence,
-      changeRisk,
-      narrative,
-      numbers,
+      label: finalLabel,
+      state: finalLabel,
+      narrative: finalNarrative,
+      confidence: current.confidence,
+      signals,
+      evidence: current.evidence,
       modelVersion
     };
   };
@@ -118,30 +190,46 @@ const createRegimeEngine = ({ query, logger = console, modelVersion = 'regime-v1
     const runDate = date || artDate();
     const out = await safeQuery(
       query,
-      `SELECT date::text AS date, regime_state, confidence, change_risk, narrative, numbers_json, model_version
-       FROM daily_regime
-       WHERE date = $1
+      `SELECT as_of_date::text AS date, label, narrative, signals, confidence, evidence, model_version
+       FROM regime_snapshots
+       WHERE as_of_date = $1::date AND model_version = $2
+       ORDER BY created_at DESC
        LIMIT 1`,
-      [runDate]
+      [runDate, modelVersion]
     );
 
     const row = out.rows?.[0];
-    if (!row) {
-      return computeDailyRegime({ date: runDate });
+    if (row) {
+      return {
+        date: row.date,
+        label: String(row.label || 'Neutral'),
+        state: String(row.label || 'Neutral'),
+        narrative: String(row.narrative || 'Mercado mixto.'),
+        signals: row.signals && typeof row.signals === 'object' ? row.signals : {},
+        confidence: toNum(row.confidence, 50),
+        evidence: Array.isArray(row.evidence) ? row.evidence : [],
+        modelVersion: String(row.model_version || modelVersion)
+      };
     }
 
-    return {
-      date: row.date,
-      state: row.regime_state,
-      confidence: Number(row.confidence || 0),
-      changeRisk: row.change_risk != null ? Number(row.change_risk) : null,
-      narrative: String(row.narrative || ''),
-      numbers: Array.isArray(row.numbers_json) ? row.numbers_json : [],
-      modelVersion: String(row.model_version || modelVersion)
-    };
+    try {
+      return await computeAndPersist(runDate);
+    } catch (error) {
+      logger.error('[regimeEngine] compute failed, returning fallback', error?.message || error);
+      return {
+        date: runDate,
+        label: 'Neutral',
+        state: 'Neutral',
+        narrative: 'Mercado mixto con datos parciales; mantenemos enfoque disciplinado.',
+        signals: {},
+        confidence: 40,
+        evidence: [],
+        modelVersion
+      };
+    }
   };
 
-  return { computeDailyRegime, getSnapshot, artDate };
+  return { artDate, getSnapshot };
 };
 
 module.exports = { createRegimeEngine };

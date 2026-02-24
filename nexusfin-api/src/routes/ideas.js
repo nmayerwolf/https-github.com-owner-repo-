@@ -100,15 +100,12 @@ router.post('/:id/review', async (req, res, next) => {
 
 router.post('/:id/close', async (req, res, next) => {
   try {
-    const out = await safeQuery(
-      `UPDATE ideas
-       SET status = 'closed', updated_at = NOW()
-       WHERE id = $1
-       RETURNING id, status, updated_at`,
-      [req.params.id]
-    );
-    if (!out.rows.length) return res.status(404).json({ error: { code: 'NOT_FOUND' } });
-    return res.json(out.rows[0]);
+    return res.status(409).json({
+      error: {
+        code: 'REVIEW_ONLY_TRANSITION',
+        message: 'El estado de ideas solo puede actualizarse en review_ideas diario.'
+      }
+    });
   } catch (error) {
     return next(error);
   }
