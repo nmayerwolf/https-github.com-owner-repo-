@@ -58,9 +58,16 @@ const env = {
   authSessionsPerUser: asPositiveInt(process.env.AUTH_SESSIONS_PER_USER, 20),
   jwtRefreshWindowSeconds: asPositiveInt(process.env.JWT_REFRESH_WINDOW_SECONDS, 72 * 60 * 60),
 
-  // Data providers kept for current service tests and future ingestion extensions
+  // Legacy provider keys (kept for backward compatibility)
   finnhubKey: process.env.FINNHUB_KEY || '',
-  alphaVantageKey: process.env.ALPHA_VANTAGE_KEY || ''
+  alphaVantageKey: process.env.ALPHA_VANTAGE_KEY || '',
+
+  // V1 data source providers
+  polygonApiKey: process.env.POLYGON_API_KEY || '',
+  fmpApiKey: process.env.FMP_API_KEY || '',
+  newsApiKey: process.env.NEWS_API_KEY || '',
+  gdeltEnabled: asBool(process.env.GDELT_ENABLED, false),
+  externalFetchTimeoutMs: asPositiveInt(process.env.EXTERNAL_FETCH_TIMEOUT_MS, 12000)
 };
 
 module.exports = { env, asBool, asPositiveInt };

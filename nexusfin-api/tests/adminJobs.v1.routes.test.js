@@ -42,11 +42,22 @@ describe('admin jobs routes v1', () => {
   });
 
   test('POST /run executes v1 jobs', async () => {
+    const ingestMarketSnapshots = jest.fn(async () => ({ ok: true }));
+    const generateBrief = jest.fn(async () => ({ date: '2026-02-23' }));
+    const reviewIdeas = jest.fn(async () => ({ reviewed: 2, published: 1 }));
     const app = makeApp({
-      marketIngestionService: { runIngestion: jest.fn(async () => ({ ok: true })) },
-      briefGenerator: { generateBrief: jest.fn(async () => ({ date: '2026-02-23' })) },
+      marketIngestionService: {
+        ingestMarketSnapshots,
+        ingestPriceBars: jest.fn(async () => ({ ok: true })),
+        ingestFundamentals: jest.fn(async () => ({ ok: true })),
+        ingestEarningsCalendar: jest.fn(async () => ({ ok: true })),
+        ingestNews: jest.fn(async () => ({ ok: true })),
+        ingestNewsBackfill: jest.fn(async () => ({ ok: true })),
+        computeRelevanceScores: jest.fn(async () => ({ ok: true }))
+      },
+      briefGenerator: { generateBrief },
       ideasDailyPipeline: {
-        reviewIdeas: jest.fn(async () => ({ reviewed: 2, published: 1 })),
+        reviewIdeas,
         generateDailyPackage: jest.fn(async () => ({ date: '2026-02-23' }))
       }
     });
@@ -54,8 +65,12 @@ describe('admin jobs routes v1', () => {
     const res = await request(app).post('/api/admin/jobs/run').set('x-admin-token', 'admin-secret').send({ date: '2026-02-23' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.results.ingestion.ok).toBe(true);
+    expect(typeof res.body.runId).toBe('string');
+    expect(res.body.results.ingest_market_snapshots.ok).toBe(true);
     expect(res.body.results.ideasReview.reviewed).toBe(2);
+    expect(ingestMarketSnapshots).toHaveBeenCalledWith({ date: '2026-02-23' });
+    expect(generateBrief).toHaveBeenCalledWith({ runId: res.body.runId, date: '2026-02-23' });
+    expect(reviewIdeas).toHaveBeenCalledWith({ runId: res.body.runId, runDate: '2026-02-23' });
   });
 
   test('GET /status returns cron snapshot', async () => {

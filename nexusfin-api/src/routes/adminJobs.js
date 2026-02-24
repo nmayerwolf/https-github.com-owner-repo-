@@ -1,8 +1,11 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { env } = require('../config/env');
 const { forbidden, serviceUnavailable } = require('../utils/errors');
+const { createSourcesStatusService } = require('../services/sourcesStatus');
 
 const router = express.Router();
+const sourcesStatusService = createSourcesStatusService();
 
 const ensureAuthorized = (req) => {
   const primary = String(env.adminJobToken || '').trim();
@@ -22,19 +25,26 @@ router.post('/run', async (req, res, next) => {
   try {
     ensureAuthorized(req);
     const date = req.body?.date || null;
+    const runId = randomUUID();
 
     const ingestion = req.app?.locals?.marketIngestionService;
     const brief = req.app?.locals?.briefGenerator;
     const ideas = req.app?.locals?.ideasDailyPipeline;
 
     const out = {
-      ingestion: ingestion?.runIngestion ? await ingestion.runIngestion({ date }) : { skipped: true },
-      brief: brief?.generateBrief ? await brief.generateBrief({ date }) : { skipped: true },
-      ideasReview: ideas?.reviewIdeas ? await ideas.reviewIdeas({ date }) : { skipped: true },
+      ingest_market_snapshots: ingestion?.ingestMarketSnapshots ? await ingestion.ingestMarketSnapshots({ date }) : { skipped: true },
+      ingest_price_bars: ingestion?.ingestPriceBars ? await ingestion.ingestPriceBars({ date }) : { skipped: true },
+      ingest_fundamentals: ingestion?.ingestFundamentals ? await ingestion.ingestFundamentals({ date }) : { skipped: true },
+      ingest_earnings_calendar: ingestion?.ingestEarningsCalendar ? await ingestion.ingestEarningsCalendar({ date }) : { skipped: true },
+      ingest_news: ingestion?.ingestNews ? await ingestion.ingestNews({ date }) : { skipped: true },
+      ingest_news_backfill: ingestion?.ingestNewsBackfill ? await ingestion.ingestNewsBackfill({ date }) : { skipped: true },
+      compute_relevance_scores: ingestion?.computeRelevanceScores ? await ingestion.computeRelevanceScores({ date }) : { skipped: true },
+      brief: brief?.generateBrief ? await brief.generateBrief({ runId, date }) : { skipped: true },
+      ideasReview: ideas?.reviewIdeas ? await ideas.reviewIdeas({ runId, runDate: date || null }) : { skipped: true },
       package: ideas?.generateDailyPackage ? await ideas.generateDailyPackage({ date, userId: req.user?.id || null }) : { skipped: true }
     };
 
-    return res.json({ ok: true, date: date || out?.package?.date || null, results: out });
+    return res.json({ ok: true, runId, date: date || out?.package?.date || null, results: out });
   } catch (error) {
     return next(error);
   }
@@ -45,6 +55,16 @@ router.get('/status', async (req, res, next) => {
     ensureAuthorized(req);
     const cronStatus = req.app?.locals?.getCronStatus?.() || {};
     return res.json({ ok: true, cron: cronStatus, ts: new Date().toISOString() });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/sources/status', async (req, res, next) => {
+  try {
+    ensureAuthorized(req);
+    const out = await sourcesStatusService.getStatus();
+    return res.json(out);
   } catch (error) {
     return next(error);
   }

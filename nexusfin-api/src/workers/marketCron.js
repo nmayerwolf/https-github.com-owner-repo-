@@ -5,14 +5,49 @@ const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires';
 
 const buildTasks = (_config = env, runners = {}) => [
   {
-    name: 'data-ingestion',
+    name: 'ingest_market_snapshots',
     schedule: '0 5 * * *',
-    run: runners.dataIngestion || (async () => ({ ok: true, skipped: true }))
+    run: runners.ingestMarketSnapshots || (async () => ({ ok: true, skipped: true }))
   },
   {
-    name: 'brief-and-ideas-review',
+    name: 'ingest_price_bars',
+    schedule: '5 5 * * *',
+    run: runners.ingestPriceBars || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'ingest_fundamentals',
+    schedule: '10 5 * * *',
+    run: runners.ingestFundamentals || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'ingest_earnings_calendar',
+    schedule: '15 5 * * *',
+    run: runners.ingestEarningsCalendar || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'ingest_news',
+    schedule: '20 5 * * *',
+    run: runners.ingestNews || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'ingest_news_backfill',
+    schedule: '25 5 * * *',
+    run: runners.ingestNewsBackfill || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'compute_relevance_scores',
+    schedule: '30 5 * * *',
+    run: runners.computeRelevanceScores || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'generate_brief',
     schedule: '30 6 * * *',
-    run: runners.briefAndIdeasReview || (async () => ({ ok: true, skipped: true }))
+    run: runners.generateBrief || (async () => ({ ok: true, skipped: true }))
+  },
+  {
+    name: 'review_ideas',
+    schedule: '31 6 * * *',
+    run: runners.reviewIdeas || (async () => ({ ok: true, skipped: true }))
   }
 ];
 
@@ -37,11 +72,17 @@ const startMarketCron = ({ enabled = env.cronEnabled, timezone = env.cronTimezon
   }
 
   const jobs = [];
+  const runningTasks = new Set();
 
   for (const task of tasks) {
     const job = cron.schedule(
       task.schedule,
       async () => {
+        if (runningTasks.has(task.name)) {
+          status.results[task.name] = { ok: true, skipped: true, reason: 'TASK_ALREADY_RUNNING' };
+          return;
+        }
+        runningTasks.add(task.name);
         const startedAt = Date.now();
         status.lastTask = task.name;
         status.lastRun = new Date(startedAt).toISOString();
@@ -56,6 +97,8 @@ const startMarketCron = ({ enabled = env.cronEnabled, timezone = env.cronTimezon
           status.lastDurationMs = Math.max(0, Date.now() - startedAt);
           status.errors = [{ task: task.name, message: String(error?.message || error), ts: new Date().toISOString() }, ...status.errors].slice(0, 10);
           logger.error(`[cron:${task.name}] failed`, error?.message || error);
+        } finally {
+          runningTasks.delete(task.name);
         }
       },
       { timezone }

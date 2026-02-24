@@ -1,4 +1,5 @@
 const http = require('http');
+const { randomUUID } = require('crypto');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const express = require('express');
@@ -60,9 +61,24 @@ app.get('/api/health/cron', (_req, res) => {
   return res.json(app.locals.getCronStatus?.() || { enabled: false, lastRun: null, results: {}, errors: [] });
 });
 
+app.get('/api/cron/status', (_req, res) => {
+  return res.json(app.locals.getCronStatus?.() || { enabled: false, lastRun: null, results: {}, errors: [] });
+});
+
 app.use('/api/auth/login', authLoginLimiter);
 app.use('/api/auth/register', authRegisterLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
+
+app.get('/api/daily/brief', authRequired, requireCsrf, async (req, res, next) => {
+  try {
+    const service = req.app?.locals?.briefGenerator;
+    if (!service?.getBrief) return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE' } });
+    const brief = await service.getBrief({ date: req.query?.date ? String(req.query.date) : null });
+    return res.json(brief);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 app.use('/api/brief', authRequired, requireCsrf, briefRoutes);
 app.use('/api/ideas', authRequired, requireCsrf, ideasRoutes);
@@ -86,12 +102,40 @@ const startHttpServer = ({ port = env.port } = {}) => {
   app.locals.ideasDailyPipeline = ideasDailyPipeline;
   app.locals.portfolioEngine = portfolioEngine;
 
+  const dailyContextByDate = new Map();
+  let dailySequence = Promise.resolve();
+  const enqueueDaily = (job) => {
+    const next = dailySequence.then(job);
+    dailySequence = next.catch(() => {});
+    return next;
+  };
+  const getDailyContext = (inputDate = null) => {
+    const runDate = inputDate || briefGenerator.artDate();
+    if (!dailyContextByDate.has(runDate)) {
+      dailyContextByDate.set(runDate, { runDate, runId: randomUUID(), createdAt: Date.now() });
+    }
+    return dailyContextByDate.get(runDate);
+  };
+
   const cronTasks = buildTasks(env, {
-    dataIngestion: () => marketIngestionService.runIngestion({}),
-    briefAndIdeasReview: async () => {
-      const brief = await briefGenerator.generateBrief({});
-      const reviewed = await ideasDailyPipeline.reviewIdeas({ date: brief.date });
-      return { briefDate: brief.date, reviewed };
+    ingestMarketSnapshots: () => marketIngestionService.ingestMarketSnapshots({}),
+    ingestPriceBars: () => marketIngestionService.ingestPriceBars({}),
+    ingestFundamentals: () => marketIngestionService.ingestFundamentals({}),
+    ingestEarningsCalendar: () => marketIngestionService.ingestEarningsCalendar({}),
+    ingestNews: () => marketIngestionService.ingestNews({}),
+    ingestNewsBackfill: () => marketIngestionService.ingestNewsBackfill({}),
+    computeRelevanceScores: () => marketIngestionService.computeRelevanceScores({}),
+    generateBrief: async () => {
+      const ctx = getDailyContext();
+      return enqueueDaily(() => briefGenerator.generateBrief({ runId: ctx.runId, date: ctx.runDate }));
+    },
+    reviewIdeas: async () => {
+      const ctx = getDailyContext();
+      return enqueueDaily(async () => {
+        const out = await ideasDailyPipeline.reviewIdeas({ runId: ctx.runId, runDate: ctx.runDate });
+        dailyContextByDate.delete(ctx.runDate);
+        return out;
+      });
     }
   });
 
