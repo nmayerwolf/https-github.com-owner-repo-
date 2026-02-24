@@ -12,8 +12,6 @@ const sampleCandles = (base = 180) => {
 
 test('login and add position in portfolio', async ({ page }) => {
   let loggedIn = true;
-  const portfolios = [{ id: 'pf-1', name: 'Core', isOwner: true, collaboratorCount: 0, completedAt: null }];
-  const positions = [];
 
   await page.addInitScript(() => {
     localStorage.setItem('nexusfin_watchlist', JSON.stringify(['AAPL']));
@@ -104,38 +102,14 @@ test('login and add position in portfolio', async ({ page }) => {
       return json(200, { symbols: [{ symbol: 'AAPL', name: 'Apple', category: 'equity' }] });
     }
 
-    if (isPath('/api/portfolio') && method === 'GET') return json(200, { positions, portfolios, activePortfolioId: portfolios[0]?.id || '' });
-    if (isPath('/api/portfolio/portfolios') && method === 'GET') return json(200, { portfolios });
-    if (isPath('/api/portfolio/portfolios') && method === 'POST') {
-      const body = req.postDataJSON();
-      const createdPortfolio = {
-        id: `pf-${portfolios.length + 1}`,
-        name: String(body?.name || `Portfolio ${portfolios.length + 1}`),
-        isOwner: true,
-        collaboratorCount: 0,
-        completedAt: null
-      };
-      portfolios.push(createdPortfolio);
-      return json(201, createdPortfolio);
+    if (isPath('/api/portfolio') && method === 'GET') {
+      return json(200, { empty: true, cta: 'Subí tu portfolio para personalizar ideas' });
     }
-    if (isPath('/api/portfolio') && method === 'POST') {
-      const body = req.postDataJSON();
-      const created = {
-        id: `p-${positions.length + 1}`,
-        portfolioId: body.portfolioId || portfolios[0].id,
-        symbol: String(body.symbol || '').toUpperCase(),
-        name: body.name,
-        category: body.category,
-        buyDate: body.buyDate,
-        buyPrice: Number(body.buyPrice),
-        quantity: Number(body.quantity),
-        sellDate: null,
-        sellPrice: null,
-        notes: body.notes || ''
-      };
-      positions.unshift(created);
-      return json(200, created);
+    if (isPath('/api/portfolio/challenges') && method === 'GET') {
+      return json(200, { challenges: [] });
     }
+    if (isPath('/api/portfolio') && method === 'POST') return json(200, { ok: true, inserted: 1 });
+    if (isPath('/api/portfolio/holdings') && method === 'POST') return json(200, { ok: true, inserted: 1 });
 
     if (isPath('/api/market/quote') && method === 'GET') return json(200, { c: 190.25, pc: 188.1, dp: 1.14 });
     if (isPath('/api/market/candles') && method === 'GET') return json(200, sampleCandles(180));
@@ -201,13 +175,13 @@ test('login and add position in portfolio', async ({ page }) => {
   await expect(page.locator('nav.bottom-nav')).toContainText('Portafolio');
   await expect(page.locator('a.nav-item.active[href="/brief"]')).toBeVisible();
 
-  await page.goto('/markets');
+  await page.goto('/ideas');
   await expect(page).toHaveURL(/\/ideas$/);
   await expect(page.getByRole('heading', { name: 'Ideas', exact: true })).toBeVisible();
 
-  await page.goto('/markets/AAPL');
-  await expect(page).toHaveURL(/\/markets\/AAPL$/);
-  await expect(page.getByRole('heading', { name: /^AAPL/i })).toBeVisible();
+  await page.goto('/markets');
+  await expect(page).toHaveURL(/\/brief$/);
+  await expect(page.getByRole('heading', { name: /Brief Diario|Daily Brief/ })).toBeVisible();
 
   const migrationHeading = page.getByRole('heading', { name: 'Migrar datos locales' });
   if (await migrationHeading.isVisible({ timeout: 1_500 }).catch(() => false)) {
