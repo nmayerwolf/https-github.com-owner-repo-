@@ -145,12 +145,23 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
        FROM runs
        WHERE run_kind = $1
          AND status = 'success'
+         AND error_message IS NULL
          AND config->>'runDate' = $2
        ORDER BY started_at DESC
        LIMIT 1`,
       [runKind, runDate]
     );
     return (out.rows || []).length > 0;
+  };
+
+  const hasFreshNewsInWindow = async (hours = 24) => {
+    const out = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM news_items
+       WHERE created_at >= NOW() - ($1::int || ' hours')::interval`,
+      [hours]
+    );
+    return Number(out.rows?.[0]?.total || 0) > 0;
   };
 
   const isRateLimited = (error) => Number(error?.status) === 429 || String(error?.message || '').includes('HTTP 429');
@@ -437,7 +448,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
       return { ok: true, runId, from: runDate, to: toDate, inserted };
     } catch (error) {
       if (isRateLimited(error)) {
-        await finishRun(runId, 'success');
+        await finishRun(runId, 'success', String(error?.message || error));
         return { ok: true, runId, from: runDate, to: toDate, inserted, rateLimited: true, error: String(error?.message || error) };
       }
       await finishRun(runId, 'failed', String(error?.message || error));
@@ -577,7 +588,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     const runId = await startRun('ingest_news', { runDate });
 
     try {
-      if (await wasRunSuccessful('ingest_news', runDate)) {
+      if ((await wasRunSuccessful('ingest_news', runDate)) && (await hasFreshNewsInWindow(24))) {
         await finishRun(runId, 'success');
         return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, alreadyIngested: true };
       }
@@ -594,7 +605,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
       return { ok: true, runId, date: runDate, inserted, relinked };
     } catch (error) {
       if (isRateLimited(error)) {
-        await finishRun(runId, 'success');
+        await finishRun(runId, 'success', String(error?.message || error));
         return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, rateLimited: true, error: String(error?.message || error) };
       }
       await finishRun(runId, 'failed', String(error?.message || error));
@@ -607,7 +618,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     const runId = await startRun('ingest_news_backfill', { runDate, vendor: 'newsapi' });
 
     try {
-      if (await wasRunSuccessful('ingest_news_backfill', runDate)) {
+      if ((await wasRunSuccessful('ingest_news_backfill', runDate)) && (await hasFreshNewsInWindow(24))) {
         await finishRun(runId, 'success');
         return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, alreadyIngested: true };
       }
@@ -625,7 +636,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
       return { ok: true, runId, date: runDate, inserted, relinked };
     } catch (error) {
       if (isRateLimited(error)) {
-        await finishRun(runId, 'success');
+        await finishRun(runId, 'success', String(error?.message || error));
         return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, rateLimited: true, error: String(error?.message || error) };
       }
       await finishRun(runId, 'failed', String(error?.message || error));
