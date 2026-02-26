@@ -6,6 +6,7 @@ const { createNewsApiAdapter } = require('../providers/NewsApiAdapter');
 const SUPPORTED_CLASSES = new Set(['equity', 'etf', 'index', 'crypto', 'fx']);
 const IDEAS_CLASSES = new Set(['equity', 'etf']);
 const KEYWORDS = ['rates', 'cpi', 'war', 'opec', 'earnings', 'tariffs', 'sanctions', 'fed', 'inflation'];
+const NEWS_PRIMARY_QUERY = 'markets OR stocks OR fed OR inflation OR earnings';
 const BUSINESS_URL_HINTS = ['marketwatch', 'bloomberg', 'reuters', 'wsj', 'ft.com', 'cnbc', 'economictimes', 'investing.com'];
 const NEWS_FALLBACK_TAGS = [
   { terms: ['bitcoin', 'btc', 'ethereum', 'crypto', 'ripple', 'xrp'], symbol: 'BTCUSDT', assetClass: 'crypto' },
@@ -137,6 +138,22 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
       [assetId, vendor, vendorSymbol]
     );
   };
+
+  const wasRunSuccessful = async (runKind, runDate) => {
+    const out = await query(
+      `SELECT 1
+       FROM runs
+       WHERE run_kind = $1
+         AND status = 'success'
+         AND config->>'runDate' = $2
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [runKind, runDate]
+    );
+    return (out.rows || []).length > 0;
+  };
+
+  const isRateLimited = (error) => Number(error?.status) === 429 || String(error?.message || '').includes('HTTP 429');
 
   const ingestMarketSnapshots = async ({ date } = {}) => {
     const runDate = date || new Date().toISOString().slice(0, 10);
@@ -277,6 +294,11 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     let skipped = 0;
 
     try {
+      if (await wasRunSuccessful('ingest_fundamentals', runDate)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, date: runDate, inserted: 0, skipped: 0, alreadyIngested: true };
+      }
+
       for (const asset of trackedAssets.filter((item) => IDEAS_CLASSES.has(item.assetClass))) {
         try {
           const fundamentals = await fmp.getFundamentals({ symbol: asset.symbol, assetClass: asset.assetClass });
@@ -373,6 +395,11 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     let inserted = 0;
 
     try {
+      if (await wasRunSuccessful('ingest_earnings_calendar', runDate)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, from: runDate, to: toDate, inserted: 0, alreadyIngested: true };
+      }
+
       const events = await fmp.getEarningsCalendar({ from: runDate, to: toDate });
       const symbolToAsset = new Map(trackedAssets.map((asset) => [String(asset.symbol).toUpperCase(), asset]));
 
@@ -409,6 +436,10 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
       await finishRun(runId, 'success');
       return { ok: true, runId, from: runDate, to: toDate, inserted };
     } catch (error) {
+      if (isRateLimited(error)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, from: runDate, to: toDate, inserted, rateLimited: true, error: String(error?.message || error) };
+      }
       await finishRun(runId, 'failed', String(error?.message || error));
       return { ok: false, runId, from: runDate, to: toDate, inserted, error: String(error?.message || error) };
     }
@@ -546,16 +577,26 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     const runId = await startRun('ingest_news', { runDate });
 
     try {
-      const from = `${runDate}T00:00:00.000Z`;
+      if (await wasRunSuccessful('ingest_news', runDate)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, alreadyIngested: true };
+      }
+
+      const from = `${addDaysIsoDate(runDate, -1)}T00:00:00.000Z`;
       const top = await newsApi.getTopHeadlines({ language: 'en', pageSize: 50 });
-      const thematic = await Promise.all(KEYWORDS.map((q) => newsApi.getEverything({ q, from, language: 'en', pageSize: 20 })));
-      const merged = uniqueBy([...top, ...thematic.flat()], (item) => String(item.url || ''));
+      // Free tier friendly: one broad thematic query instead of many keyword fan-out calls.
+      const thematic = await newsApi.getEverything({ q: NEWS_PRIMARY_QUERY, from, language: 'en', pageSize: 50 });
+      const merged = uniqueBy([...top, ...thematic], (item) => String(item.url || ''));
       const inserted = await saveNewsItems(merged);
       const relinked = await rehydrateNewsRelations24h();
 
       await finishRun(runId, 'success');
       return { ok: true, runId, date: runDate, inserted, relinked };
     } catch (error) {
+      if (isRateLimited(error)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, rateLimited: true, error: String(error?.message || error) };
+      }
       await finishRun(runId, 'failed', String(error?.message || error));
       return { ok: false, runId, date: runDate, inserted: 0, error: String(error?.message || error) };
     }
@@ -566,17 +607,27 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     const runId = await startRun('ingest_news_backfill', { runDate, vendor: 'newsapi' });
 
     try {
+      if (await wasRunSuccessful('ingest_news_backfill', runDate)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, alreadyIngested: true };
+      }
+
       const fromDate = addDaysIsoDate(runDate, -3);
       const from = `${fromDate}T00:00:00.000Z`;
       const to = `${runDate}T23:59:59.000Z`;
-      const thematic = await Promise.all(KEYWORDS.map((q) => newsApi.getEverything({ q, from, to, language: 'en', pageSize: 50 })));
-      const merged = uniqueBy(thematic.flat(), (item) => String(item.url || ''));
+      // Keep backfill lightweight on free tier.
+      const thematic = await newsApi.getEverything({ q: NEWS_PRIMARY_QUERY, from, to, language: 'en', pageSize: 50 });
+      const merged = uniqueBy(thematic, (item) => String(item.url || ''));
       const inserted = await saveNewsItems(merged);
       const relinked = await rehydrateNewsRelations24h();
 
       await finishRun(runId, 'success');
       return { ok: true, runId, date: runDate, inserted, relinked };
     } catch (error) {
+      if (isRateLimited(error)) {
+        await finishRun(runId, 'success');
+        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, rateLimited: true, error: String(error?.message || error) };
+      }
       await finishRun(runId, 'failed', String(error?.message || error));
       return { ok: false, runId, date: runDate, inserted: 0, error: String(error?.message || error) };
     }
