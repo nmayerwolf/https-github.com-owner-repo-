@@ -74,6 +74,10 @@ router.get('/sources/status', async (req, res, next) => {
 router.post('/fix/news-titles', async (req, res, next) => {
   try {
     ensureAuthorized(req);
+    if (!env.adminEnableDataFixes) {
+      return res.status(404).json({ error: { code: 'DATA_FIX_DISABLED', message: 'Data fix endpoints disabled' } });
+    }
+    // TODO(v1.2): remove this temporary endpoint once upstream news ingest is stable.
     const sql = `
       WITH fixed AS (
         SELECT

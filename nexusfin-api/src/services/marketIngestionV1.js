@@ -7,6 +7,12 @@ const SUPPORTED_CLASSES = new Set(['equity', 'etf', 'index', 'crypto', 'fx']);
 const IDEAS_CLASSES = new Set(['equity', 'etf']);
 const KEYWORDS = ['rates', 'cpi', 'war', 'opec', 'earnings', 'tariffs', 'sanctions', 'fed', 'inflation'];
 const NEWS_PRIMARY_QUERY = 'markets OR stocks OR fed OR inflation OR earnings';
+const NEWS_ROTATING_QUERIES = [
+  'earnings report results guidance',
+  'federal reserve interest rates inflation cpi',
+  'tariffs sanctions trade war',
+  'technology semiconductors ai cloud software'
+];
 const BUSINESS_URL_HINTS = ['marketwatch', 'bloomberg', 'reuters', 'wsj', 'ft.com', 'cnbc', 'economictimes', 'investing.com'];
 const NEWS_FALLBACK_TAGS = [
   { terms: ['bitcoin', 'btc', 'ethereum', 'crypto', 'ripple', 'xrp'], symbol: 'BTCUSDT', assetClass: 'crypto' },
@@ -164,6 +170,33 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     return Number(out.rows?.[0]?.total || 0) > 0;
   };
 
+  const hasFreshFundamentalsInWindow = async (hours = 24) => {
+    const out = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM fundamentals
+       WHERE created_at >= NOW() - ($1::int || ' hours')::interval`,
+      [hours]
+    );
+    return Number(out.rows?.[0]?.total || 0) > 0;
+  };
+
+  const hasFreshEarningsInWindow = async (hours = 72) => {
+    const out = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM earnings_events
+       WHERE created_at >= NOW() - ($1::int || ' hours')::interval`,
+      [hours]
+    );
+    return Number(out.rows?.[0]?.total || 0) > 0;
+  };
+
+  const hashDate = (value) => {
+    const text = String(value || '');
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    return Math.abs(hash);
+  };
+
   const isRateLimited = (error) => Number(error?.status) === 429 || String(error?.message || '').includes('HTTP 429');
 
   const ingestMarketSnapshots = async ({ date } = {}) => {
@@ -305,7 +338,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     let skipped = 0;
 
     try {
-      if (await wasRunSuccessful('ingest_fundamentals', runDate)) {
+      if ((await wasRunSuccessful('ingest_fundamentals', runDate)) && (await hasFreshFundamentalsInWindow(24))) {
         await finishRun(runId, 'success');
         return { ok: true, runId, date: runDate, inserted: 0, skipped: 0, alreadyIngested: true };
       }
@@ -406,7 +439,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     let inserted = 0;
 
     try {
-      if (await wasRunSuccessful('ingest_earnings_calendar', runDate)) {
+      if ((await wasRunSuccessful('ingest_earnings_calendar', runDate)) && (await hasFreshEarningsInWindow(72))) {
         await finishRun(runId, 'success');
         return { ok: true, runId, from: runDate, to: toDate, inserted: 0, alreadyIngested: true };
       }
@@ -449,7 +482,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     } catch (error) {
       if (isRateLimited(error)) {
         await finishRun(runId, 'success', String(error?.message || error));
-        return { ok: true, runId, from: runDate, to: toDate, inserted, rateLimited: true, error: String(error?.message || error) };
+        return { ok: true, runId, from: runDate, to: toDate, inserted, degraded: true, rateLimited: true, error: String(error?.message || error) };
       }
       await finishRun(runId, 'failed', String(error?.message || error));
       return { ok: false, runId, from: runDate, to: toDate, inserted, error: String(error?.message || error) };
@@ -596,8 +629,12 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
       const from = `${addDaysIsoDate(runDate, -1)}T00:00:00.000Z`;
       const top = await newsApi.getTopHeadlines({ language: 'en', pageSize: 50 });
       // Free tier friendly: one broad thematic query instead of many keyword fan-out calls.
-      const thematic = await newsApi.getEverything({ q: NEWS_PRIMARY_QUERY, from, language: 'en', pageSize: 50 });
-      const merged = uniqueBy([...top, ...thematic], (item) => String(item.url || ''));
+      const rotatingQuery = NEWS_ROTATING_QUERIES[hashDate(runDate) % NEWS_ROTATING_QUERIES.length];
+      const [thematic, rotating] = await Promise.all([
+        newsApi.getEverything({ q: NEWS_PRIMARY_QUERY, from, language: 'en', pageSize: 50 }),
+        newsApi.getEverything({ q: rotatingQuery, from, language: 'en', pageSize: 30 })
+      ]);
+      const merged = uniqueBy([...top, ...thematic, ...rotating], (item) => String(item.url || ''));
       const inserted = await saveNewsItems(merged);
       const relinked = await rehydrateNewsRelations24h();
 
@@ -606,7 +643,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     } catch (error) {
       if (isRateLimited(error)) {
         await finishRun(runId, 'success', String(error?.message || error));
-        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, rateLimited: true, error: String(error?.message || error) };
+        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, degraded: true, rateLimited: true, error: String(error?.message || error) };
       }
       await finishRun(runId, 'failed', String(error?.message || error));
       return { ok: false, runId, date: runDate, inserted: 0, error: String(error?.message || error) };
@@ -637,7 +674,7 @@ const createMarketIngestionV1Service = ({ query, logger = console, adapters = {}
     } catch (error) {
       if (isRateLimited(error)) {
         await finishRun(runId, 'success', String(error?.message || error));
-        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, rateLimited: true, error: String(error?.message || error) };
+        return { ok: true, runId, date: runDate, inserted: 0, relinked: 0, degraded: true, rateLimited: true, error: String(error?.message || error) };
       }
       await finishRun(runId, 'failed', String(error?.message || error));
       return { ok: false, runId, date: runDate, inserted: 0, error: String(error?.message || error) };

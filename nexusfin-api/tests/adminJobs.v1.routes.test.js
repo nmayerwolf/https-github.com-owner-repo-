@@ -4,6 +4,9 @@ const request = require('supertest');
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://test:test@localhost:5432/test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
+const mockQuery = jest.fn();
+jest.mock('../src/config/db', () => ({ query: (...args) => mockQuery(...args) }));
+
 const { env } = require('../src/config/env');
 const routes = require('../src/routes/adminJobs');
 const { errorHandler } = require('../src/middleware/errorHandler');
@@ -24,15 +27,19 @@ const makeApp = (locals = {}) => {
 describe('admin jobs routes v1', () => {
   const prevToken = env.adminJobToken;
   const prevTokenNext = env.adminJobTokenNext;
+  const prevEnableFixes = env.adminEnableDataFixes;
 
   beforeEach(() => {
     env.adminJobToken = 'admin-secret';
     env.adminJobTokenNext = 'admin-secret-next';
+    env.adminEnableDataFixes = false;
+    mockQuery.mockReset();
   });
 
   afterAll(() => {
     env.adminJobToken = prevToken;
     env.adminJobTokenNext = prevTokenNext;
+    env.adminEnableDataFixes = prevEnableFixes;
   });
 
   test('POST /run requires admin token', async () => {
@@ -82,5 +89,22 @@ describe('admin jobs routes v1', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.cron.enabled).toBe(true);
+  });
+
+  test('POST /fix/news-titles is disabled by flag by default', async () => {
+    const res = await request(makeApp()).post('/api/admin/jobs/fix/news-titles').set('x-admin-token', 'admin-secret').send({});
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('DATA_FIX_DISABLED');
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('POST /fix/news-titles runs when flag is enabled', async () => {
+    env.adminEnableDataFixes = true;
+    mockQuery.mockResolvedValueOnce({ rowCount: 12 });
+    const res = await request(makeApp()).post('/api/admin/jobs/fix/news-titles').set('x-admin-token', 'admin-secret').send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.updated).toBe(12);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

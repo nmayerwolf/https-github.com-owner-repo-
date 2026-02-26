@@ -16,6 +16,14 @@ describe('sourcesStatus service', () => {
           ]
         };
       }
+      if (sql.includes('WHERE error_message ILIKE')) {
+        return {
+          rows: [
+            { run_kind: 'ingest_earnings_calendar', started_at: '2026-02-24T09:00:00.000Z', error_message: 'FMP HTTP 429' },
+            { run_kind: 'ingest_news', started_at: '2026-02-24T10:00:00.000Z', error_message: 'NewsAPI HTTP 429' }
+          ]
+        };
+      }
 
       return {
         rows: [
@@ -46,6 +54,9 @@ describe('sourcesStatus service', () => {
     expect(out.providers.backfill.vendor).toBe('newsapi');
     expect(out.providers.backfill.configured).toBe(true);
     expect(out.counts24h.news_24h).toBe(80);
+    expect(out.freshness.news_ok).toBe(true);
+    expect(out.degradedProviders).toEqual(expect.arrayContaining(['fmp', 'newsapi']));
+    expect(out.lastRateLimits.fmp).toBe('2026-02-24T09:00:00.000Z');
     expect(out.lastRuns).toHaveLength(1);
   });
 });
