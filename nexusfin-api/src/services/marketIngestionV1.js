@@ -32,7 +32,7 @@ const titleText = (item) => `${String(item?.title || '')} ${String(item?.descrip
 const nowIso = () => new Date().toISOString();
 const untitledLike = (value) => {
   const text = String(value || '').trim().toLowerCase();
-  return !text || text === 'untitled' || text === '(untitled)';
+  return !text || text === 'untitled' || text === '(untitled)' || text === '[removed]' || text === '[deleted]';
 };
 
 const titleFromUrl = (rawUrl) => {
@@ -46,7 +46,8 @@ const titleFromUrl = (rawUrl) => {
       .replace(/\.[a-z0-9]+$/i, '')
       .replace(/[-_]+/g, ' ')
       .replace(/\s+/g, ' ')
-      .trim();
+      .trim()
+      .replace(/\b\w/g, (m) => m.toUpperCase());
   } catch {
     return '';
   }
