@@ -70,4 +70,45 @@ router.get('/sources/status', async (req, res, next) => {
   }
 });
 
+router.post('/fix/news-titles', async (req, res, next) => {
+  try {
+    ensureAuthorized(req);
+    const sql = `
+      WITH fixed AS (
+        SELECT
+          news_id,
+          initcap(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(split_part(url, '?', 1), '^.*/', ''),
+                '\\.[a-z0-9]+$',
+                '',
+                'i'
+              ),
+              '[-_]+',
+              ' ',
+              'g'
+            )
+          ) AS derived_title
+        FROM news_items
+        WHERE url IS NOT NULL
+      )
+      UPDATE news_items n
+      SET
+        title = COALESCE(NULLIF(trim(f.derived_title), ''), n.title),
+        headline = COALESCE(NULLIF(trim(f.derived_title), ''), n.headline)
+      FROM fixed f
+      WHERE n.news_id = f.news_id
+        AND (
+          lower(coalesce(n.title, '')) IN ('', 'untitled', '(untitled)', '[removed]', '[deleted]')
+          OR lower(coalesce(n.headline, '')) IN ('', 'untitled', '(untitled)', '[removed]', '[deleted]')
+        )`;
+
+    const out = await req.app.locals.query(sql);
+    return res.json({ ok: true, updated: Number(out?.rowCount || 0) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 module.exports = router;
