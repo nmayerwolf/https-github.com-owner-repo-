@@ -18,9 +18,9 @@ const createSourcesStatusService = ({ queryImpl = query, envImpl = env } = {}) =
       `SELECT
           (SELECT COUNT(*)::int FROM market_snapshots WHERE ts >= NOW() - INTERVAL '24 hours') AS market_snapshots_24h,
           (SELECT COUNT(*)::int FROM price_bars WHERE ts >= NOW() - INTERVAL '24 hours') AS price_bars_24h,
-          (SELECT COUNT(*)::int FROM fundamentals WHERE as_of >= NOW() - INTERVAL '24 hours') AS fundamentals_24h,
+          (SELECT COUNT(*)::int FROM fundamentals WHERE created_at >= NOW() - INTERVAL '24 hours') AS fundamentals_24h,
           (SELECT COUNT(*)::int FROM earnings_events WHERE created_at >= NOW() - INTERVAL '24 hours') AS earnings_24h,
-          (SELECT COUNT(*)::int FROM news_items WHERE published_at >= NOW() - INTERVAL '24 hours') AS news_24h`
+          (SELECT COUNT(*)::int FROM news_items WHERE created_at >= NOW() - INTERVAL '24 hours') AS news_24h`
     );
 
     return {
