@@ -1,6 +1,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { env } = require('../config/env');
+const { query } = require('../config/db');
 const { forbidden, serviceUnavailable } = require('../utils/errors');
 const { createSourcesStatusService } = require('../services/sourcesStatus');
 
@@ -104,7 +105,7 @@ router.post('/fix/news-titles', async (req, res, next) => {
           OR lower(coalesce(n.headline, '')) IN ('', 'untitled', '(untitled)', '[removed]', '[deleted]')
         )`;
 
-    const out = await req.app.locals.query(sql);
+    const out = await query(sql);
     return res.json({ ok: true, updated: Number(out?.rowCount || 0) });
   } catch (error) {
     return next(error);
