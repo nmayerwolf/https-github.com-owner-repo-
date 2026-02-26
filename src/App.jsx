@@ -49,6 +49,13 @@ const BriefPage = ({ isSpanish }) => {
     load();
   }, []);
 
+  const introText = data?.intro || data?.mainParagraph || data?.note || '';
+  const bulletItems = Array.isArray(data?.briefBullets)
+    ? data.briefBullets.map((item) => item?.headline || item?.whyItMatters).filter(Boolean)
+    : Array.isArray(data?.bullets)
+      ? data.bullets
+      : [];
+
   return (
     <main className="grid">
       <section className="card">
@@ -60,9 +67,9 @@ const BriefPage = ({ isSpanish }) => {
         {error ? <p className="muted">{error}</p> : null}
         {data ? (
           <>
-            <p>{data.mainParagraph || data.note}</p>
+            <p>{introText}</p>
             <div className="grid">
-              {(Array.isArray(data.bullets) ? data.bullets : []).slice(0, 5).map((item, idx) => (
+              {bulletItems.slice(0, 5).map((item, idx) => (
                 <div key={`bullet-${idx}`} className="card">• {item}</div>
               ))}
             </div>
