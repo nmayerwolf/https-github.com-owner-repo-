@@ -140,4 +140,80 @@ describe('marketIngestionV1 service', () => {
     expect(out.ok).toBe(true);
     expect(out.error).toBeUndefined();
   });
+
+  test('ingestFundamentals retries when prior run exists but freshness is stale', async () => {
+    let runSeq = 0;
+    const query = jest.fn(async (sql) => {
+      if (sql.includes('INSERT INTO runs') && sql.includes('RETURNING run_id')) {
+        runSeq += 1;
+        return { rows: [{ run_id: `run-${runSeq}` }] };
+      }
+      if (sql.includes('FROM runs') && sql.includes("config->>'runDate'")) {
+        return { rows: [{}] };
+      }
+      if (sql.includes('FROM fundamentals') && sql.includes('created_at')) {
+        return { rows: [{ total: 0 }] };
+      }
+      return { rows: [] };
+    });
+
+    const adapters = {
+      polygon: { getSnapshot: jest.fn(), getBars: jest.fn() },
+      fmp: {
+        getFundamentals: jest.fn(async () => ({
+          asOf: '2026-02-23T00:00:00Z',
+          currency: 'USD',
+          marketCap: 1000,
+          revenueTTM: 500,
+          grossMarginTTM: 0.4,
+          operatingMarginTTM: 0.3,
+          netMarginTTM: 0.2,
+          fcfTTM: 100,
+          netDebt: 50,
+          debtToEbitda: 1.2,
+          peTTM: 20,
+          evToEbitdaTTM: 10,
+          priceToSalesTTM: 2,
+          raw: {},
+          sources: [{ vendor: 'fmp', vendorSymbol: 'AAPL' }]
+        })),
+        getEarningsCalendar: jest.fn(async () => [])
+      },
+      newsApi: { getTopHeadlines: jest.fn(async () => []), getEverything: jest.fn(async () => []) }
+    };
+
+    const svc = createMarketIngestionV1Service({ query, adapters, logger: { warn: jest.fn() } });
+    const out = await svc.ingestFundamentals({ date: '2026-02-23' });
+    expect(out.ok).toBe(true);
+    expect(out.alreadyIngested).toBeUndefined();
+    expect(adapters.fmp.getFundamentals).toHaveBeenCalled();
+  });
+
+  test('ingestNews returns degraded on provider 429', async () => {
+    let runSeq = 0;
+    const query = jest.fn(async (sql) => {
+      if (sql.includes('INSERT INTO runs') && sql.includes('RETURNING run_id')) {
+        runSeq += 1;
+        return { rows: [{ run_id: `run-${runSeq}` }] };
+      }
+      if (sql.includes('FROM runs') && sql.includes("config->>'runDate'")) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    const rateErr = new Error('NewsAPI /everything HTTP 429');
+    rateErr.status = 429;
+    const adapters = {
+      polygon: { getSnapshot: jest.fn(), getBars: jest.fn() },
+      fmp: { getFundamentals: jest.fn(), getEarningsCalendar: jest.fn() },
+      newsApi: { getTopHeadlines: jest.fn(async () => { throw rateErr; }), getEverything: jest.fn(async () => []) }
+    };
+
+    const svc = createMarketIngestionV1Service({ query, adapters, logger: { warn: jest.fn() } });
+    const out = await svc.ingestNews({ date: '2026-02-23' });
+    expect(out.ok).toBe(true);
+    expect(out.degraded).toBe(true);
+    expect(out.rateLimited).toBe(true);
+  });
 });

@@ -5,6 +5,7 @@ const BASE_URL = 'https://financialmodelingprep.com';
 const RETRYABLE_STATUS = new Set([429]);
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_BASE_BACKOFF_MS = 1200;
+let cooldownUntilMs = 0;
 
 const toNum = (value, fallback = null) => {
   const out = Number(value);
@@ -38,11 +39,25 @@ const createFmpAdapter = ({
   baseUrl = BASE_URL,
   timeoutMs = env.externalFetchTimeoutMs,
   maxRetries = DEFAULT_MAX_RETRIES,
-  baseBackoffMs = DEFAULT_BASE_BACKOFF_MS
+  baseBackoffMs = DEFAULT_BASE_BACKOFF_MS,
+  cooldownMs = env.fmpCooldownMs
 } = {}) => {
+  const inCooldown = () => Date.now() < cooldownUntilMs;
+  const startCooldown = (ms = cooldownMs) => {
+    cooldownUntilMs = Date.now() + Math.max(0, Number(ms) || 0);
+  };
+
   const request = async (path, params = {}) => {
     if (!apiKey) throw new Error('Missing FMP_API_KEY');
     if (!fetchImpl) throw new Error('Missing fetch implementation');
+
+    if (inCooldown()) {
+      const err = new Error('FMP_COOLING_DOWN');
+      err.code = 'FMP_COOLING_DOWN';
+      err.status = 429;
+      err.retryAfterMs = Math.max(0, cooldownUntilMs - Date.now());
+      throw err;
+    }
 
     const qs = new URLSearchParams({ ...params, apikey: apiKey });
     const url = `${baseUrl}${path}?${qs.toString()}`;
@@ -51,9 +66,14 @@ const createFmpAdapter = ({
     while (attempt <= maxRetries) {
       try {
         const res = await withTimeout(fetchImpl, url, {}, timeoutMs);
+        if (!res.ok && RETRYABLE_STATUS.has(res.status)) {
+          const retryAfterMs = parseRetryAfterMs(res);
+          startCooldown(retryAfterMs != null ? retryAfterMs : baseBackoffMs);
+        }
         if (!res.ok && RETRYABLE_STATUS.has(res.status) && attempt < maxRetries) {
           const retryAfterMs = parseRetryAfterMs(res);
           const waitMs = retryAfterMs != null ? retryAfterMs : baseBackoffMs * (attempt + 1);
+          startCooldown(waitMs);
           await sleep(waitMs);
           attempt += 1;
           continue;
@@ -63,6 +83,7 @@ const createFmpAdapter = ({
         return res.json();
       } catch (error) {
         if (RETRYABLE_STATUS.has(error?.status) && attempt < maxRetries) {
+          startCooldown(baseBackoffMs * (attempt + 1));
           const waitMs = baseBackoffMs * (attempt + 1);
           await sleep(waitMs);
           attempt += 1;

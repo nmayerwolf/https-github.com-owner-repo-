@@ -49,6 +49,7 @@ const env = {
   cronTimezone: process.env.CRON_TIMEZONE || 'America/Argentina/Buenos_Aires',
   adminJobToken: process.env.ADMIN_JOB_TOKEN || '',
   adminJobTokenNext: process.env.ADMIN_JOB_TOKEN_NEXT || '',
+  adminEnableDataFixes: asBool(process.env.ADMIN_ENABLE_DATA_FIXES, false),
   adminJobsRateLimitWindowMs: asPositiveInt(process.env.ADMIN_JOBS_RATE_LIMIT_WINDOW_MS, 60 * 1000),
   adminJobsRateLimitMax: asPositiveInt(process.env.ADMIN_JOBS_RATE_LIMIT_MAX, 10),
 
@@ -67,7 +68,8 @@ const env = {
   fmpApiKey: process.env.FMP_API_KEY || '',
   newsApiKey: process.env.NEWS_API_KEY || '',
   gdeltEnabled: asBool(process.env.GDELT_ENABLED, false),
-  externalFetchTimeoutMs: asPositiveInt(process.env.EXTERNAL_FETCH_TIMEOUT_MS, 12000)
+  externalFetchTimeoutMs: asPositiveInt(process.env.EXTERNAL_FETCH_TIMEOUT_MS, 12000),
+  fmpCooldownMs: asPositiveInt(process.env.FMP_COOLDOWN_MS, 15 * 60 * 1000)
 };
 
 module.exports = { env, asBool, asPositiveInt };

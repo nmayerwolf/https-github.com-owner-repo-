@@ -55,4 +55,26 @@ describe('FmpAdapter', () => {
     expect(earnings).toHaveLength(1);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  test('enters cooldown after 429 and blocks subsequent calls', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: { get: () => null },
+        text: async () => 'rate limited'
+      });
+
+    const adapter = createFmpAdapter({
+      apiKey: 'k',
+      fetchImpl,
+      timeoutMs: 2000,
+      maxRetries: 0,
+      cooldownMs: 60_000
+    });
+
+    await expect(adapter.getEarningsCalendar({ from: '2026-02-24', to: '2026-03-24' })).rejects.toHaveProperty('status', 429);
+    await expect(adapter.getEarningsCalendar({ from: '2026-02-24', to: '2026-03-24' })).rejects.toHaveProperty('code', 'FMP_COOLING_DOWN');
+  });
 });
