@@ -81,6 +81,8 @@ const createFmpAdapter = ({
       try {
         return await request(path, params);
       } catch (error) {
+        // When provider rate-limits, avoid doubling pressure with fallback endpoints.
+        if (error?.status === 429) throw error;
         lastError = error;
       }
     }
