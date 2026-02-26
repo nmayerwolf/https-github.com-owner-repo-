@@ -28,4 +28,31 @@ describe('FmpAdapter', () => {
     expect(earnings).toHaveLength(1);
     expect(earnings[0].asset.symbol).toBe('AAPL');
   });
+
+  test('retries on 429 and succeeds', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: { get: () => '0' },
+        text: async () => 'rate limited'
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ symbol: 'AAPL', date: '2026-03-01', epsEstimated: 1.2, revenueEstimated: 1000 }]
+      });
+
+    const adapter = createFmpAdapter({
+      apiKey: 'k',
+      fetchImpl,
+      timeoutMs: 2000,
+      maxRetries: 2,
+      baseBackoffMs: 1
+    });
+
+    const earnings = await adapter.getEarningsCalendar({ from: '2026-02-24', to: '2026-03-24' });
+    expect(earnings).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
 });

@@ -2,6 +2,9 @@ const { env } = require('../config/env');
 const { withTimeout, ensureOk } = require('./httpClient');
 
 const BASE_URL = 'https://financialmodelingprep.com';
+const RETRYABLE_STATUS = new Set([429]);
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_BASE_BACKOFF_MS = 1200;
 
 const toNum = (value, fallback = null) => {
   const out = Number(value);
@@ -13,11 +16,29 @@ const isoOrNow = (value) => {
   return Number.isFinite(ts) ? new Date(ts).toISOString() : new Date().toISOString();
 };
 
+const sleep = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const parseRetryAfterMs = (res) => {
+  const raw = res?.headers?.get?.('retry-after');
+  if (!raw) return null;
+  const asSeconds = Number(raw);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds * 1000;
+  const asDate = Date.parse(raw);
+  if (!Number.isFinite(asDate)) return null;
+  const diff = asDate - Date.now();
+  return diff > 0 ? diff : null;
+};
+
 const createFmpAdapter = ({
   apiKey = env.fmpApiKey,
   fetchImpl = global.fetch,
   baseUrl = BASE_URL,
-  timeoutMs = env.externalFetchTimeoutMs
+  timeoutMs = env.externalFetchTimeoutMs,
+  maxRetries = DEFAULT_MAX_RETRIES,
+  baseBackoffMs = DEFAULT_BASE_BACKOFF_MS
 } = {}) => {
   const request = async (path, params = {}) => {
     if (!apiKey) throw new Error('Missing FMP_API_KEY');
@@ -25,9 +46,33 @@ const createFmpAdapter = ({
 
     const qs = new URLSearchParams({ ...params, apikey: apiKey });
     const url = `${baseUrl}${path}?${qs.toString()}`;
-    const res = await withTimeout(fetchImpl, url, {}, timeoutMs);
-    await ensureOk(res, `FMP ${path}`);
-    return res.json();
+    let attempt = 0;
+
+    while (attempt <= maxRetries) {
+      try {
+        const res = await withTimeout(fetchImpl, url, {}, timeoutMs);
+        if (!res.ok && RETRYABLE_STATUS.has(res.status) && attempt < maxRetries) {
+          const retryAfterMs = parseRetryAfterMs(res);
+          const waitMs = retryAfterMs != null ? retryAfterMs : baseBackoffMs * (attempt + 1);
+          await sleep(waitMs);
+          attempt += 1;
+          continue;
+        }
+
+        await ensureOk(res, `FMP ${path}`);
+        return res.json();
+      } catch (error) {
+        if (RETRYABLE_STATUS.has(error?.status) && attempt < maxRetries) {
+          const waitMs = baseBackoffMs * (attempt + 1);
+          await sleep(waitMs);
+          attempt += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error(`FMP ${path} retry budget exhausted`);
   };
 
   const requestWithFallback = async (paths, params = {}) => {
